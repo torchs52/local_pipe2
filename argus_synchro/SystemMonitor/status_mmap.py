@@ -61,7 +61,7 @@ class StatusMMAP:
     def read_status(self) -> int:
         self.mmap.seek(0)
         data: bytes = self.mmap.read(self.size)
-        StatusMMAP._last_read_time = time.time()
+        StatusMMAP._last_read_time = time.monotonic()
         return struct.unpack("i", data)[0]
 
     def close(self) -> None:
@@ -73,7 +73,7 @@ class StatusMMAP:
 
     @staticmethod
     def is_recent(timeout: float = 5.0) -> bool:
-        return (time.time() - StatusMMAP._last_read_time) < timeout
+        return (time.monotonic() - StatusMMAP._last_read_time) < timeout
 
     @staticmethod
     def get_status_name(code: int) -> str:

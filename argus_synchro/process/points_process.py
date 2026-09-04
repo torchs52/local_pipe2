@@ -103,7 +103,7 @@ class PointsProviderProcess(InputProcess[PointCloudData]):
         self._lidar_config_index_map: dict[int, str] = {}
         self._unique_lidar_name: str = ""
         self._sec_lid: SharedLIDExcept = sec_lid
-        self._last_heartbeat: float = time.time()
+        self._last_heartbeat: float = time.perf_counter()
         self._ser: SharedErrors = ser
 
         # _startupで初期化
@@ -294,7 +294,7 @@ class PointsProviderProcess(InputProcess[PointCloudData]):
         )
 
         # for healthy check
-        now: float = time.time()
+        now: float = time.perf_counter()
         if now - self._last_heartbeat > self._heartbeat_interval:
             self._sec_lid.last_heartbeat.value = now
             self._last_heartbeat = now

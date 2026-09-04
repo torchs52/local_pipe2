@@ -142,7 +142,7 @@ class ImuProviderProcess(InputProcess[ImuData]):
         if imu_ring:
             cube = np.stack(imu_ring, axis=0)
             flat = cube.reshape(cube.shape[0], -1)
-            now = time.monotonic()
+            now = time.perf_counter()
             if now - self._last_heartbeat > self._heartbeat_interval:
                 self._sec_imu.last_heartbeat.value = now
                 self._last_heartbeat = now

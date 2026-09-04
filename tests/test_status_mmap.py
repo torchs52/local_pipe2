@@ -71,3 +71,30 @@ def test_status_mmap_logger_uses_registered_factory(
     status.close()
 
     assert "既存 mmap 削除" in log_file.read_text(encoding="utf-8")
+
+
+def test_status_mmap_recency_uses_monotonic_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory_config = DirectoryConfig(tmp_path, tmp_path, tmp_path)
+    logger = AppLoggerFactory.from_name("StatusMMAPTest", to_console=False)
+    monotonic_time = 100.0
+    wall_time = 1_000.0
+    monkeypatch.setattr(
+        "argus_synchro.SystemMonitor.status_mmap.time.monotonic",
+        lambda: monotonic_time,
+    )
+    monkeypatch.setattr(
+        "argus_synchro.SystemMonitor.status_mmap.time.time", lambda: wall_time
+    )
+    status = StatusMMAP(logger, create=True, directory_config=directory_config)
+
+    status.read_status()
+    wall_time += 1_000_000.0
+    monotonic_time += 4.9
+    assert StatusMMAP.is_recent(timeout=5.0) is True
+    wall_time -= 2_000_000.0
+    monotonic_time += 0.2
+    assert StatusMMAP.is_recent(timeout=5.0) is False
+
+    status.close()

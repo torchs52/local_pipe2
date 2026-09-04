@@ -99,6 +99,7 @@ class AppManagerProcess(ProcessBase):
         self._is_last_camera_diag_enabled: list[bool]
         self._is_last_can_diag_enabled: bool
         self._is_last_imu_diag_enabled: list[bool]
+        self._is_last_lidar_diag_enabled: list[bool]
         self._is_last_lidar_sm_diag_enabled: bool
 
     def _config_load(self) -> None:
@@ -132,6 +133,9 @@ class AppManagerProcess(ProcessBase):
                 StateErrorIndex.CAMERA0_CONNECTION_ERROR + i
             ].update(self._err_config)
         for i in range(self._num_lidars):
+            self._ser.state_errors_A_C[
+                StateErrorIndex.LIDAR0_CONNECTION_ERROR + i
+            ].update(self._err_config)
             self._ser.state_errors_A_C[
                 StateErrorIndex.IMU0_CONNECTION_ERROR + i
             ].update(self._err_config)
@@ -262,6 +266,7 @@ class AppManagerProcess(ProcessBase):
         self._is_last_camera_diag_enabled = [False] * self._num_cameras
         self._is_last_can_diag_enabled = False
         self._is_last_imu_diag_enabled = [False] * self._num_lidars
+        self._is_last_lidar_diag_enabled = [False] * self._num_lidars
         self._is_last_lidar_sm_diag_enabled = False
 
         result: tuple[ResultDiagnosis, ResultDiagnosis] = self._ser.state_errors_D[
@@ -285,6 +290,7 @@ class AppManagerProcess(ProcessBase):
                 self._log_watch_last_size = -1
         # 開始時間
         self._dt_start: datetime.datetime = datetime.datetime.now()
+        self._log_start_mono = time.monotonic()
         self._logger.info("開始時刻")
         #############################################
         # ここに記載のlog機能は、基本的に使わず、全面的に書き換える。
@@ -413,6 +419,23 @@ class AppManagerProcess(ProcessBase):
                 )
             self._is_last_imu_diag_enabled[i] = is_enabled
 
+    def _lidar_healthy_check(self, now: float) -> None:
+        for i in range(self._num_lidars):
+            is_enabled = bool(self._sec.LiDAR_ex[i].is_heartbeat_enabled.value)
+            if is_enabled:
+                diagnosis = self._ser.state_errors_A_C[
+                    StateErrorIndex.LIDAR0_CONNECTION_ERROR + i
+                ]
+                if self._is_last_lidar_diag_enabled[i] is False:
+                    diagnosis.clear()
+                result = diagnosis.errors_diagnosis(
+                    now, self._sec.LiDAR_ex[i].last_heartbeat.value
+                )
+                diagnosis.log_output(
+                    *result, StateErrorIndex.LIDAR0_CONNECTION_ERROR + i, i
+                )
+            self._is_last_lidar_diag_enabled[i] = is_enabled
+
     def _lidar_shift_monitoring_healthy_check(self, now: float) -> None:
         if self._sec.Lidar_SM_ex.is_heartbeat_enabled.value:
             lidar_position_misalignment_not_responding = self._ser.state_errors_A_C[
@@ -439,6 +462,7 @@ class AppManagerProcess(ProcessBase):
         now: float = time.perf_counter()
         self._camera_healthy_check(now)
         self._can_healthy_check(now)
+        self._lidar_healthy_check(now)
         self._imu_healthy_check(now)
         self._lidar_shift_monitoring_healthy_check(now)
 
@@ -665,7 +689,7 @@ class AppManagerProcess(ProcessBase):
 
             # センサー Healthy Check
             if not self._app_config.DEFAULT.File_Input:
-                now: float = time.time()
+                now: float = time.perf_counter()
                 for i in range(self._num_lidars):
                     # センサーインスタンスのデータ更新時刻が指定秒以上変化ない場合
                     if (
@@ -686,9 +710,8 @@ class AppManagerProcess(ProcessBase):
 
             #############################################
             # 経過時間の計測
-            dt_now: datetime.datetime = datetime.datetime.now()
-            elapsed: datetime.timedelta = dt_now - self._dt_start
-            if self._logmode and elapsed.seconds > self._logtime:
+            elapsed_sec = time.monotonic() - self._log_start_mono
+            if self._logmode and elapsed_sec > self._logtime:
                 self._logger.info("=======================================")
                 self._logger.info(
                     "%dsec has elapsed. Stop the logging.",

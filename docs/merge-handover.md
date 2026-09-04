@@ -121,6 +121,17 @@ SHI担当エラーについては、SHI側の完成した判定ロジック、�
 
 ログ洪水抑止などの追加要件は、可能な限り診断クラス内部へ実装し、process側のvendor呼出し形式を維持する。既存ログだけでは不足するデバッグ情報や終了理由などを追加する場合はこの限りではないが、既存ログ経路の置換とは分けてレビューし、既存ログを失わないことをテストする。
 
+### 2.5 経過時間のクロック
+
+プロセス・センサーの死活、接続停止、復帰確認、timeout、deadlineなど、経過時間で決まる判定にはOSの絶対時刻を使用しない。`time.monotonic()` または `time.perf_counter()` を使用し、共有heartbeatの書込側と比較側は同じAPIへ揃える。`time.time()` と `datetime.now()` は、人向けの表示日時、ファイル名、永続化する実時刻など絶対時刻そのものが必要な用途に限定する。
+
+通常運転の現行区分は次のとおり。
+
+- Camera/CAN/LiDAR/IMU/LiDAR shiftのheartbeatとAppManager接続診断: `time.perf_counter()`
+- GetData/ObjectDetect/PointsRefine/VisualとAppManagerのprocess heartbeat: `time.monotonic()`
+- MonitorArgus heartbeatファイルとAppManager診断: `time.perf_counter()`
+- StatusMMAP鮮度、process停止deadline、ログ継続時間、tegrastats無出力timeout: `time.monotonic()`
+
 ## 3. 最初に扱う領域: ファイルI/Oエラー
 
 SHI側では多くのファイル読取箇所へエラー処理が追加されている。変更は複数process、校正処理、logger、起動処理へ広がっており、ファイル単位・コミット単位の採用には向かない。
@@ -334,6 +345,8 @@ SHI側だけで確認されたテスト:
 | M-030 | CE012 再起動ループ検出 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | action diagnosis/error config/main/FILE_IO_ERROR/tests | `uptime_state.json` の直近5回を600秒窓で評価し、履歴異常はFILE_IO_ERRORへ委譲する |
 | M-031 | SHI担当だが未実装のCE003・CE007～CE010・SE036 | ユーザー確認 / 現行SHI | decision-needed | deferred | なし | 共通スケルトンから推測実装せず、SHI側で仕様・実装が確定するまで移植対象外とする |
 | M-032 | SE040・SE041 IMU接続エラー | 現行SHI / `docs/error_list.txt` | manual-port | verified | state diagnosis/shared heartbeat/IMU/AppManager/tests | 実データheartbeatを5秒監視し、1秒以内の連続受信を5秒確認して復帰する |
+| M-033 | SE001・SE002 LiDAR接続エラー | 現行SHI / `docs/error_list.txt` | manual-port | verified | state diagnosis/Points/AppManager/tests | 実点群heartbeatを5秒監視し、1秒以内の連続受信を5秒確認して復帰する |
+| M-034 | 死活・経過時間クロック監査 | vendor通常運転経路 | vendor-keep | verified | sensor/process heartbeat/StatusMMAP/停止deadline/tests | 絶対時刻依存を除去し、書込側と比較側のclock APIを統一する |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -671,6 +684,26 @@ SHI側だけで確認されたテスト:
 - AppManagerはIMUごとの `is_heartbeat_enabled` が有効な場合だけ診断し、有効化時に診断履歴をclearする。SHI側で欠けていた監視有効化は、vendorのCamera/CAN/LiDARと同じくIMU startup完了時に有効、shutdown時に無効とし、起動途中や停止後を誤検出しない。
 - `tests/test_imu_connection_error.py` で実データ・空ring・Timeout時のheartbeat、shutdown無効化、初回未更新除外、5秒検出、1秒以内の連続受信による復帰、AppManagerの有効IMUだけへのdispatchを確認した。専用テストは7 passed、共有設定・AppManager関連は29 passed。変更箇所のVS Code診断なし、`compileall` 成功。
 - `test_detect2d.py` を除く全体回帰は231 passed、7 xfailed、通常失敗0件。
+
+### 2026-09-04 M-033実施記録
+
+- 現行SHIのSE001/SE002を確認し、LiDAR接続診断をvendorへ移植した。点群取得成功時だけheartbeatを最大0.5秒間隔で更新し、未取得時は更新しない。heartbeatはAppManagerの既存時刻基準と同じ `time.perf_counter()` を使用し、起動時は `INVALID_TIMESTAMP=-1.0`、停止時は監視無効とする既存Points lifecycleを維持した。
+- 最初の有効heartbeatを基準値として保持した後、heartbeatの更新間隔または最終heartbeatから5秒以上経過した場合に接続エラーとフェイルセーフを検出する。復帰は1秒以内のheartbeat受信を5秒継続した場合で、センチネルからの初回遷移は確認時間に含めない。
+- SHIではLiDAR0/LiDAR1の診断クラスが同一実装で重複していたため、vendorで2indexへ登録済みの共通 `LidarNConnectionErrorDiagnosis` へ状態機械とindex付きログを実装した。parameterもvendor既存の共通 `lidar_n_connection_error` を両indexで使用する。SHI固有のmaintenance抑止は持ち込んでいない。
+- AppManagerはLiDARごとの `is_heartbeat_enabled` が有効な場合だけ診断し、有効化時に診断履歴をclearする。vendor既存の5秒経過で `IsDead` を立てる監視は、process生存管理の制御を変えないため残した。SE001/002の状態・ログは新しい共通診断経路が所有する。
+- M-032で追加したIMUのindex付きログが参照する引数検証helperの欠落を発見し、LiDAR/IMU共通helperとして補完した。両診断のログ経路を専用テストで実行し、エラー番号とsensor indexを確認した。
+- `tests/test_lidar_connection_error.py` と `tests/test_imu_connection_error.py` で初回・センチネル除外、5秒境界、連続受信による復帰、診断所有ログ、AppManagerの有効センサーだけへのdispatchを確認した。専用テストは13 passed、Points・AppManagerを含む関連テストは45 passed。変更箇所のVS Code診断なし、`compileall` 成功。
+- `test_detect2d.py` を除く全体回帰は237 passed、7 xfailed、通常失敗0件。
+
+### 2026-09-04 M-034実施記録
+
+- OS絶対時刻が前後へ変更され得る前提で、通常運転のsensor/process heartbeatについて書込側と比較側を対にして監査した。Camera/CAN/LiDAR/LiDAR shiftは `perf_counter` で一致していたが、IMUだけ `monotonic` だったため `perf_counter` へ統一した。AppManager heartbeatと周辺監視4processは `monotonic` の入口・出口で一致し、MonitorArgus heartbeatファイルは `perf_counter` の入口・出口で一致している。
+- AppManagerに残っていた旧LiDAR `IsDead` 判定の `time.time()` をheartbeatと同じ `perf_counter()` へ変更した。StatusMMAPの鮮度判定、並列・逐次process停止deadline、tegrastats子processの無出力timeoutは `monotonic()` へ変更した。AppManagerのログ継続時間も表示用 `datetime.now()` から分離し、判定には `monotonic()` を使用する。
+- `time.time()` / `datetime.now()` が残る通常運転箇所はCamera/LiDARの表示日時とVisual等の処理時間ログであり、死活・接続判定には使われない。ログファイルmtimeは変化検出だけに使い、停止時間の計測自体はmonotonicである。
+- M-005保留中の校正領域には、camera/lidar captureの待機deadline、calibration FIFOの長時間警告などwall clockによる経過時間計測が残る。通常運転の死活判定とは分離されているが、校正統合時にmonotonic化する。
+- `tests/test_status_mmap.py` ではwall clockを未来・過去へ大幅に変更しても鮮度判定がmonotonic経過だけに従うことを確認した。`tests/test_elapsed_time_clocks.py` ではprocess停止待ちとtegrastats timeoutのmonotonic利用を確認する。
+- クロック専用・接続診断テストは19 passed、AppManager・ErrorMonitor・ProcessManagerを含む関連テストは58 passed。変更箇所のVS Code診断なし、`compileall` と `git diff --check` は成功した。
+- `test_detect2d.py` を除く全体回帰は240 passed、7 xfailed、通常失敗0件。
 
 ## 10. 次のCopilotへの開始指示
 

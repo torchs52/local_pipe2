@@ -644,7 +644,7 @@ def _alive(p: Process | None) -> bool:
 
 def _phase_wait_until(deadline: float, procs: list[Process]) -> None:
     """deadline まで 100ms 間隔で生存確認をポーリング"""
-    while time.time() < deadline:
+    while time.monotonic() < deadline:
         if all(not _alive(p) for p in procs):
             return
         time.sleep(0.1)
@@ -675,7 +675,7 @@ def graceful_stop_parallel(
 
     # --- Phase 1: 優雅停止（自発終了待ち） ---
     _calib_procstop_logger.info(f"phase=graceful wait {t_grace}s (parallel)")
-    deadline = time.time() + t_grace
+    deadline = time.monotonic() + t_grace
     _phase_wait_until(deadline, procs)
 
     # --- Phase 2: terminate 同時送信 ---
@@ -689,7 +689,7 @@ def graceful_stop_parallel(
                     p.terminate()
                 except Exception as e:
                     _calib_procstop_logger.error(f"[{name}] terminate error: {e!r}")
-        deadline = time.time() + t_term
+        deadline = time.monotonic() + t_term
         _phase_wait_until(deadline, still_alive_term)
 
     # --- Phase 3: kill 同時送信 ---
@@ -703,7 +703,7 @@ def graceful_stop_parallel(
                     p.kill()
                 except Exception as e:
                     _calib_procstop_logger.error(f"[{name}] kill error: {e!r}")
-        deadline = time.time() + t_kill
+        deadline = time.monotonic() + t_kill
         _phase_wait_until(deadline, still_alive_kill)
 
     # 終了コードログ
@@ -731,8 +731,8 @@ def graceful_stop(
             return
         _calib_procstop_logger.info(f"[{name}] stop request (pid={proc.pid})")
         # 自発終了待ち
-        start = time.time()
-        while proc.is_alive() and (time.time() - start) < timeout:
+        start = time.monotonic()
+        while proc.is_alive() and (time.monotonic() - start) < timeout:
             time.sleep(0.1)
         if not proc.is_alive():
             _calib_procstop_logger.info(f"[{name}] exited gracefully (pid={proc.pid})")
@@ -740,8 +740,8 @@ def graceful_stop(
         # まだ動いている -> terminate
         _calib_procstop_logger.info(f"[{name}] sending terminate (pid={proc.pid})")
         proc.terminate()
-        start = time.time()
-        while proc.is_alive() and (time.time() - start) < timeout:
+        start = time.monotonic()
+        while proc.is_alive() and (time.monotonic() - start) < timeout:
             time.sleep(0.1)
         if not proc.is_alive():
             _calib_procstop_logger.info(f"[{name}] terminated (pid={proc.pid})")
@@ -749,8 +749,8 @@ def graceful_stop(
         # それでも動いている -> kill
         _calib_procstop_logger.info(f"[{name}] sending kill (pid={proc.pid})")
         proc.kill()
-        start = time.time()
-        while proc.is_alive() and (time.time() - start) < 2.0:
+        start = time.monotonic()
+        while proc.is_alive() and (time.monotonic() - start) < 2.0:
             time.sleep(0.1)
         if not proc.is_alive():
             _calib_procstop_logger.info(f"[{name}] killed (pid={proc.pid})")

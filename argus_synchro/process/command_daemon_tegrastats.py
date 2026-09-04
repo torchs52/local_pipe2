@@ -46,13 +46,13 @@ class CommandDaemon:
         self._terminate()
 
     def _run(self) -> None:
-        last_line_at: float = time.time()
+        last_line_at: float = time.monotonic()
         while not self._stop.is_set():
             line: str = self._read_line()
             if line:
-                last_line_at = time.time()
+                last_line_at = time.monotonic()
                 self._handle_line(line)
-            elif (time.time() - last_line_at) > self._timeout:
+            elif (time.monotonic() - last_line_at) > self._timeout:
                 self._restart()
             time.sleep(0.02)  # 過剰ループを抑制
 

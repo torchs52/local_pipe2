@@ -29,7 +29,9 @@ def test_imu_update_refreshes_heartbeat_only_for_received_data(monkeypatch) -> N
         )
     )
     process = _make_process(provider)
-    monkeypatch.setattr("argus_synchro.process.imu_process.time.monotonic", lambda: 11.0)
+    monkeypatch.setattr(
+        "argus_synchro.process.imu_process.time.perf_counter", lambda: 11.0
+    )
 
     result = process._update()
 
@@ -126,3 +128,14 @@ def test_app_manager_dispatches_enabled_imu_heartbeat() -> None:
         10.0, 9.5
     )
     diagnoses[StateErrorIndex.IMU1_CONNECTION_ERROR].errors_diagnosis.assert_not_called()
+
+
+def test_imu_connection_owns_sensor_specific_log() -> None:
+    diagnosis = _make_diagnosis()
+    diagnosis._logger = MagicMock()
+
+    diagnosis._error_log_output(StateErrorIndex.IMU1_CONNECTION_ERROR, 1)
+
+    diagnosis._logger.warning.assert_called_once_with(
+        "SE041: IMU[1] connection error detected."
+    )
