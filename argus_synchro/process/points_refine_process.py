@@ -440,6 +440,7 @@ class PointsRefineProcess(ProcessBase):
     def _startup(self) -> None:
         self._config_load()
         self._err_config_load()
+        self._spe.last_heartbeat.value = time.monotonic()
         self._startup_remove()
         self._startup_accum()
         self._startup_collision_cliff()
@@ -575,6 +576,7 @@ class PointsRefineProcess(ProcessBase):
                             accum_ground_pcd,
                         )
                     )
+                    self._spe.last_heartbeat.value = time.monotonic()
                     if output_cliff is None:
                         continue
 

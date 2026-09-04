@@ -413,6 +413,7 @@ class VisualProcess(ProcessBase):
     def _startup(self) -> None:
         self._config_load()
         self._err_config_load()
+        self._spe.last_heartbeat.value = time.monotonic()
         self._build_camera()
 
         if self._app_config.OctoTree.func_on:
@@ -665,6 +666,7 @@ class VisualProcess(ProcessBase):
                             valid_detects,
                             frames,
                         )
+                        self._spe.last_heartbeat.value = time.monotonic()
 
                 except Exception as e:
                     is_state_error_d_exception = self._ser.is_state_error_d_exception(

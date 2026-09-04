@@ -238,6 +238,7 @@ class ObjectDetectProcess(ProcessBase):
         self._config_load()
         self._err_config_load()
         self._build_provider()
+        self._spe.last_heartbeat.value = time.monotonic()
         self._frames_buf = np.zeros(
             (
                 self._camera_conf.count,
@@ -306,6 +307,7 @@ class ObjectDetectProcess(ProcessBase):
                         continue
 
                     output_data: CameraDetectionsData | None = self._update(cameras)
+                    self._spe.last_heartbeat.value = time.monotonic()
 
                     if output_data is None:
                         continue

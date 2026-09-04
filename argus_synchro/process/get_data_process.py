@@ -120,6 +120,7 @@ class GetDataProcess(ProcessBase):
         self._config_load()
         self._err_config_load()
         self._ref_t = self._app_config.Scrutinizer.s_frame
+        self._spe.last_heartbeat.value = time.monotonic()
 
         self._fps_prof.start()
         self.create_producer_and_consumer()
@@ -273,6 +274,7 @@ class GetDataProcess(ProcessBase):
                         candata,
                         cameras,
                     )
+                    self._spe.last_heartbeat.value = time.monotonic()
 
                     # 出力処理
                     if output_data is None:

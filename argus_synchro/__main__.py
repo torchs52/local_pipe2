@@ -545,7 +545,7 @@ def create_undisimage_process(
         sac,
         sec,
         ser,
-        sec.Scruti_ex,
+        sec.ObjDet_ex,
         input_message_flows[MessageIndex.CAMERA.value],
         output_message_flows,
         activator,
@@ -573,7 +573,7 @@ def create_points_refine_process(
 
     PointsRefineProcess(
         sac,
-        sec.Scruti_ex,
+        sec.PointsRefine_ex,
         ser,
         input_message_flows[MessageIndex.PCD.value],
         input_message_flows[MessageIndex.CAN_ANGLE.value],

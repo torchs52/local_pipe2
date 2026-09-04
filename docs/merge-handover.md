@@ -326,6 +326,7 @@ SHI側だけで確認されたテスト:
 | M-022 | CE013 AIモデルロード失敗/破損 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | action diagnosis/ObjectDetect/tests | SHIの例外分類とフォールバックを維持し、CE013ログはvendor責務分担どおり診断クラスが出力する |
 | M-023 | SE039 アプリケーションマネージャー未応答 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | state diagnosis/shared heartbeat/AppManager/ErrorMonitor/tests | SHIのheartbeat判定を維持し、ErrorMonitorからvendorの共通ログdispatchへ接続する |
 | M-024 | SE042 ログ出力停止 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | state diagnosis/AppManager/tests | ログファイルのmtime/sizeを監視し、判定とログはvendorの診断共通経路へ委譲する |
+| M-025 | SE037 周辺監視モジュール未応答 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | state diagnosis/shared heartbeat/4 processes/AppManager/tests | GetData/ObjectDetect/PointsRefine/Visualの個別heartbeatを監視し、vendorの共通ログdispatchへ接続する |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -590,6 +591,18 @@ SHI側だけで確認されたテスト:
 - SHIのAppManagerは診断前後の共有flagから `ResultDiagnosis` を再計算していたが、vendorの `StateErrorDiagnosisC.errors_diagnosis()` が同じエッジ状態を返すため、その重複は移植しなかった。AppManagerはmtime/size観測だけを所有し、判定、状態、ログ文面、loggerは診断クラス、出力選択は共通 `log_output()` が所有する。
 - `tests/test_log_output_stopped.py` で閾値、KEEPING、継続復帰、時刻後退、引数、ログ、ファイル更新・停止・一時欠落・ログ無効時のAppManager配線を確認した。専用テストは9 passed、SE039との組合せは18 passed。変更箇所のVS Code診断なし、`compileall` 成功。
 - AppManager共有状態の単一インスタンス化を含め、`test_detect2d.py` を除く全体回帰は160 passed、7 xfailed、通常失敗0件。CRLFを考慮したdiff checkも成功した。
+
+### 2026-09-04 M-025実施記録
+
+- SHIコミット `4b4674c` と現行SHIを確認し、SE037の診断ロジックとGetData、ObjectDetect、PointsRefine、Visualの4process heartbeat監視をvendorへ移植した。校正processとCANは対象外である。
+- 各processは起動完了時と主要処理の正常完了時にmonotonic heartbeatを更新する。入力待ち、入力診断でのスキップ、例外処理中は更新しないため、単にloopが回っているだけの状態を健康扱いしない。
+- ObjectDetectとPointsRefineは従来 `Scruti_ex` を共有していたが、個別の未応答を識別するためSHIと同じく `ObjDet_ex`、`PointsRefine_ex` を追加した。既存の終了判定、モードリセット、状態表示、closeにも両共有状態を追加し、process lifecycleを欠落させない。
+- heartbeat初期値はSHIの0.0ではなく、vendorの既存死活監視と同じ `INVALID_TIMESTAMP=-1.0` とした。AppManagerは未起動値を経過時間一覧の-1.0として診断へ渡し、全対象が未起動の場合は検出しない。
+- SHI担当実装どおり、起動済み対象のいずれかが5秒を超えて未更新なら検出し、全対象が閾値内へ戻ればエラーとフェイルセーフを復帰する。最大経過秒を検出ログへ出力する。
+- SHIでは閾値を診断parameterに持ちながらprocessから重複して渡していたため、vendor責務分担へ合わせて診断クラスがparameterを所有し、processは経過秒一覧だけを渡す。SHIのAppManagerで欠けていた診断戻り値の受取りと `log_output()` 呼出しも追加した。
+- SHI固有の `DiagnosisRuntimePolicy` は広域影響を避けて持ち込んでいない。SE037監視はvendorのSCRUT分岐内だけで実行され、診断自体はidleを立てない。
+- `tests/test_surround_monitor_module_not_responding.py` で閾値境界、未起動除外、復帰、入力検証、ログ、個別共有状態、AppManagerの経過時間とdispatchを確認した。専用テストは9 passed、対象process・AI診断・Visual終了・process管理を含む関連テストは39 passed。変更箇所のVS Code診断なし、`compileall` 成功。
+- `test_detect2d.py` を除く全体回帰は169 passed、7 xfailed、通常失敗0件。CRLFを考慮したdiff checkも成功した。
 
 ## 10. 次のCopilotへの開始指示
 

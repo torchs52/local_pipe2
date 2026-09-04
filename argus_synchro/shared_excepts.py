@@ -26,6 +26,9 @@ class SharedGetDataExcept(SharedProcessExcept):
     def __init__(self) -> None:
         super().__init__()
         # エラーフラグをここに足していく.(Is... or Has...)
+        self.last_heartbeat: Synchronized[float] = create_shared_single_data(
+            INVALID_TIMESTAMP
+        )
 
     def close(self) -> None:
         pass
@@ -100,6 +103,9 @@ class SharedVisualizeExcept(SharedProcessExcept):
     def __init__(self) -> None:
         super().__init__()
         # エラーフラグをここに足していく.(Is... or Has...)
+        self.last_heartbeat: Synchronized[float] = create_shared_single_data(
+            INVALID_TIMESTAMP
+        )
 
     def close(self) -> None:
         pass
@@ -123,6 +129,9 @@ class SharedScrutinizerExcept(SharedProcessExcept):
         super().__init__()
         # エラーフラグをここに足していく.(Is... or Has...)
         self.IsSlow: Synchronized[int] = create_shared_single_data(0)
+        self.last_heartbeat: Synchronized[float] = create_shared_single_data(
+            INVALID_TIMESTAMP
+        )
 
     def close(self) -> None:
         pass
@@ -222,6 +231,8 @@ class SharedExcepts:
             SharedAppManagerExcept() if app_manager_ex is None else app_manager_ex
         )  # アプリマネジャー例外処理フラグ・heartbeat
         self.Scruti_ex = SharedScrutinizerExcept()  # Scrutinizer例外処理フラグ
+        self.ObjDet_ex = SharedScrutinizerExcept()  # ObjectDetect例外処理フラグ
+        self.PointsRefine_ex = SharedScrutinizerExcept()  # PointsRefine例外処理フラグ
         self.Lidar_SM_ex = SharedLidarShiftMonitorExcept(
             Path(app_config.LiDARShiftMonitor.has_not_calibrated_path)
         )  # Lidarズレ検出例外処理フラグ
@@ -246,6 +257,8 @@ class SharedExcepts:
             or res_cam
             or self.Visu_ex.IsFinished.value
             or self.Scruti_ex.IsFinished.value
+            or self.ObjDet_ex.IsFinished.value
+            or self.PointsRefine_ex.IsFinished.value
         )
         return total_res
 
@@ -257,6 +270,8 @@ class SharedExcepts:
             cam_ex.IsFinished.value = False
         self.Visu_ex.IsFinished.value = False
         self.Scruti_ex.IsFinished.value = False
+        self.ObjDet_ex.IsFinished.value = False
+        self.PointsRefine_ex.IsFinished.value = False
         self.Lidar_SM_ex.IsFinished.value = False
 
     # 校正モード時の終了フラグのリセット
@@ -274,6 +289,8 @@ class SharedExcepts:
         for i in range(self.app_config.camera.count):
             self._logger.info(f"{i = }, {self.CAM_ex[i].IsFinished.value = }")
         self._logger.info(f"{self.Scruti_ex.IsFinished.value = }")
+        self._logger.info(f"{self.ObjDet_ex.IsFinished.value = }")
+        self._logger.info(f"{self.PointsRefine_ex.IsFinished.value = }")
         self._logger.info(f"{self.Visu_ex.IsFinished.value = }")
         self._logger.info(f"{self.AppMan_ex.IsFinished.value = }")
 
@@ -288,3 +305,5 @@ class SharedExcepts:
         self.Visu_ex.close()
         self.AppMan_ex.close()
         self.Scruti_ex.close()
+        self.ObjDet_ex.close()
+        self.PointsRefine_ex.close()

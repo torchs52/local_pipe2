@@ -137,6 +137,9 @@ class AppManagerProcess(ProcessBase):
             StateErrorIndex.MONITOR_PROCESS_NOT_RESPONDING
         ].update(self._err_config)
         self._ser.state_errors_A_C[
+            StateErrorIndex.SURROUND_MONITOR_MODULE_NOT_RESPONDING
+        ].update(self._err_config)
+        self._ser.state_errors_A_C[
             StateErrorIndex.LIDAR_POSITION_MISALIGNMENT_NOT_RESPONDING
         ].update(self._err_config)
         self._ser.state_errors_A_C[StateErrorIndex.STORAGE_SPACE_LOW].update(
@@ -415,6 +418,26 @@ class AppManagerProcess(ProcessBase):
         self._can_healthy_check(now)
         self._lidar_shift_monitoring_healthy_check(now)
 
+    def _surround_monitor_modules_healthy_check(self) -> None:
+        now_mono = time.monotonic()
+        heartbeat_targets = (
+            self._sec.getData_ex.last_heartbeat,
+            self._sec.ObjDet_ex.last_heartbeat,
+            self._sec.PointsRefine_ex.last_heartbeat,
+            self._sec.Visu_ex.last_heartbeat,
+        )
+        elapsed_list = [
+            now_mono - heartbeat.value if heartbeat.value >= 0.0 else -1.0
+            for heartbeat in heartbeat_targets
+        ]
+        diagnosis = self._ser.state_errors_A_C[
+            StateErrorIndex.SURROUND_MONITOR_MODULE_NOT_RESPONDING
+        ]
+        result = diagnosis.errors_diagnosis(elapsed_list)
+        diagnosis.log_output(
+            *result, StateErrorIndex.SURROUND_MONITOR_MODULE_NOT_RESPONDING
+        )
+
     def _monitor_argus_healthy_check(self) -> None:
         now: float = time.perf_counter()
         monitor_argus_last_heartbeat: float | None = None
@@ -630,6 +653,7 @@ class AppManagerProcess(ProcessBase):
                         )
                         self._sec.LiDAR_ex[i].IsDead.value = True
             self._sensor_healthy_check()
+            self._surround_monitor_modules_healthy_check()
             self._monitor_argus_healthy_check()
 
             self._ser.reduced_load_mode.update_is_thermal_throttling(

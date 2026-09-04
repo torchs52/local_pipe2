@@ -338,6 +338,8 @@ class StatusInfoNotUpdatedParameters(ErrorParameterBase):
 class SurroundMonitorModuleNotRespondingParameters(ErrorParameterBase):
     """周辺監視モジュール 未応答用パラメータ"""
 
+    error_threshold_sec: float = 5.0
+
 
 @dataclass(frozen=False, slots=True)
 class LidarPositionMisalignmentNotRespondingParameters(ErrorParameterBase):

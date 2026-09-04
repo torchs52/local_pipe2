@@ -2224,15 +2224,76 @@ class SurroundMonitorModuleNotRespondingDiagnosis(StateErrorDiagnosisA):
 
     def __init__(self) -> None:
         super().__init__()
+        self._last_max_elapsed_sec: float = 0.0
+        self.param: err_conf.SurroundMonitorModuleNotRespondingParameters
+
+    def _parse_args(self, *args: object) -> list[float]:
+        if len(args) != 1 or not isinstance(args[0], (list, tuple)):
+            raise ValueError("args must be (elapsed_list,)")
+        elapsed_list = args[0]
+        if not elapsed_list:
+            raise ValueError("elapsed_list must not be empty")
+        if not all(isinstance(elapsed, float) for elapsed in elapsed_list):
+            raise ValueError("elapsed_list element must be float")
+        return list(elapsed_list)
+
+    def _evaluate_elapsed(self, *args: object) -> bool:
+        elapsed_list = self._parse_args(*args)
+        active_elapsed_list = [elapsed for elapsed in elapsed_list if elapsed >= 0.0]
+        if not active_elapsed_list:
+            self._last_max_elapsed_sec = 0.0
+            return False
+        self._last_max_elapsed_sec = max(active_elapsed_list)
+        return any(
+            elapsed > self.param.error_threshold_sec
+            for elapsed in active_elapsed_list
+        )
+
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.surround_monitor_module_not_responding
+        self.is_enabled = self.param.is_enabled
 
     def detect_error(self, *args: object) -> bool:
+        if self._evaluate_elapsed(*args):
+            self.is_error.value = True
+            self.is_fail_safe.value = True
+            return True
         return False
 
     def detect_recovery_error(self, *args: object) -> bool:
-        return True
+        if self._evaluate_elapsed(*args):
+            return False
+        if self.is_error.value:
+            self.is_error.value = False
+            return True
+        return False
 
     def detect_recovery_fail_safe(self, *args: object) -> bool:
-        return True
+        if self._evaluate_elapsed(*args):
+            return False
+        if self.is_fail_safe.value:
+            self.is_fail_safe.value = False
+            return True
+        return False
+
+    def _error_log_output(self, err_idx: int, *args: object) -> None:
+        self._logger.error(
+            self.get_error_no(err_idx)
+            + ": SURROUND_MONITOR_MODULE_NOT_RESPONDING detected: max_elapsed=%.3f sec",
+            self._last_max_elapsed_sec,
+        )
+
+    def _recover_log_output(self, err_idx: int, *args: object) -> None:
+        self._logger.info(
+            self.get_error_no(err_idx)
+            + ": SURROUND_MONITOR_MODULE_NOT_RESPONDING recovered"
+        )
+
+    def _fail_safe_recover_log_output(self, err_idx: int, *args: object) -> None:
+        self._logger.info(
+            self.get_error_no(err_idx)
+            + ": SURROUND_MONITOR_MODULE_NOT_RESPONDING failsafe recovered"
+        )
 
 
 class LidarPositionMisalignmentNotRespondingDiagnosis(StateErrorDiagnosisB):
