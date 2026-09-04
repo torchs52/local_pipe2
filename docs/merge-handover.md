@@ -330,6 +330,7 @@ SHI側だけで確認されたテスト:
 | M-026 | CE005 設定ファイル欠損/破損 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | action diagnosis/load_config/tests | SHIの例外分類とcounter間引きを維持し、ログはvendor責務分担どおり診断クラスへ委譲する |
 | M-027 | CE005 settings値域・型検証 | SHI `a487f5f`, `e2362ec` | manual-port | verified | config validation/common paths/tests | SHIのsettings規則とstrict/normalize方針を維持し、設定スキーマの責務としてconfig層へ配置する |
 | M-028 | CE004 機体モデルファイル欠損/破損 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | action diagnosis/PointsRefine/Visual/tests | SHIの例外分類を維持し、ログは診断クラスへ委譲、vendorの起動失敗制御へ元例外を再送出する |
+| M-029 | CE011 MMAP read/writeエラー | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | action diagnosis/ErrorMonitor/Visual/main/tests | SHIの例外分類と境界別の継続・再送出を維持し、ログは診断クラスへ委譲する |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -635,6 +636,15 @@ SHI側だけで確認されたテスト:
 - M-005の校正設定・校正アルゴリズムとM-016のCAN統合は今回の対象に含めていない。広域の再試行、フォールバック、process lifecycleも追加していない。
 - `tests/test_crane_model_file_missing.py` で対象10例外、非対象例外、診断所有ログ、PointsRefine・Visualの分類と再送出を確認した。専用テストは14 passed、既存Visual終了テストを含む関連テストは15 passed。変更箇所のVS Code診断なし、`compileall` 成功。
 - `test_detect2d.py` を除く全体回帰は209 passed、7 xfailed、通常失敗0件。
+
+### 2026-09-04 M-029実施記録
+
+- SHIコミット `4b4674c` と現行SHIを確認し、CE011のMMAP read/write例外分類をvendorへ移植した。対象はファイルシステム・mmap I/Oの `OSError`、close済み・無効状態・範囲外を含む `ValueError`、バッファ競合の `BufferError`、C++ writer内部失敗を含む `RuntimeError` であり、非対象例外はCE011へ計上しない。
+- runtime接続はErrorMonitorの `ErrorMMapWriter` transaction、Visualの `GodotUIVisualizer` によるGodot UI MMAP初期化、mainのREBOOT/BOOTING status書込みに限定した。Visual初期化では `status.mmap` に加えて通常表示用の `map0.dat` / `map1.dat` も開くため、ログ文脈は個別ファイル名ではなくGodot UI MMAP全体を示す。SHIと同じくErrorMonitorとmainは診断後に次の処理へ継続し、Visual初期化は元例外を再送出してvendorのprocess起動失敗制御へ渡す。
+- SHIでは3箇所がCE011ログ文面を直接所有していたが、vendorの責務分担に合わせてエラー番号、文面、logger、traceback指定を `MmapReadWriteErrorDiagnosis.log_output()` へ集約した。process/mainは操作文脈と元例外だけを渡す。
+- 保護領域のmain制御フローは維持し、2つの `StatusMMAP.write_status()` を `_write_status_safe()` 呼出しへ置き換えただけに限定した。起動順、2秒待機、モード遷移、再起動条件、MMAP ABIは変更していない。
+- `tests/test_mmap_read_write_error.py` で対象4例外、非対象例外、診断所有ログ、ErrorMonitorの継続、Visualの再送出、main status書込みの継続を確認した。専用テストは9 passed、既存ErrorMonitor・Visual・StatusMMAPを含む関連テストは23 passed。変更したCE011箇所、main、ErrorMonitor、テストのVS Code診断なし、`compileall` 成功。Visualには今回の変更箇所以外の既存型指摘が残る。
+- `test_detect2d.py` を除く全体回帰は218 passed、7 xfailed、通常失敗0件。
 
 ## 10. 次のCopilotへの開始指示
 

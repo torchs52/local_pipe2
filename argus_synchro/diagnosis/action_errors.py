@@ -370,6 +370,12 @@ class MmapReadWriteErrorDiagnosis(ActionErrorDiagnosisB):
     def __init__(self) -> None:
         super().__init__()
 
+    def excepts_diagnosis(self, e: Exception) -> bool:
+        is_target = isinstance(e, (OSError, ValueError, BufferError, RuntimeError))
+        if is_target:
+            self.increment_counter()
+        return is_target
+
     def detect_error(self, *args: object) -> bool:
         return False
 
@@ -378,6 +384,23 @@ class MmapReadWriteErrorDiagnosis(ActionErrorDiagnosisB):
 
     def detect_recovery_fail_safe(self, *args: object) -> bool:
         return True
+
+    def log_output(self, err: bool, recover: bool, err_idx: int, *args: object) -> None:
+        if err:
+            self._error_log_output(err_idx, *args)
+
+    def _error_log_output(self, err_idx: int, *args: object) -> None:
+        if (
+            len(args) != 2
+            or not isinstance(args[0], str)
+            or not isinstance(args[1], Exception)
+        ):
+            raise ValueError("args must be (operation, Exception)")
+        self._logger.error(
+            self.get_error_no(err_idx)
+            + f": MMAP_READ_WRITE_ERROR: {args[0]}: {args[1]!r}",
+            exc_info=True,
+        )
 
 
 class RebootLoopDetectedDiagnosis(ActionErrorDiagnosisA):

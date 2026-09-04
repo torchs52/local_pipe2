@@ -1059,6 +1059,25 @@ def load_err_config(ser: SharedErrors) -> None:
     ser.module_errors[ModuleErrorIndex.MAIN_MODULE_ERROR].update(err_config)
 
 
+def _write_status_safe(
+    status: StatusMMAP,
+    code: StatusCode,
+    ser: SharedErrors,
+) -> None:
+    try:
+        status.write_status(code)
+    except (OSError, ValueError, BufferError, RuntimeError) as error:
+        diagnosis = ser.action_errors_A_C[ActionErrorIndex.MMAP_READ_WRITE_ERROR]
+        is_target = diagnosis.excepts_diagnosis(error)
+        diagnosis.log_output(
+            is_target,
+            False,
+            ActionErrorIndex.MMAP_READ_WRITE_ERROR,
+            f"status.mmap write failed ({code.name})",
+            error,
+        )
+
+
 def main() -> None:
     # TODO PyInstaller利用時にmultiprocessingを使用するときに必要 (NSW)
     mp.freeze_support()
@@ -1146,12 +1165,12 @@ def main() -> None:
 
         # ステータスをMonitorArgusへ通知
         _logger.info("REBOOT_CODE 設定")
-        status.write_status(StatusCode.REBOOT)
+        _write_status_safe(status, StatusCode.REBOOT, ser)
         # Godotプロセス終了を待機.
         # ここで待機しないと、状態遷移を検出できず、残存Godotが終了しない事がある
         time.sleep(2.0)
         _logger.info("BOOTING_CODE 設定")
-        status.write_status(StatusCode.BOOTING)
+        _write_status_safe(status, StatusCode.BOOTING, ser)
 
         system_activator: ProcessActivator = ProcessActivator()
         process_activator: ProcessActivator = ProcessActivator()

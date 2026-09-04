@@ -13,7 +13,7 @@ from argus_synchro.diagnosis.error_config import ErrorConfig
 from argus_synchro.process import ProcessBase
 from argus_synchro.process.synchronizer import ProcessActivator
 from argus_synchro.shared_data import create_shared_single_data
-from argus_synchro.shared_errors import SharedErrors, StateErrorIndex
+from argus_synchro.shared_errors import ActionErrorIndex, SharedErrors, StateErrorIndex
 
 
 @final
@@ -105,21 +105,34 @@ class ErrorMonitorProcess(ProcessBase):
                     e,
                 )
 
-        self._mmap.start_write()
-        state_err: bytes = self._make_state_error_bits(self._ser.state_errors)
-        self._mmap.write_state_error(state_err)
-        action_err: bytes = self._make_action_error_bits(self._ser.action_errors)
-        self._mmap.write_action_error(action_err)
+        try:
+            self._mmap.start_write()
+            state_err: bytes = self._make_state_error_bits(self._ser.state_errors)
+            self._mmap.write_state_error(state_err)
+            action_err: bytes = self._make_action_error_bits(self._ser.action_errors)
+            self._mmap.write_action_error(action_err)
 
-        camera_connected: tuple[bool, ...] = self._ser.get_cameras_connected()
-        lidar_connected: tuple[bool, ...] = self._ser.get_lidars_connected()
-        status: bytes = self._make_status_bits(
-            self._ser,
-            camera_connected=camera_connected,
-            lidar_connected=lidar_connected,
-        )
-        self._mmap.write_status(status)
-        self._mmap.rotate_if_busy()
+            camera_connected: tuple[bool, ...] = self._ser.get_cameras_connected()
+            lidar_connected: tuple[bool, ...] = self._ser.get_lidars_connected()
+            status: bytes = self._make_status_bits(
+                self._ser,
+                camera_connected=camera_connected,
+                lidar_connected=lidar_connected,
+            )
+            self._mmap.write_status(status)
+            self._mmap.rotate_if_busy()
+        except (OSError, ValueError, BufferError, RuntimeError) as error:
+            diagnosis = self._ser.action_errors_A_C[
+                ActionErrorIndex.MMAP_READ_WRITE_ERROR
+            ]
+            is_target = diagnosis.excepts_diagnosis(error)
+            diagnosis.log_output(
+                is_target,
+                False,
+                ActionErrorIndex.MMAP_READ_WRITE_ERROR,
+                "ErrorMMapWriter transaction failed",
+                error,
+            )
 
     def _start_restart(self) -> None:
         pass

@@ -431,6 +431,32 @@ class VisualProcess(ProcessBase):
             )
             raise
 
+    def _create_visual_ui(self, ui_conf: UIIFConf) -> GodotUIVisualizer:
+        try:
+            return GodotUIVisualizer(
+                ui_conf,
+                self._app_config.Scrutinizer.s_frame,
+                self._app_config.General.rotation_radius,
+                self._app_config.camera.count,
+                self._app_config.General.has_external_guard,
+                self._app_config.General.external_guard_offset,
+                str(paths.get_mmap_dir(self._directory_config, "status.mmap")),
+                lambda level, msg: self._logger.log(int(level), msg),
+            )
+        except (OSError, ValueError, BufferError, RuntimeError) as error:
+            diagnosis = self._ser.action_errors_A_C[
+                ActionErrorIndex.MMAP_READ_WRITE_ERROR
+            ]
+            is_target = diagnosis.excepts_diagnosis(error)
+            diagnosis.log_output(
+                is_target,
+                False,
+                ActionErrorIndex.MMAP_READ_WRITE_ERROR,
+                "Godot UI MMAP initialization failed",
+                error,
+            )
+            raise
+
     def _startup(self) -> None:
         self._config_load()
         self._err_config_load()
@@ -458,16 +484,7 @@ class VisualProcess(ProcessBase):
             draw_bbox_3d=self._app_config.UI_IF.draw_bbox_3d,
             draw_collision=self._app_config.UI_IF.draw_collision,
         )
-        self._visual_ui = GodotUIVisualizer(
-            ui_conf,
-            self._app_config.Scrutinizer.s_frame,
-            self._app_config.General.rotation_radius,
-            self._app_config.camera.count,
-            self._app_config.General.has_external_guard,
-            self._app_config.General.external_guard_offset,
-            str(paths.get_mmap_dir(self._directory_config, "status.mmap")),
-            lambda level, msg: self._logger.log(int(level), msg),
-        )
+        self._visual_ui = self._create_visual_ui(ui_conf)
 
         (
             self._l_machine_col,
