@@ -173,6 +173,18 @@ class GetDataProcess(ProcessBase):
         if wait_sec > 0:
             time.sleep(wait_sec)
 
+    def _advance_frame(self) -> None:
+        self._ref_t += 1
+        if self._ref_t <= self._end_frame:
+            return
+        if (
+            self._app_config.DEFAULT.File_Input
+            and self._app_config.Scrutinizer.file_input_loop
+        ):
+            self._ref_t = self._app_config.Scrutinizer.s_frame
+            return
+        self._unsubscribe()
+
     def input_data_diagnosis(
         self,
         pcds: tuple[PointCloudData, ...],
@@ -347,11 +359,7 @@ class GetDataProcess(ProcessBase):
             camera_s_time=max(image.time for image in camera_input_data),
         )
 
-        self._ref_t += 1
-
-        # 指定した終了フレームまで進んだらプロセスを終了する
-        if self._ref_t > self._end_frame:
-            self._unsubscribe()
+        self._advance_frame()
 
         return (
             pcd_out_data,

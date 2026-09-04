@@ -90,6 +90,20 @@ class CanDataProviderProcess(InputProcess[CanData]):
         self.producer.require_restart()
         del self.producer
 
+    def _restart_surround_file_input_if_needed(self) -> None:
+        calib_mode = bool(self._app_config.General.operation_mode == OPM.CALIB)
+        if (
+            calib_mode
+            or not self._app_config.DEFAULT.File_Input
+            or not self._app_config.Scrutinizer.file_input_loop
+            or self._frame <= self._end_frame
+        ):
+            return
+
+        self._frame = self._app_config.Scrutinizer.s_frame
+        assert isinstance(self._provider, CanFileProvider)
+        self._provider.change_file_name_index(self._app_config.CAN.c_file, self._frame)
+
     def _config_load(self) -> None:
         self._app_config: AppConfig = self._sac.read()
         self._last_updated: int = self._sac.last_updated
@@ -186,6 +200,7 @@ class CanDataProviderProcess(InputProcess[CanData]):
                 if not self.producer.wait():
                     continue
 
+                self._restart_surround_file_input_if_needed()
                 output_data: CanData | None = self._update()
                 if output_data is None:
                     continue

@@ -294,6 +294,10 @@ class Mid360FilePointCloudProvider(PointCloudProvider):
         self._device: MID360PointsFile = device
         self._ref_t: int = start_frame
 
+    def change_file_name_index(self, file_path: str, index: int) -> None:
+        self._device.change_file_name_index(file_path)
+        self._ref_t = index
+
     def get_points(self) -> tuple[NDArray[np.float64], float] | None:
         points, _ = self._device.get_points(self._ref_t)
         xyz = _as_xyz(points)

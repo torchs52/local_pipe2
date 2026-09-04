@@ -46,6 +46,9 @@ class Mcde7000FileImageProvider(ImageProvider):
     def __init__(self, device: Mcde7000File, width: int, height: int) -> None:
         self._device: Mcde7000File = device
 
+    def change_file_name_index(self, file_path: str, index: int) -> None:
+        self._device.change_file_name_index(file_path, index)
+
     def get_image(self) -> NDArray[np.uint8] | None:
         _, image = self._device.get_image()
         if image is None:

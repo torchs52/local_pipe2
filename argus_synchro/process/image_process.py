@@ -53,7 +53,10 @@ if TYPE_CHECKING:
         CalibMcde7000FileImageProvider,
         ImageProvider,
     )
-from argus_synchro.provider.image import CalibMcde7000FileImageProvider
+from argus_synchro.provider.image import (
+    CalibMcde7000FileImageProvider,
+    Mcde7000FileImageProvider,
+)
 
 
 @final
@@ -191,6 +194,25 @@ class CameraProviderProcess(InputProcess[CameraData]):
         self._clock_provider.reset_time()
         self.producer.require_restart()
         del self.producer
+
+    def _restart_surround_file_input_if_needed(self) -> None:
+        calib_mode = bool(self._app_config.General.operation_mode == OPM.CALIB)
+        if (
+            calib_mode
+            or not self._file_input
+            or not self._scrutinizer_conf.file_input_loop
+            or self._frame <= self._end_frame
+        ):
+            return
+
+        self._frame = self._scrutinizer_conf.s_frame
+        camera_file_path = (
+            self._scrutinizer_conf.v0_file,
+            self._scrutinizer_conf.v1_file,
+            self._scrutinizer_conf.v2_file,
+        )[self._index]
+        assert isinstance(self._provider, Mcde7000FileImageProvider)
+        self._provider.change_file_name_index(camera_file_path, self._frame)
 
     def _change_clock_info(self) -> None:
         calib_mode: bool = bool(self._app_config.General.operation_mode == OPM.CALIB)
@@ -419,6 +441,7 @@ class CameraProviderProcess(InputProcess[CameraData]):
             try:
                 if not self.producer.wait():
                     continue
+                self._restart_surround_file_input_if_needed()
                 output_data = self._update()
                 if output_data is None:
                     is_unsubscribe, image = self._provider.handle_no_input()

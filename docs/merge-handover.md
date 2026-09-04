@@ -291,7 +291,7 @@ SHI側だけで確認されたテスト:
 | M-004 | CE015ログファイルI/O | SHI logger/action diagnosis | manual-port | verified | `common/app_logger.py`, action diagnosis, `__main__.py`, tests | handler callbackで検知し、同一signatureの連続計上を抑止 |
 | M-005 | 校正サブシステムのI/O境界 | SHI `9432a4f` | decision-needed | deferred | calibration modules | 校正全体を後段で扱い、ユーザー側アルゴリズム変更の採用方針と合わせて判断する |
 | M-006 | 負荷低減モード | SHI `2283a0a` | manual-port | verified | vendor reduced-load制御/accumulation/tests | vendor閾値を維持し、モード別deque実効上限だけを追加 |
-| M-007 | ファイル入力ループ | SHI `e2362ec` ほか | decision-needed | pending | process/provider | モード制御と分離してレビュー |
+| M-007 | ファイル入力ループ | SHI `e2362ec` ほか | manual-port | verified | app config/process/provider/tests | 周辺監視のcamera/LiDAR/CAN/GetDataを終了frame後に開始frameへ同期して戻す。校正・実機入力は対象外 |
 | M-008 | 周辺監視カメラ動画入力I/O | SHI `image_process.py` | manual-port | verified | vendor `image_process.py`, tests | 動画open/initだけを診断、専用テスト2件pass |
 | M-009 | カメラJSON読取検証 | SHI `image_process.py` | drop | verified | docs/固有CE設計 | SHIの汎用FILE_IO事前検証は不採用。通常設定はCE005、fisheyeはCE007-CE010で別途接続する |
 | M-010 | 重要度D状態診断のエッジ化 | SHI `error_diagnosis.py` | shi-adopt | verified | vendor D基底, tests | vendor index/APIを維持し、DETECTION/KEEPING/RECOVERY/NORMALを返す |
@@ -499,14 +499,25 @@ SHI側だけで確認されたテスト:
 - `tests/test_reduced_load_accumulation_buffer.py` で最新履歴保持、通常復帰後の再拡張、通常・負荷低減設定の大きい方を物理上限にすること、0以下の上限拒否を確認した。3 passed。変更箇所のVS Code診断なし。
 - 共有設定を含む関連テストは6 passed。`test_detect2d.py` を除く全体回帰は110 passed、7 xfailed、通常失敗0件。`py_compile` と `git diff --check` 成功。
 
+### 2026-09-04 M-007実施記録
+
+- SHIのファイル入力ループから、通常の周辺監視モードに必要なcamera、LiDAR、CAN、GetDataのframe同期だけをvendorへ移植した。校正モードはM-005として引き続き後回しにする。
+- `Scrutinizer.file_input_loop` を設定契約へ追加し、追跡対象の5つの `settings*.ini` では `True` にした。`False` の場合は終了frame後にunsubscribeする既存動作を維持する。
+- camera、LiDAR、CAN入力processは、`e_frame` のデータを出力してframeが上限を超えた後、次回のprovider読取り前に `s_frame` とファイル位置を戻す。終了frame自体は欠落させない。
+- 通常ファイルproviderに不足していた最小の位置変更APIだけを追加した。cameraは動画パスとindex、LiDARはファイルパスと内部参照frameを更新し、既存CAN APIを再利用した。
+- GetDataも出力frameを進めた直後に同じ境界で `s_frame` へ戻す。実機入力、およびループ無効のファイル入力では従来どおりunsubscribeする。
+- SHIに同居するcamera JSON検証、heartbeat、接続診断、provider fallbackなどの変更は移植していない。vendorのclock、診断、process lifecycle、fallback処理を維持した。
+- `tests/test_surround_file_input_loop.py` で3 processの同期リセット、校正除外、ループ無効、GetDataのファイル入力・実機入力を確認した。3 passed。設定テストとの組合せは7 passed。変更箇所のVS Code診断なし。
+- 5つの設定ファイルすべてを `AppConfig` で読み込み、`file_input_loop=True` を確認した。`test_detect2d.py` を除く全体回帰は113 passed、7 xfailed、通常失敗0件。`py_compile` 成功。
+
 ## 10. 次のCopilotへの開始指示
 
 次回は、いきなり全体差分を再探索しない。次の順で開始する。
 
 1. 本書と関連文書を読む
 2. 両リポジトリのHEADと `git status --short` を確認する
-3. M-002のvendor側定義、SHI側定義、隣接テストだけを読む
-4. `FILE_IO_ERROR` のindex配置と `StateErrorDiagnosisD` 契約について仮説を立てる
+3. 統合台帳から未処理項目を1件選び、そのvendor側定義、SHI側定義、隣接テストだけを読む
+4. M-005校正はユーザー側アルゴリズム変更の採用方針を決めるまで着手しない
 5. 最小の単体テストまたは基盤移植を行う
 6. 狭いテストを直ちに実行する
 7. 本書の台帳と確認結果を更新する

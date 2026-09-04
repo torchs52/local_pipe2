@@ -93,6 +93,7 @@ class MonitorConf:
 class ScrutinizerConf:
     s_frame: int
     e_frame: int
+    file_input_loop: bool
     v0_file: str
     v1_file: str
     v2_file: str
@@ -523,6 +524,7 @@ class AppConfig:
         self.Scrutinizer = ScrutinizerConf(
             s_frame=ini.getint("Scrutinizer", "s_frame"),
             e_frame=ini.getint("Scrutinizer", "e_frame"),
+            file_input_loop=ini.getboolean("Scrutinizer", "file_input_loop"),
             v0_file=_path(ini.get("Scrutinizer", "v0_file")),
             v1_file=_path(ini.get("Scrutinizer", "v1_file")),
             v2_file=_path(ini.get("Scrutinizer", "v2_file")),

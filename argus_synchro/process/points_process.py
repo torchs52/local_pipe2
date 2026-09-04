@@ -38,7 +38,10 @@ from argus_synchro.provider.clock import (
     PerfCounterClockProvider,
     TimeClockProvider,
 )
-from argus_synchro.provider.point_cloud import CalibMid360FilePointCloudProvider
+from argus_synchro.provider.point_cloud import (
+    CalibMid360FilePointCloudProvider,
+    Mid360FilePointCloudProvider,
+)
 from argus_synchro.shared_app_config import SharedAppConfig, SharedAppConfigCalibration
 from argus_synchro.shared_errors import (
     ModuleErrorIndex,
@@ -182,6 +185,28 @@ class PointsProviderProcess(InputProcess[PointCloudData]):
         self.producer.require_restart()
         del self.producer
 
+    def _restart_surround_file_input_if_needed(self) -> None:
+        calib_mode = bool(self._app_config.General.operation_mode == OPM.CALIB)
+        if (
+            calib_mode
+            or not self._file_input
+            or not self._app_config.Scrutinizer.file_input_loop
+            or self._frame <= self._end_frame
+        ):
+            return
+
+        self._frame = self._app_config.Scrutinizer.s_frame
+        lidar_file_path = (
+            self._app_config.Lidar.lidar0_file,
+            self._app_config.Lidar.lidar1_file,
+            self._app_config.Lidar.lidar2_file,
+            self._app_config.Lidar.lidar3_file,
+            self._app_config.Lidar.lidar4_file,
+            self._app_config.Lidar.lidar5_file,
+        )[self._index]
+        assert isinstance(self._provider, Mid360FilePointCloudProvider)
+        self._provider.change_file_name_index(lidar_file_path, self._frame)
+
     def _change_clock_info(self) -> None:
         calib_mode: bool = bool(self._app_config.General.operation_mode == OPM.CALIB)
         if calib_mode:
@@ -280,6 +305,8 @@ class PointsProviderProcess(InputProcess[PointCloudData]):
             try:
                 if not self.producer.wait():
                     continue
+
+                self._restart_surround_file_input_if_needed()
 
                 output_data = self._update()
                 if output_data is None:
