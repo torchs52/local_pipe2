@@ -283,7 +283,14 @@
   - configparser.ParsingError
   - configparser.DuplicateOptionError
   - configparser.DuplicateSectionError
+  - ValueError (getboolean/getint などの設定値変換エラー)
 - 上記以外は CE005 非該当として False を返す。
+
+#### SHI完成実装との照合追記 (2026-09-04)
+- SHI担当の完成実装では、設定値の型変換失敗を表す ValueError もCE005対象に含まれる。owner-first方針に従い、上記スコープへ追加した。
+- 同実装には、同じ例外型と先頭メッセージが1.0秒未満に反復した場合のcounter抑止がある。例外型またはメッセージが変われば即時に再計上する。
+- SHIの最大3回後に設定再確認を永久停止する制御は、後述のvendor方針「無限再試行を維持する」と衝突するため採用しない。
+- SHI `settings_validation.py` の型・上下限・許容値検証をM-027で接続した。strict時の `ConfigValidationError` はValueErrorとしてCE005へ入り、壊れたsection名は後続のAppConfig構築で `NoSectionError` / `NoOptionError` となる。normalize時だけ、定義済み規則に従って実行時補正する。
 
 #### カウンタ方針
 - CE005 該当時のみ increment_counter() を呼ぶ。

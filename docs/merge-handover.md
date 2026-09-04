@@ -299,7 +299,7 @@ SHI側だけで確認されたテスト:
 | M-002 | 汎用Dレベル `FILE_IO_ERROR` | SHI `a487f5f` ほか | manual-port | verified | `state_d_errors.py`, `shared_errors.py`, tests | index末尾へ追加、専用テスト6件pass |
 | M-003 | 周辺監視LiDARファイル入力I/O | SHI `points_process.py` | manual-port | verified | vendor `points_process.py`, tests | ファイル入力時だけ診断、元例外を再送出、専用テスト2件pass |
 | M-004 | CE015ログファイルI/O | SHI logger/action diagnosis | manual-port | verified | `common/app_logger.py`, action diagnosis, `__main__.py`, tests | handler callbackで検知し、同一signatureの連続計上を抑止 |
-| M-005 | 校正サブシステムのI/O境界 | SHI `9432a4f` | decision-needed | deferred | calibration modules | 校正全体を後段で扱い、ユーザー側アルゴリズム変更の採用方針と合わせて判断する |
+| M-005 | 校正サブシステムのI/O境界・設定検証 | SHI `9432a4f` ほか | decision-needed | deferred | calibration modules/config validation | SHIのcalib settings validatorを含む校正全体を後段で扱い、ユーザー側アルゴリズム変更の採用方針と合わせて判断する |
 | M-006 | 負荷低減モード | SHI `2283a0a` | manual-port | verified | vendor reduced-load制御/accumulation/tests | vendor閾値を維持し、モード別deque実効上限だけを追加 |
 | M-007 | ファイル入力ループ | SHI `e2362ec` ほか | manual-port | verified | app config/process/provider/tests | 周辺監視のcamera/LiDAR/CAN/GetDataを終了frame後に開始frameへ同期して戻す。校正・実機入力は対象外 |
 | M-008 | 周辺監視カメラ動画入力I/O | SHI `image_process.py` | manual-port | verified | vendor `image_process.py`, tests | 動画open/initだけを診断、専用テスト2件pass |
@@ -327,6 +327,8 @@ SHI側だけで確認されたテスト:
 | M-023 | SE039 アプリケーションマネージャー未応答 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | state diagnosis/shared heartbeat/AppManager/ErrorMonitor/tests | SHIのheartbeat判定を維持し、ErrorMonitorからvendorの共通ログdispatchへ接続する |
 | M-024 | SE042 ログ出力停止 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | state diagnosis/AppManager/tests | ログファイルのmtime/sizeを監視し、判定とログはvendorの診断共通経路へ委譲する |
 | M-025 | SE037 周辺監視モジュール未応答 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | state diagnosis/shared heartbeat/4 processes/AppManager/tests | GetData/ObjectDetect/PointsRefine/Visualの個別heartbeatを監視し、vendorの共通ログdispatchへ接続する |
+| M-026 | CE005 設定ファイル欠損/破損 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | action diagnosis/load_config/tests | SHIの例外分類とcounter間引きを維持し、ログはvendor責務分担どおり診断クラスへ委譲する |
+| M-027 | CE005 settings値域・型検証 | SHI `a487f5f`, `e2362ec` | manual-port | verified | config validation/common paths/tests | SHIのsettings規則とstrict/normalize方針を維持し、設定スキーマの責務としてconfig層へ配置する |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -603,6 +605,26 @@ SHI側だけで確認されたテスト:
 - SHI固有の `DiagnosisRuntimePolicy` は広域影響を避けて持ち込んでいない。SE037監視はvendorのSCRUT分岐内だけで実行され、診断自体はidleを立てない。
 - `tests/test_surround_monitor_module_not_responding.py` で閾値境界、未起動除外、復帰、入力検証、ログ、個別共有状態、AppManagerの経過時間とdispatchを確認した。専用テストは9 passed、対象process・AI診断・Visual終了・process管理を含む関連テストは39 passed。変更箇所のVS Code診断なし、`compileall` 成功。
 - `test_detect2d.py` を除く全体回帰は169 passed、7 xfailed、通常失敗0件。CRLFを考慮したdiff checkも成功した。
+
+### 2026-09-04 M-026実施記録
+
+- SHIコミット `4b4674c` と現行SHIを確認し、CE005の設定ファイル例外分類とcounter間引きをvendorへ移植した。対象はI/O・Unicode・configparser系例外、および `getboolean` / `getint` 等の設定値変換失敗を表す `ValueError` である。非対象例外はCE005へ計上しない。
+- 同一の例外型と先頭メッセージが1.0秒未満に反復した場合はcounterを増やさない。例外型またはメッセージが変化した場合、および1.0秒以上経過した場合は再計上する。SHI実装で失敗する空メッセージ例外も安全に分類・出力できるよう補正した。
+- SHIの `load_config()` は最大3回失敗後に設定再確認を永久停止するが、これはvendorの復帰優先方針と既存の無限再試行に反するため採用しなかった。校正設定適用と広域 `DiagnosisRuntimePolicy` も、それぞれM-005保留と影響範囲外のため持ち込んでいない。
+- `load_config()` は設定取得と例外捕捉だけを所有し、CE005該当時のエラー番号、文面、logger、traceback指定は `ConfigFileMissingDiagnosis.log_output()` が所有する。CE005非該当の起動例外は従来のmain汎用fatalログへ残す。
+- 過去の `error-handling-review-ledger.md` は `ValueError` を対象外としていたため、SHI担当の完成実装とowner-first方針に合わせて訂正した。一方、同文書の段階的backoff・ログ間引き仕様は現行vendorコードに反映されておらず、今回のSHI機能移植とは分離して扱う。
+- `tests/test_config_file_missing.py` で対象例外、非対象例外、同一signature間引き、signature変更、1秒境界、空メッセージ、診断所有ログ、`load_config()` dispatchを確認した。専用テストは20 passed、設定・共有エラー設定・CE013を含む関連テストは40 passed。変更箇所のVS Code診断なし、`compileall` とCRLF考慮のdiff checkに成功した。
+- `test_detect2d.py` を除く全体回帰は189 passed、7 xfailed、通常失敗0件。
+
+### 2026-09-04 M-027実施記録
+
+- SHIコミット `a487f5f` と `e2362ec`、現行SHIを確認し、`settings.ini` の型・上下限・許容値検証規則と `strict` / `normalize` 方針をvendorへ移植した。対象規則はSHI実装と同じで、校正用 `calib_settings.ini` の検証はM-005保留範囲のため含めていない。
+- ユーザー確認により、SHI側の校正設定用validatorも必要な機能だが、通常設定のM-027へは追加せずM-005の校正関連として後回しにする。再開時は校正設定の規則、読込・再読込境界、CE005/CE006～CE010との責務分担を校正全体と合わせて確認する。
+- SHIでは `common/settings_validation.py` に置かれていたが、このモジュールは設定スキーマと補正方針を所有するため、vendorでは `config/settings_validation.py` に配置した。`common.paths` はINI読込直後にvalidatorを呼ぶだけとし、config packageの既存再exportとの循環を避けるため関数内importとしている。
+- `[ConfigValidation] invalid_value_policy` が未指定の場合は `strict` とする。strictでは不正型、上下限外、許容値外を `ConfigValidationError(ValueError)` として送出し、既存CE005の分類・ログ・無限再試行経路へ接続する。normalizeでは不正型をSHI既定値へ、上下限外を境界値へ実行時補正し、補正内容をwarningへ出す。
+- section名が壊れた場合、validatorは未知sectionを自動生成せず、その後の `AppConfig` 構築が `NoSectionError` / `NoOptionError` を送出する。これらもM-026でCE005対象済みであり、誤ったsectionを暗黙補完せず設定破損として扱う。
+- 現行SHIには専用validatorテストがなかったため、vendor側で上下限、不正型、normalize、読込直後の実行、section名破損からCE005分類までを追加した。現行vendorの `config/*settings*.ini` 12ファイルはすべてstrict規則に適合し、専用テストは6 passed、CE005・AppConfig・共有エラー設定を含む関連テストは35 passed。変更箇所のVS Code診断なし、CRLF考慮のdiff checkに成功した。
+- `test_detect2d.py` を除く全体回帰は195 passed、7 xfailed、通常失敗0件。`compileall` も成功した。
 
 ## 10. 次のCopilotへの開始指示
 

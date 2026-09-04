@@ -113,9 +113,12 @@ def load_directory_config_from_ini(
     directory_config: DirectoryConfig,
 ) -> tuple[DirectoryConfig, ConfigParser]:
     """config_dir/settings.iniを読み、ルートディレクトリを解決する。"""
+    from argus_synchro.config.settings_validation import validate_settings
+
     settings_ini_path = get_config_dir(directory_config, "settings.ini")
     ini = ConfigParser(interpolation=ExtendedInterpolation())
     ini.read(str(settings_ini_path), encoding="utf-8")
+    validate_settings(ini)
     directory_config = resolve_ini_roots(ini, directory_config)
     return directory_config, ini
 

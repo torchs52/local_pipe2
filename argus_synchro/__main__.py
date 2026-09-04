@@ -1033,11 +1033,20 @@ def load_config(
             )
             return sac, sec, app_config, sac_calib
         except Exception as e:
-            _logger.error(f"fatal error: {e!r}, traceback: {traceback.format_exc()}")
             # クリティカルエラー時は一旦再起動して復帰を試みる
-            ser.action_errors_A_C[
-                ActionErrorIndex.CONFIG_FILE_MISSING
-            ].excepts_diagnosis(e)
+            diagnosis = ser.action_errors_A_C[ActionErrorIndex.CONFIG_FILE_MISSING]
+            is_config_error = diagnosis.excepts_diagnosis(e)
+            if is_config_error:
+                diagnosis.log_output(
+                    True,
+                    False,
+                    ActionErrorIndex.CONFIG_FILE_MISSING,
+                    e,
+                )
+            else:
+                _logger.error(
+                    f"fatal error: {e!r}, traceback: {traceback.format_exc()}"
+                )
 
 
 def load_err_config(ser: SharedErrors) -> None:
