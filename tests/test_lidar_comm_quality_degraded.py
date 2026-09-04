@@ -139,6 +139,12 @@ def _app_manager(connection_error: bool) -> tuple[AppManagerProcess, MagicMock]:
         ResultDiagnosis.DETECTION,
         ResultDiagnosis.DETECTION,
     )
+    quality.is_error.value = False
+    quality_error = MagicMock()
+    quality_error.errors_diagnosis.return_value = (
+        ResultDiagnosis.NORMAL,
+        ResultDiagnosis.NORMAL,
+    )
     process = object.__new__(AppManagerProcess)
     process._num_lidars = 1
     process._is_last_lidar_diag_enabled = [True]
@@ -155,6 +161,7 @@ def _app_manager(connection_error: bool) -> tuple[AppManagerProcess, MagicMock]:
         state_errors_A_C={
             StateErrorIndex.LIDAR0_CONNECTION_ERROR: connection,
             StateErrorIndex.LIDAR0_COMM_QUALITY_DEGRADED: quality,
+            StateErrorIndex.LIDAR0_COMM_QUALITY_ERROR: quality_error,
         }
     )
     return process, quality

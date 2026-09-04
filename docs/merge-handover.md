@@ -348,6 +348,7 @@ SHI側だけで確認されたテスト:
 | M-033 | SE001・SE002 LiDAR接続エラー | 現行SHI / `docs/error_list.txt` | manual-port | verified | state diagnosis/Points/AppManager/tests | 実点群heartbeatを5秒監視し、1秒以内の連続受信を5秒確認して復帰する |
 | M-034 | 死活・経過時間クロック監査 | vendor通常運転経路 | vendor-keep | verified | sensor/process heartbeat/StatusMMAP/停止deadline/tests | 絶対時刻依存を除去し、書込側と比較側のclock APIを統一する |
 | M-035 | SE008・SE009 LiDAR通信品質低下 | 現行SHI / `docs/error_list.txt` | manual-port | verified | MID360 device/provider/shared/Points/AppManager/state diagnosis/tests | packet連番欠落・点数低下イベントの3秒継続で検出し、正常5秒で復帰する |
+| M-036 | SE014・SE015 LiDAR通信品質エラー | 現行SHI / `docs/error_list.txt` | manual-port | verified | state diagnosis/AppManager/tests | SE008/009 ONを30秒確認して検出し、OFFを30秒/60秒確認してerror/failsafe復帰する |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -715,6 +716,15 @@ SHI側だけで確認されたテスト:
 - packet品質観測は現行SHIと同じMID360実機経路だけに追加した。OS0128、AIRY96/192、SHI-lib、file inputは対応するpacket情報または観測propertyを持たないため、品質低下イベントを生成しない。
 - `tests/test_lidar_comm_quality_degraded.py` で連番、欠番、frame境界、点数閾値、perf_counterイベント、provider/Points伝搬、3秒検出、5秒復帰、index付きログ、SE001排他、AppManager dispatchを確認した。SE001/002・データ欠落を含む縦経路は21 passed、共有設定とPoints既存経路を含む関連テストは30 passed。変更箇所のVS Code診断なし、`compileall` と `git diff --check` は成功した。
 - `test_detect2d.py` を除く全体回帰は249 passed、7 xfailed、通常失敗0件。
+
+### 2026-09-04 M-036実施記録
+
+- 現行SHIのSE014/SE015を確認し、LiDAR通信品質エラーをvendorへ移植した。新しいdevice観測値は追加せず、M-035で実装したSE008/SE009の `is_error` を上位診断の入力とする。
+- SE008/SE009 ONが30秒継続するとSE014/SE015のエラーとフェイルセーフを検出する。途中でOFFになった場合は検出確認timerをresetする。OFFが30秒継続するとエラー復帰、60秒継続するとフェイルセーフ復帰する。
+- SHIのLiDAR0/1重複クラスは持ち込まず、vendorで2indexへ登録済みの共通 `LidarNCommQualityErrorDiagnosis` と共通 `lidar_n_comm_quality_error` parameterを使用する。AppManagerは共有boolが `ctypes.c_byte` 由来のintであることを考慮して明示的にboolへ変換する。
+- SE001/SE002接続エラー中は、下位SE008/SE009と同様にSE014/SE015も評価しない。経過時間はAppManagerから渡す `time.perf_counter()` の `now` だけで計測し、OS絶対時刻の変更は判定へ影響しない。
+- `tests/test_lidar_comm_quality_error.py` で30秒境界、途中OFFによるtimer reset、30秒/60秒の独立復帰、引数検証、共有値のbool変換、index付きログを確認した。SE001/002・SE008/009を含む集中テストは22 passed、共有設定・AppManager・データ欠落を含む関連テストは42 passed。変更箇所のVS Code診断なし、`compileall` と `git diff --check` は成功した。
+- `test_detect2d.py` を除く全体回帰は257 passed、7 xfailed、通常失敗0件。
 
 ## 10. 次のCopilotへの開始指示
 

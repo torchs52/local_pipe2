@@ -119,6 +119,10 @@ class CameraCommQualityDegradedParameters(ErrorParameterBase):
 class LidarCommQualityErrorParameters(ErrorParameterBase):
     """LidarN通信品質エラー用パラメータ"""
 
+    error_confirm_duration_sec: float = 30.0
+    recovery_confirm_duration_sec: float = 30.0
+    failsafe_recovery_confirm_duration_sec: float = 60.0
+
 
 @dataclass(frozen=False, slots=True)
 class CameraCommQualityErrorParameters(ErrorParameterBase):

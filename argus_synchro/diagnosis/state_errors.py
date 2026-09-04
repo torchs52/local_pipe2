@@ -653,15 +653,85 @@ class LidarNCommQualityErrorDiagnosis(StateErrorDiagnosisB):
 
     def __init__(self) -> None:
         super().__init__()
+        self._error_start_time: float | None = None
+        self._recovery_start_time: float | None = None
+        self._fail_safe_recovery_start_time: float | None = None
+        self.param: err_conf.LidarCommQualityErrorParameters
+
+    def _parse_args(self, *args: object) -> tuple[float, bool]:
+        if len(args) != 2:
+            raise ValueError("args must be (now, is_quality_degraded)")
+        now, is_quality_degraded = args
+        if not isinstance(now, float) or not isinstance(is_quality_degraded, bool):
+            raise ValueError("args must be float, bool")
+        return now, is_quality_degraded
+
+    def update(self, error_config: err_conf.ErrorConfig) -> None:
+        self.param = error_config.lidar_n_comm_quality_error
+        self.is_enabled = self.param.is_enabled
 
     def detect_error(self, *args: object) -> bool:
+        now, is_quality_degraded = self._parse_args(*args)
+        if not is_quality_degraded:
+            self._error_start_time = None
+            return False
+        if self._error_start_time is None:
+            self._error_start_time = now
+        if now - self._error_start_time >= self.param.error_confirm_duration_sec:
+            self.is_error.value = True
+            self.is_fail_safe.value = True
+            return True
         return False
 
     def detect_recovery_error(self, *args: object) -> bool:
-        return True
+        now, is_quality_degraded = self._parse_args(*args)
+        if is_quality_degraded:
+            self._recovery_start_time = None
+            return False
+        if self._recovery_start_time is None:
+            self._recovery_start_time = now
+        if now - self._recovery_start_time >= self.param.recovery_confirm_duration_sec:
+            self._recovery_start_time = None
+            self.is_error.value = False
+            return True
+        return False
 
     def detect_recovery_fail_safe(self, *args: object) -> bool:
-        return True
+        now, is_quality_degraded = self._parse_args(*args)
+        if is_quality_degraded:
+            self._fail_safe_recovery_start_time = None
+            return False
+        if self._fail_safe_recovery_start_time is None:
+            self._fail_safe_recovery_start_time = now
+        if (
+            now - self._fail_safe_recovery_start_time
+            >= self.param.failsafe_recovery_confirm_duration_sec
+        ):
+            self._fail_safe_recovery_start_time = None
+            self.is_fail_safe.value = False
+            return True
+        return False
+
+    def _error_log_output(self, err_idx: int, *args: object) -> None:
+        index = _sensor_index(args)
+        self._logger.warning(
+            self.get_error_no(err_idx)
+            + f": Lidar[{index}] comm quality error detected."
+        )
+
+    def _recover_log_output(self, err_idx: int, *args: object) -> None:
+        index = _sensor_index(args)
+        self._logger.info(
+            self.get_error_no(err_idx)
+            + f": Lidar[{index}] comm quality error recovered."
+        )
+
+    def _fail_safe_recover_log_output(self, err_idx: int, *args: object) -> None:
+        index = _sensor_index(args)
+        self._logger.info(
+            self.get_error_no(err_idx)
+            + f": Lidar[{index}] comm quality error recovered from failsafe."
+        )
 
 
 class CameraNCommQualityErrorDiagnosis(StateErrorDiagnosisB):

@@ -37,7 +37,10 @@
         "fail_safe_recovery_threshold_count": 5
     },
     "lidar_n_comm_quality_error": {
-        "is_enabled": true
+        "is_enabled": true,
+        "error_confirm_duration_sec": 30.0,
+        "recovery_confirm_duration_sec": 30.0,
+        "failsafe_recovery_confirm_duration_sec": 60.0
     },
     "camera_n_comm_quality_error": {
         "is_enabled": true,
