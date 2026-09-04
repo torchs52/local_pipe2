@@ -143,6 +143,9 @@ class AppManagerProcess(ProcessBase):
                 StateErrorIndex.LIDAR0_COMM_QUALITY_ERROR + i
             ].update(self._err_config)
             self._ser.state_errors_A_C[
+                StateErrorIndex.LIDAR0_INVALID_DATA + i
+            ].update(self._err_config)
+            self._ser.state_errors_A_C[
                 StateErrorIndex.IMU0_CONNECTION_ERROR + i
             ].update(self._err_config)
         self._ser.state_errors_A_C[StateErrorIndex.CAN_CONNECTION_ERROR].update(
@@ -461,6 +464,17 @@ class AppManagerProcess(ProcessBase):
                     quality_error_diagnosis.log_output(
                         *quality_error_result,
                         StateErrorIndex.LIDAR0_COMM_QUALITY_ERROR + i,
+                        i,
+                    )
+                    invalid_data_diagnosis = self._ser.state_errors_A_C[
+                        StateErrorIndex.LIDAR0_INVALID_DATA + i
+                    ]
+                    invalid_data_result = invalid_data_diagnosis.errors_diagnosis(
+                        now, self._sec.LiDAR_ex[i].invalid_data_ratio.value
+                    )
+                    invalid_data_diagnosis.log_output(
+                        *invalid_data_result,
+                        StateErrorIndex.LIDAR0_INVALID_DATA + i,
                         i,
                     )
             self._is_last_lidar_diag_enabled[i] = is_enabled

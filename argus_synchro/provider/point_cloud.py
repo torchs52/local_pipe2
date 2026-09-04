@@ -46,6 +46,13 @@ def _as_xyz(
     return np.ascontiguousarray(array[:, : PCD.XYZ.value])
 
 
+def _origin_point_ratio(points: NDArray[np.float64]) -> float:
+    if len(points) == 0:
+        return 0.0
+    is_origin = np.all(points[:, : PCD.XYZ.value] == 0.0, axis=1)
+    return float(np.count_nonzero(is_origin)) / len(points)
+
+
 class PointCloudProvider(ABC):
     @abstractmethod
     def get_points(self) -> tuple[NDArray[np.float64], float] | None:
@@ -387,10 +394,15 @@ class CalibMid360PointCloudProvider(PointCloudProvider):
         self._index: int = index
         self._device: MID360Points = device
         self.LidarConfig = lidarconfig
+        self._last_invalid_ratio = 0.0
 
     @property
     def last_quality_degraded(self) -> float:
         return self._device.last_quality_degraded
+
+    @property
+    def last_invalid_ratio(self) -> float:
+        return self._last_invalid_ratio
 
     def get_points(self) -> tuple[NDArray[np.float64], float] | None:
         try:
@@ -425,11 +437,12 @@ class CalibMid360PointCloudProvider(PointCloudProvider):
             else:
                 accum_time = ts - ts_init
             count += 1
-        frame = np.concatenate(packet_chunks, axis=0)
-        frame = frame[frame[:, 3] != 0]  # 輝度ゼロの点群を弾く
-        xyz = _as_xyz(frame)
         if not packet_chunks:
             return None
+        frame = np.concatenate(packet_chunks, axis=0)
+        self._last_invalid_ratio = _origin_point_ratio(frame)
+        frame = frame[frame[:, 3] != 0]  # 輝度ゼロの点群を弾く
+        xyz = _as_xyz(frame)
         return xyz
 
     def handle_no_input(self) -> tuple[bool, NDArray[np.float64] | None]:
@@ -445,10 +458,15 @@ class CalibMid360PointCloudProvider(PointCloudProvider):
 class Mid360PointCloudProvider(PointCloudProvider):
     def __init__(self, device: MID360Points) -> None:
         self._device: MID360Points = device
+        self._last_invalid_ratio = 0.0
 
     @property
     def last_quality_degraded(self) -> float:
         return self._device.last_quality_degraded
+
+    @property
+    def last_invalid_ratio(self) -> float:
+        return self._last_invalid_ratio
 
     def get_points(self) -> tuple[NDArray[np.float64], float] | None:
         try:
@@ -484,7 +502,9 @@ class Mid360PointCloudProvider(PointCloudProvider):
             count += 1
         if not packet_chunks:
             return None
-        return np.concatenate(packet_chunks, axis=0)
+        frame = np.concatenate(packet_chunks, axis=0)
+        self._last_invalid_ratio = _origin_point_ratio(frame)
+        return frame
 
 
 @final

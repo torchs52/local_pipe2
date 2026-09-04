@@ -955,15 +955,83 @@ class LidarNInvalidDataDiagnosis(StateErrorDiagnosisB):
 
     def __init__(self) -> None:
         super().__init__()
+        self._error_start_time: float | None = None
+        self._recovery_start_time: float | None = None
+        self._fail_safe_recovery_start_time: float | None = None
+        self.param: err_conf.LidarInvalidDataParameters
+
+    def _parse_args(self, *args: object) -> tuple[float, float]:
+        if len(args) != 2:
+            raise ValueError("args must be (now, invalid_ratio)")
+        now, invalid_ratio = args
+        if not isinstance(now, float) or not isinstance(invalid_ratio, float):
+            raise ValueError("args must be float, float")
+        return now, invalid_ratio
+
+    def update(self, error_config: err_conf.ErrorConfig) -> None:
+        self.param = error_config.lidar_n_invalid_data
+        self.is_enabled = self.param.is_enabled
 
     def detect_error(self, *args: object) -> bool:
+        now, invalid_ratio = self._parse_args(*args)
+        if invalid_ratio < self.param.invalid_ratio_threshold:
+            self._error_start_time = None
+            return False
+        if self._error_start_time is None:
+            self._error_start_time = now
+        if now - self._error_start_time >= self.param.error_confirm_duration_sec:
+            self.is_error.value = True
+            self.is_fail_safe.value = True
+            return True
         return False
 
     def detect_recovery_error(self, *args: object) -> bool:
-        return True
+        now, invalid_ratio = self._parse_args(*args)
+        if invalid_ratio >= self.param.recovery_ratio_threshold:
+            self._recovery_start_time = None
+            return False
+        if self._recovery_start_time is None:
+            self._recovery_start_time = now
+        if now - self._recovery_start_time >= self.param.recovery_confirm_duration_sec:
+            self._recovery_start_time = None
+            self.is_error.value = False
+            return True
+        return False
 
     def detect_recovery_fail_safe(self, *args: object) -> bool:
-        return True
+        now, invalid_ratio = self._parse_args(*args)
+        if invalid_ratio >= self.param.recovery_ratio_threshold:
+            self._fail_safe_recovery_start_time = None
+            return False
+        if self._fail_safe_recovery_start_time is None:
+            self._fail_safe_recovery_start_time = now
+        if (
+            now - self._fail_safe_recovery_start_time
+            >= self.param.failsafe_recovery_confirm_duration_sec
+        ):
+            self._fail_safe_recovery_start_time = None
+            self.is_fail_safe.value = False
+            return True
+        return False
+
+    def _error_log_output(self, err_idx: int, *args: object) -> None:
+        index = _sensor_index(args)
+        self._logger.warning(
+            self.get_error_no(err_idx) + f": Lidar[{index}] invalid data detected."
+        )
+
+    def _recover_log_output(self, err_idx: int, *args: object) -> None:
+        index = _sensor_index(args)
+        self._logger.info(
+            self.get_error_no(err_idx) + f": Lidar[{index}] invalid data recovered."
+        )
+
+    def _fail_safe_recover_log_output(self, err_idx: int, *args: object) -> None:
+        index = _sensor_index(args)
+        self._logger.info(
+            self.get_error_no(err_idx)
+            + f": Lidar[{index}] invalid data recovered from failsafe."
+        )
 
 
 class CameraNInvalidDataDiagnosis(StateErrorDiagnosisB):

@@ -79,6 +79,11 @@ def test_app_manager_passes_quality_state_as_bool() -> None:
         ResultDiagnosis.NORMAL,
         ResultDiagnosis.NORMAL,
     )
+    invalid_data = MagicMock()
+    invalid_data.errors_diagnosis.return_value = (
+        ResultDiagnosis.NORMAL,
+        ResultDiagnosis.NORMAL,
+    )
     process = object.__new__(AppManagerProcess)
     process._num_lidars = 1
     process._is_last_lidar_diag_enabled = [True]
@@ -88,6 +93,7 @@ def test_app_manager_passes_quality_state_as_bool() -> None:
                 is_heartbeat_enabled=SimpleNamespace(value=True),
                 last_heartbeat=SimpleNamespace(value=9.5),
                 last_quality_degraded=SimpleNamespace(value=9.8),
+                invalid_data_ratio=SimpleNamespace(value=0.0),
             )
         ]
     )
@@ -96,6 +102,7 @@ def test_app_manager_passes_quality_state_as_bool() -> None:
             StateErrorIndex.LIDAR0_CONNECTION_ERROR: connection,
             StateErrorIndex.LIDAR0_COMM_QUALITY_DEGRADED: degraded,
             StateErrorIndex.LIDAR0_COMM_QUALITY_ERROR: quality_error,
+            StateErrorIndex.LIDAR0_INVALID_DATA: invalid_data,
         }
     )
 

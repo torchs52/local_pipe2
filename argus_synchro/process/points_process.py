@@ -281,6 +281,10 @@ class PointsProviderProcess(InputProcess[PointCloudData]):
                 self._sec_lid.last_quality_degraded.value,
                 self._provider.last_quality_degraded,  # type: ignore[attr-defined]
             )
+        if hasattr(self._provider, "last_invalid_ratio"):
+            self._sec_lid.invalid_data_ratio.value = (
+                self._provider.last_invalid_ratio  # type: ignore[attr-defined]
+            )
 
         is_connection_error = bool(
             self._ser.state_errors_A_C[

@@ -349,6 +349,7 @@ SHI側だけで確認されたテスト:
 | M-034 | 死活・経過時間クロック監査 | vendor通常運転経路 | vendor-keep | verified | sensor/process heartbeat/StatusMMAP/停止deadline/tests | 絶対時刻依存を除去し、書込側と比較側のclock APIを統一する |
 | M-035 | SE008・SE009 LiDAR通信品質低下 | 現行SHI / `docs/error_list.txt` | manual-port | verified | MID360 device/provider/shared/Points/AppManager/state diagnosis/tests | packet連番欠落・点数低下イベントの3秒継続で検出し、正常5秒で復帰する |
 | M-036 | SE014・SE015 LiDAR通信品質エラー | 現行SHI / `docs/error_list.txt` | manual-port | verified | state diagnosis/AppManager/tests | SE008/009 ONを30秒確認して検出し、OFFを30秒/60秒確認してerror/failsafe復帰する |
+| M-037 | SE020・SE021 LiDARデータ不正 | 現行SHI / `docs/error_list.txt` | manual-port | verified | MID360 provider/shared/Points/AppManager/state diagnosis/tests | filter前のXYZ原点点割合70%以上を3秒確認して検出し、30%未満を3秒/5秒確認してerror/failsafe復帰する |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -725,6 +726,16 @@ SHI側だけで確認されたテスト:
 - SE001/SE002接続エラー中は、下位SE008/SE009と同様にSE014/SE015も評価しない。経過時間はAppManagerから渡す `time.perf_counter()` の `now` だけで計測し、OS絶対時刻の変更は判定へ影響しない。
 - `tests/test_lidar_comm_quality_error.py` で30秒境界、途中OFFによるtimer reset、30秒/60秒の独立復帰、引数検証、共有値のbool変換、index付きログを確認した。SE001/002・SE008/009を含む集中テストは22 passed、共有設定・AppManager・データ欠落を含む関連テストは42 passed。変更箇所のVS Code診断なし、`compileall` と `git diff --check` は成功した。
 - `test_detect2d.py` を除く全体回帰は257 passed、7 xfailed、通常失敗0件。
+
+### 2026-09-04 M-037実施記録
+
+- 現行SHIのSE020/SE021を確認し、LiDARデータ不正をvendorへ移植した。MID360の蓄積frameについて、反射強度による除外前にXYZがすべて0の点の割合を算出し、provider、Points、`SharedLIDExcept` を経由してAppManagerへ渡す。
+- 現行SHIでは原点点割合の算出が校正用 `CalibMid360PointCloudProvider` にだけあり、通常用 `Mid360PointCloudProvider` は `last_invalid_ratio` を公開していなかったため、通常運転のSE020/021には値が届かない状態だった。vendorでは両MID360 providerへ同じ割合算出を配置し、通常運転経路を成立させた。MID360以外は今回の観測対象に広げていない。
+- 原点点割合が70%以上の状態を3秒継続するとエラーとフェイルセーフを検出する。70%未満で検出確認timerをresetする。復帰は30%未満を必要とし、3秒継続でエラー復帰、5秒継続でフェイルセーフ復帰する。30%ちょうどは復帰条件に含めない。
+- SHIのLiDAR0/1重複クラスは持ち込まず、vendorで2indexへ登録済みの共通 `LidarNInvalidDataDiagnosis` と共通 `lidar_n_invalid_data` parameterを使用する。SE001/SE002接続エラー中はSE008/009、SE014/015と同じくSE020/021も評価しない。
+- 経過時間はAppManagerから渡す `time.perf_counter()` の `now` だけで計測するため、OS絶対時刻の変更は判定へ影響しない。観測値が正常・異常になった最初の診断呼出し時刻を継続確認の起点とし、診断呼出し間を遡って補完しない。
+- `tests/test_lidar_invalid_data.py` で70%検出境界、timer reset、30%復帰境界、3秒/5秒の独立復帰、引数検証、通常MID360 providerのfilter前比率、Points共有転送、SE001排他、AppManager dispatch、index付きログを確認した。専用テストは12 passed、SE001/002・SE008/009・SE014/015を含むLiDAR関連テストは34 passed。変更箇所のVS Code診断なし。
+- `test_detect2d.py` を除く全体回帰は269 passed、7 xfailed、通常失敗0件。
 
 ## 10. 次のCopilotへの開始指示
 

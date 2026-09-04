@@ -58,7 +58,12 @@
         "fail_safe_rate_recovery_confirm_duration_sec": 10.0
     },
     "lidar_n_invalid_data": {
-        "is_enabled": true
+        "is_enabled": true,
+        "invalid_ratio_threshold": 0.7,
+        "error_confirm_duration_sec": 3.0,
+        "recovery_ratio_threshold": 0.3,
+        "recovery_confirm_duration_sec": 3.0,
+        "failsafe_recovery_confirm_duration_sec": 5.0
     },
     "camera_n_invalid_data": {
         "is_enabled": true,

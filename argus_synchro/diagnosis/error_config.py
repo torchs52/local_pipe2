@@ -146,6 +146,12 @@ class CameraCommQualityErrorParameters(ErrorParameterBase):
 class LidarInvalidDataParameters(ErrorParameterBase):
     """LidarNデータ不正用パラメータ"""
 
+    invalid_ratio_threshold: float = 0.7
+    error_confirm_duration_sec: float = 3.0
+    recovery_ratio_threshold: float = 0.3
+    recovery_confirm_duration_sec: float = 3.0
+    failsafe_recovery_confirm_duration_sec: float = 5.0
+
 
 @dataclass(frozen=False, slots=True)
 class CameraInvalidDataParameters(ErrorParameterBase):

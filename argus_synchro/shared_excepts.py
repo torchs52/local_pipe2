@@ -42,6 +42,7 @@ class SharedLIDExcept(SharedProcessExcept):
         self.last_heartbeat: Synchronized[float] = create_shared_single_data(0.0)
         self.is_heartbeat_enabled: Synchronized[bool] = create_shared_single_data(False)
         self.last_quality_degraded: Synchronized[float] = create_shared_single_data(0.0)
+        self.invalid_data_ratio: Synchronized[float] = create_shared_single_data(0.0)
         self.IsDead: Synchronized[bool] = create_shared_single_data(False)
 
     def close(self) -> None:
