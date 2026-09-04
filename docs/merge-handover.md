@@ -325,6 +325,7 @@ SHI側だけで確認されたテスト:
 | M-021 | Dレベル連続リトライ上限超過 | `docs/error_list.txt` | decision-needed | deferred | なし | SHI側も未実装のためスキップ |
 | M-022 | CE013 AIモデルロード失敗/破損 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | action diagnosis/ObjectDetect/tests | SHIの例外分類とフォールバックを維持し、CE013ログはvendor責務分担どおり診断クラスが出力する |
 | M-023 | SE039 アプリケーションマネージャー未応答 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | state diagnosis/shared heartbeat/AppManager/ErrorMonitor/tests | SHIのheartbeat判定を維持し、ErrorMonitorからvendorの共通ログdispatchへ接続する |
+| M-024 | SE042 ログ出力停止 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | state diagnosis/AppManager/tests | ログファイルのmtime/sizeを監視し、判定とログはvendorの診断共通経路へ委譲する |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -572,12 +573,23 @@ SHI側だけで確認されたテスト:
 ### 2026-09-04 M-023実施記録
 
 - SHIコミット `4b4674c` と現行SHIを確認し、SE039の診断ロジック、AppManager共有heartbeat、AppManager更新、ErrorMonitor監視を一つの機能単位としてvendorへ移植した。
-- AppManagerは各 `_update()` の先頭でmonotonic heartbeatを更新して開始済み状態にし、起動待機中と正常停止後は `is_started=False` とする。ErrorMonitorは開始済みの場合だけ診断するため、意図的な未起動・停止をSE039へ誤分類しない。
+- AppManagerは各 `_update()` の先頭でmonotonic heartbeatを更新して開始済み状態にし、起動待機中と正常停止後は `is_started=False` とする。ErrorMonitorは開始済みの場合だけ診断し、意図的な未起動・停止をSE039へ誤分類しない。
+- LiDAR、Camera、IMUがlifecycleフラグとheartbeatを同じ共有オブジェクトに持つvendor既存パターンへ合わせ、AppManagerも共有実体を1個にした。ErrorMonitorが設定ロード前から起動するため `SharedErrors` が `SharedAppManagerExcept` を先行生成し、通常起動時の `SharedExcepts` へ同じインスタンスを注入する。`SharedErrors.AppMan_ex` と `SharedExcepts.AppMan_ex` は別名参照だが同一実体であり、前者をErrorMonitor、後者を既存process lifecycleが使用する。単体利用時は省略可能引数により従来どおり `SharedExcepts` が生成する。
 - SHI担当実装どおり、heartbeat変化が0.01秒未満の状態が設定秒継続した場合、またはheartbeatが設定秒以上後退した場合に検出する。新しいheartbeatが現在時刻から設定秒以内ならエラーとフェイルセーフを復帰する。
 - SHI固有の広域 `DiagnosisRuntimePolicy` は複数の未統合診断と起動制御へ影響するため今回持ち込まず、SE039に必要な起動状態ガードだけを共有AppManager状態で維持した。
 - SHIのErrorMonitorは診断戻り値を破棄していたため、その部分はvendor責務分担へ変更した。ErrorMonitorは観測値を渡し、診断クラスが状態とログ文面を所有し、戻り値は共通 `log_output()` へdispatchする。
-- `tests/test_application_manager_not_responding.py` で停滞、時刻後退、復帰、引数、ログ、共有状態、AppManager更新、ErrorMonitorの開始状態ガードとdispatchを確認した。専用テストは9 passed、heartbeat診断・process管理・設定・error mmapを含む関連テストは26 passed。変更箇所のVS Code診断なし、`compileall` 成功。
+- `tests/test_application_manager_not_responding.py` で停滞、時刻後退、復帰、引数、ログ、共有状態の同一性、AppManager更新、ErrorMonitorの開始状態ガードとdispatchを確認した。専用テストは10 passed、SE042・process管理・設定・error mmapを含む関連テストは30 passed。変更箇所のVS Code診断なし、`compileall` 成功。
 - `test_detect2d.py` を除く全体回帰は150 passed、7 xfailed、通常失敗0件。CRLFを考慮したdiff checkも成功した。
+
+### 2026-09-04 M-024実施記録
+
+- SHIコミット `4b4674c` と現行SHIを確認し、SE042の診断ロジックと通常運転のAppManager監視をvendorへ移植した。校正、CAN、logger内部のCE015処理は変更していない。
+- `DEFAULT.debug_log` が示す実ログファイルのmtimeまたはsizeが変化した時刻をmonotonic clockで保持し、設定秒以上更新がなければ検出する。ファイルがローテーション等で一時的に見えない場合は最終更新時刻を進めず、停止判定を継続する。
+- 更新再開後は、設定された受信間隔内の更新が連続している時間をエラー状態とフェイルセーフ状態で個別に測り、それぞれ設定秒継続した時点で復帰する。システム時刻が後退した場合の経過時間は0秒へ丸める。
+- ファイルログが無効な場合は診断対象外とし、現在時刻を正常更新として渡す。これにより設定変更前に検出済みだった状態も共通復帰条件で解消できる。
+- SHIのAppManagerは診断前後の共有flagから `ResultDiagnosis` を再計算していたが、vendorの `StateErrorDiagnosisC.errors_diagnosis()` が同じエッジ状態を返すため、その重複は移植しなかった。AppManagerはmtime/size観測だけを所有し、判定、状態、ログ文面、loggerは診断クラス、出力選択は共通 `log_output()` が所有する。
+- `tests/test_log_output_stopped.py` で閾値、KEEPING、継続復帰、時刻後退、引数、ログ、ファイル更新・停止・一時欠落・ログ無効時のAppManager配線を確認した。専用テストは9 passed、SE039との組合せは18 passed。変更箇所のVS Code診断なし、`compileall` 成功。
+- AppManager共有状態の単一インスタンス化を含め、`test_detect2d.py` を除く全体回帰は160 passed、7 xfailed、通常失敗0件。CRLFを考慮したdiff checkも成功した。
 
 ## 10. 次のCopilotへの開始指示
 

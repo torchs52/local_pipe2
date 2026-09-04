@@ -188,7 +188,11 @@ class SharedCalMatGeneratorExcept(SharedProcessExcept):
 
 # 例外処理:共有メモリ変数の定義.(総合)
 class SharedExcepts:
-    def __init__(self, app_config: AppConfig) -> None:
+    def __init__(
+        self,
+        app_config: AppConfig,
+        app_manager_ex: SharedAppManagerExcept | None = None,
+    ) -> None:
         # このクラスは各プロセスの生成前にインスタンス生成され、各プロセスの生成時にインスタンスを渡す。
         # プロセスは受け取ったインスタンスを自分のAppLoggerFactoryインスタンスに登録する。
         # そのため、この時点ではregisterはせずAppLoggerのインスタンスのみ生成する。
@@ -214,7 +218,9 @@ class SharedExcepts:
         self.CAN_ex = SharedCANExcept()  # CAN例外処理フラグ
         self.getData_ex = SharedGetDataExcept()  # データ取得例外処理フラグ
         self.Visu_ex = SharedVisualizeExcept()  # UI関連例外処理フラグ
-        self.AppMan_ex = SharedAppManagerExcept()  # アプリマネジャー例外処理フラグ
+        self.AppMan_ex = (
+            SharedAppManagerExcept() if app_manager_ex is None else app_manager_ex
+        )  # アプリマネジャー例外処理フラグ・heartbeat
         self.Scruti_ex = SharedScrutinizerExcept()  # Scrutinizer例外処理フラグ
         self.Lidar_SM_ex = SharedLidarShiftMonitorExcept(
             Path(app_config.LiDARShiftMonitor.has_not_calibrated_path)

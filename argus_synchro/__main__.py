@@ -1021,7 +1021,7 @@ def load_config(
 
             sac = SharedAppConfig(directory_config)
             app_config: AppConfig = sac.read()
-            sec = SharedExcepts(app_config=app_config)
+            sec = SharedExcepts(app_config=app_config, app_manager_ex=ser.AppMan_ex)
 
             calib_settings_path = str(
                 paths.normalize_path("calib_settings.ini", directory_config.config_dir)

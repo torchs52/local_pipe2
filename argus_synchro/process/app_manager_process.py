@@ -45,6 +45,11 @@ class AppManagerProcess(ProcessBase):
         "_err_config",
         "_interval",
         "_last_updated",
+        "_log_file_path",
+        "_log_monitor_enabled",
+        "_log_watch_last_mono",
+        "_log_watch_last_mtime",
+        "_log_watch_last_size",
         "_logmode",
         "_logtime",
         "_num_lidars",
@@ -78,6 +83,11 @@ class AppManagerProcess(ProcessBase):
         self._num_cameras: int = 0
         self._scrut_activator: ProcessActivator = scrut_activator
         self._system_activator: ProcessActivator = system_activator
+        self._log_file_path: Path | None = None
+        self._log_monitor_enabled: bool = False
+        self._log_watch_last_mono: float = 0.0
+        self._log_watch_last_mtime: float = 0.0
+        self._log_watch_last_size: int = -1
         self._metrics: Metrics | None = None
         self._is_thermal_throttling: bool = False
 
@@ -103,6 +113,14 @@ class AppManagerProcess(ProcessBase):
         self._num_lidars = self._app_config.Lidar.count
         self._num_cameras = self._app_config.camera.count
         self.file_input: bool = self._app_config.DEFAULT.File_Input
+
+        debug_log_raw = str(self._app_config.DEFAULT.debug_log).strip()
+        if debug_log_raw:
+            self._log_file_path = Path(debug_log_raw)
+            self._log_monitor_enabled = True
+        else:
+            self._log_file_path = None
+            self._log_monitor_enabled = False
 
     def _err_config_load(self) -> None:
         self._err_config = self._ser.shared_err_conf.read()
@@ -139,6 +157,9 @@ class AppManagerProcess(ProcessBase):
         self._ser.state_errors_A_C[
             StateErrorIndex.TEMPERATURE_RISE_TREND_CONTINUES
         ].update(self._err_config)
+        self._ser.state_errors_A_C[StateErrorIndex.LOG_OUTPUT_STOPPED].update(
+            self._err_config
+        )
         self._ser.state_errors_D[StateErrorDIndex.OTHER_HARDWARE_ERROR].update(
             self._err_config
         )
@@ -244,6 +265,15 @@ class AppManagerProcess(ProcessBase):
 
         # チェック確認までしばらく待つ.
         time.sleep(5)
+        self._log_watch_last_mono = time.monotonic()
+        if self._log_monitor_enabled and self._log_file_path is not None:
+            try:
+                stat = self._log_file_path.stat()
+                self._log_watch_last_mtime = float(stat.st_mtime)
+                self._log_watch_last_size = int(stat.st_size)
+            except OSError:
+                self._log_watch_last_mtime = 0.0
+                self._log_watch_last_size = -1
         # 開始時間
         self._dt_start: datetime.datetime = datetime.datetime.now()
         self._logger.info("開始時刻")
@@ -291,6 +321,31 @@ class AppManagerProcess(ProcessBase):
     def _update_heartbeat(self) -> None:
         self._ser.AppMan_ex.last_heartbeat.value = time.monotonic()
         self._ser.AppMan_ex.is_started.value = True
+
+    def _update_log_output_stopped(self) -> None:
+        diagnosis = self._ser.state_errors_A_C[StateErrorIndex.LOG_OUTPUT_STOPPED]
+        now_mono = time.monotonic()
+
+        if not self._log_monitor_enabled or self._log_file_path is None:
+            self._log_watch_last_mono = now_mono
+        else:
+            try:
+                stat = self._log_file_path.stat()
+                mtime = float(stat.st_mtime)
+                size = int(stat.st_size)
+            except OSError:
+                pass
+            else:
+                if (
+                    mtime != self._log_watch_last_mtime
+                    or size != self._log_watch_last_size
+                ):
+                    self._log_watch_last_mono = now_mono
+                    self._log_watch_last_mtime = mtime
+                    self._log_watch_last_size = size
+
+        result = diagnosis.errors_diagnosis(self._log_watch_last_mono, now_mono)
+        diagnosis.log_output(*result, StateErrorIndex.LOG_OUTPUT_STOPPED)
 
     def _camera_healthy_check(self, now: float) -> None:
         for i in range(self._num_cameras):
@@ -531,6 +586,7 @@ class AppManagerProcess(ProcessBase):
         not_active_count: int,
     ) -> tuple[int, int, int]:
         self._update_heartbeat()
+        self._update_log_output_stopped()
         self._update_log_compression_failure()
         self._update_log_time_reversal()
 

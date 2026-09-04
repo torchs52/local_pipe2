@@ -92,7 +92,7 @@ from argus_synchro.diagnosis.state_errors import (
 )
 from argus_synchro.shared_data import create_shared_single_data
 from argus_synchro.shared_err_config import SharedErrorConfig
-from argus_synchro.shared_excepts import SharedProcessExcept
+from argus_synchro.shared_excepts import SharedAppManagerExcept, SharedProcessExcept
 
 if TYPE_CHECKING:
     from argus_synchro.diagnosis.error_diagnosis import (
@@ -347,6 +347,7 @@ class SharedErrorMonitorExcept(SharedProcessExcept):
 class SharedErrors:
     def __init__(self, err_conf_path: Path) -> None:
         self.ErrMoni_ex = SharedErrorMonitorExcept()  # エラー監視機能例外処理フラグ
+        self.AppMan_ex = SharedAppManagerExcept()  # AppManager診断用heartbeat
         self.reduced_load_mode: ReducedLoadMode = ReducedLoadMode()  # 負荷低減モード
         self.shared_err_conf = SharedErrorConfig(
             err_conf_path

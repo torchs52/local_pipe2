@@ -2490,15 +2490,84 @@ class LogOutputStoppedDiagnosis(StateErrorDiagnosisC):
 
     def __init__(self) -> None:
         super().__init__()
+        self._error_recovery_start_time: float | None = None
+        self._fail_safe_recovery_start_time: float | None = None
+        self.param: err_conf.LogOutputStoppedParameters
+
+    def _parse_args(self, *args: object) -> tuple[float, float]:
+        if len(args) != 2:
+            raise ValueError("args must be (last_update_mono, now_mono)")
+        last_update_mono = args[0]
+        now_mono = args[1]
+        if not isinstance(last_update_mono, float) or not isinstance(now_mono, float):
+            raise ValueError("args must be float, float")
+        return last_update_mono, now_mono
+
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.log_output_stopped
+        self.is_enabled = self.param.is_enabled
 
     def detect_error(self, *args: object) -> bool:
+        last_update_mono, now_mono = self._parse_args(*args)
+        elapsed = max(now_mono - last_update_mono, 0.0)
+        if elapsed >= self.param.error_threshold_sec:
+            self.is_error.value = True
+            self.is_fail_safe.value = True
+            return True
         return False
 
     def detect_recovery_error(self, *args: object) -> bool:
-        return True
+        last_update_mono, now_mono = self._parse_args(*args)
+        elapsed = max(now_mono - last_update_mono, 0.0)
+        if elapsed > self.param.recovery_receive_interval_sec:
+            self._error_recovery_start_time = None
+            return False
+        if self._error_recovery_start_time is None:
+            self._error_recovery_start_time = now_mono
+            return False
+        if (
+            now_mono - self._error_recovery_start_time
+            >= self.param.error_recovery_confirm_duration_sec
+        ):
+            self._error_recovery_start_time = None
+            self.is_error.value = False
+            return True
+        return False
 
     def detect_recovery_fail_safe(self, *args: object) -> bool:
-        return True
+        last_update_mono, now_mono = self._parse_args(*args)
+        elapsed = max(now_mono - last_update_mono, 0.0)
+        if elapsed > self.param.recovery_receive_interval_sec:
+            self._fail_safe_recovery_start_time = None
+            return False
+        if self._fail_safe_recovery_start_time is None:
+            self._fail_safe_recovery_start_time = now_mono
+            return False
+        if (
+            now_mono - self._fail_safe_recovery_start_time
+            >= self.param.failsafe_recovery_confirm_duration_sec
+        ):
+            self._fail_safe_recovery_start_time = None
+            self.is_fail_safe.value = False
+            return True
+        return False
+
+    def _error_log_output(self, err_idx: int, *args: object) -> None:
+        self._logger.error(
+            self.get_error_no(err_idx)
+            + ": LOG_OUTPUT_STOPPED detected: file log output has stopped"
+        )
+
+    def _recover_log_output(self, err_idx: int, *args: object) -> None:
+        self._logger.info(
+            self.get_error_no(err_idx)
+            + ": LOG_OUTPUT_STOPPED recovered: file log output resumed"
+        )
+
+    def _fail_safe_recover_log_output(self, err_idx: int, *args: object) -> None:
+        self._logger.info(
+            self.get_error_no(err_idx) + ": LOG_OUTPUT_STOPPED failsafe recovered"
+        )
 
 
 class InternalTemperatureRiseDiagnosis(StateErrorDiagnosisB):

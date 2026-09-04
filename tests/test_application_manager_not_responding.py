@@ -9,7 +9,7 @@ from argus_synchro.diagnosis.state_errors import (
 )
 from argus_synchro.process.app_manager_process import AppManagerProcess
 from argus_synchro.process.error_monitor_process import ErrorMonitorProcess
-from argus_synchro.shared_excepts import SharedAppManagerExcept
+from argus_synchro.shared_excepts import SharedAppManagerExcept, SharedExcepts
 from argus_synchro.shared_errors import StateErrorIndex
 
 
@@ -92,6 +92,17 @@ def test_shared_app_manager_heartbeat_is_initially_disabled() -> None:
 
     assert bool(shared.is_started.value) is False
     assert shared.last_heartbeat.value == 0.0
+
+
+def test_shared_excepts_reuses_app_manager_shared_state(app_config) -> None:
+    app_manager_shared = SharedAppManagerExcept()
+
+    shared_excepts = SharedExcepts(
+        app_config=app_config,
+        app_manager_ex=app_manager_shared,
+    )
+
+    assert shared_excepts.AppMan_ex is app_manager_shared
 
 
 def test_app_manager_updates_shared_heartbeat(monkeypatch) -> None:
