@@ -324,6 +324,7 @@ SHI側だけで確認されたテスト:
 | M-020 | Dレベル検知対象エラー | `docs/error_list.txt` | decision-needed | deferred | なし | SHI側も未実装のためスキップ |
 | M-021 | Dレベル連続リトライ上限超過 | `docs/error_list.txt` | decision-needed | deferred | なし | SHI側も未実装のためスキップ |
 | M-022 | CE013 AIモデルロード失敗/破損 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | action diagnosis/ObjectDetect/tests | SHIの例外分類とフォールバックを維持し、CE013ログはvendor責務分担どおり診断クラスが出力する |
+| M-023 | SE039 アプリケーションマネージャー未応答 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | state diagnosis/shared heartbeat/AppManager/ErrorMonitor/tests | SHIのheartbeat判定を維持し、ErrorMonitorからvendorの共通ログdispatchへ接続する |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -567,6 +568,16 @@ SHI側だけで確認されたテスト:
 - 過去の `error-handling-review-ledger.md` には例外分類を実装済みとする記録があったが、統合開始時のvendorコードはスケルトンへ戻っていた。今回、同文書の確定済み対象例外・counter条件とSHI実装が一致することを確認して復元した。
 - `tests/test_ai_model_load_failed.py` で対象7例外、非対象例外、診断所有ログ、対象・非対象それぞれのObjectDetectフォールバックを確認した。専用テストは11 passed、AI推論・action error・共有設定を含む関連テストは47 passed。変更箇所のVS Code診断なし、`compileall` とCRLF考慮のdiff checkに成功した。
 - `test_detect2d.py` を除く全体回帰は141 passed、7 xfailed、通常失敗0件。
+
+### 2026-09-04 M-023実施記録
+
+- SHIコミット `4b4674c` と現行SHIを確認し、SE039の診断ロジック、AppManager共有heartbeat、AppManager更新、ErrorMonitor監視を一つの機能単位としてvendorへ移植した。
+- AppManagerは各 `_update()` の先頭でmonotonic heartbeatを更新して開始済み状態にし、起動待機中と正常停止後は `is_started=False` とする。ErrorMonitorは開始済みの場合だけ診断するため、意図的な未起動・停止をSE039へ誤分類しない。
+- SHI担当実装どおり、heartbeat変化が0.01秒未満の状態が設定秒継続した場合、またはheartbeatが設定秒以上後退した場合に検出する。新しいheartbeatが現在時刻から設定秒以内ならエラーとフェイルセーフを復帰する。
+- SHI固有の広域 `DiagnosisRuntimePolicy` は複数の未統合診断と起動制御へ影響するため今回持ち込まず、SE039に必要な起動状態ガードだけを共有AppManager状態で維持した。
+- SHIのErrorMonitorは診断戻り値を破棄していたため、その部分はvendor責務分担へ変更した。ErrorMonitorは観測値を渡し、診断クラスが状態とログ文面を所有し、戻り値は共通 `log_output()` へdispatchする。
+- `tests/test_application_manager_not_responding.py` で停滞、時刻後退、復帰、引数、ログ、共有状態、AppManager更新、ErrorMonitorの開始状態ガードとdispatchを確認した。専用テストは9 passed、heartbeat診断・process管理・設定・error mmapを含む関連テストは26 passed。変更箇所のVS Code診断なし、`compileall` 成功。
+- `test_detect2d.py` を除く全体回帰は150 passed、7 xfailed、通常失敗0件。CRLFを考慮したdiff checkも成功した。
 
 ## 10. 次のCopilotへの開始指示
 

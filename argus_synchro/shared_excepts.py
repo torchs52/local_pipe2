@@ -110,6 +110,8 @@ class SharedAppManagerExcept(SharedProcessExcept):
     def __init__(self) -> None:
         super().__init__()
         # エラーフラグをここに足していく.(Is... or Has...)
+        self.is_started: Synchronized[bool] = create_shared_single_data(False)
+        self.last_heartbeat: Synchronized[float] = create_shared_single_data(0.0)
 
     def close(self) -> None:
         pass

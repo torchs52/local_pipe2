@@ -9,10 +9,11 @@ from argus_synchro_lib.error_mmap_writer import ErrorMMapWriter
 
 from argus_synchro.common import paths
 from argus_synchro.common.paths import normalize_path
+from argus_synchro.diagnosis.error_config import ErrorConfig
 from argus_synchro.process import ProcessBase
 from argus_synchro.process.synchronizer import ProcessActivator
 from argus_synchro.shared_data import create_shared_single_data
-from argus_synchro.shared_errors import SharedErrors
+from argus_synchro.shared_errors import SharedErrors, StateErrorIndex
 
 
 @final
@@ -23,6 +24,7 @@ class ErrorMonitorProcess(ProcessBase):
 
     __slots__ = (
         "_cycle",
+        "_err_config",
         "_paths",
         "_ser",
         "_system_activator",
@@ -52,6 +54,12 @@ class ErrorMonitorProcess(ProcessBase):
     def _config_load(self) -> None:
         pass
 
+    def _err_config_load(self) -> None:
+        self._err_config = self._ser.shared_err_conf.read()
+        self._ser.state_errors_A_C[
+            StateErrorIndex.APPLICATION_MANAGER_NOT_RESPONDING
+        ].update(self._err_config)
+
     def create_producer_and_consumer(self) -> None:
         pass
 
@@ -60,6 +68,7 @@ class ErrorMonitorProcess(ProcessBase):
 
     def _startup(self) -> None:
         self._config_load()
+        self._err_config_load()
         self._mmap = ErrorMMapWriter(
             self._paths, lambda level, msg: self._logger.log(int(level), msg)
         )
@@ -78,6 +87,24 @@ class ErrorMonitorProcess(ProcessBase):
             time.sleep(self._cycle)
 
     def _update(self) -> None:
+        if self._ser.AppMan_ex.is_started.value:
+            diagnosis = self._ser.state_errors_A_C[
+                StateErrorIndex.APPLICATION_MANAGER_NOT_RESPONDING
+            ]
+            try:
+                result = diagnosis.errors_diagnosis(
+                    time.monotonic(), self._ser.AppMan_ex.last_heartbeat.value
+                )
+                diagnosis.log_output(
+                    *result, StateErrorIndex.APPLICATION_MANAGER_NOT_RESPONDING
+                )
+            except RuntimeError as e:
+                self._logger.error(
+                    "APPLICATION_MANAGER_NOT_RESPONDING diagnosis failed: %s: %s",
+                    type(e).__name__,
+                    e,
+                )
+
         self._mmap.start_write()
         state_err: bytes = self._make_state_error_bits(self._ser.state_errors)
         self._mmap.write_state_error(state_err)

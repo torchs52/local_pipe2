@@ -2364,15 +2364,109 @@ class ApplicationManagerNotRespondingDiagnosis(StateErrorDiagnosisA):
 
     def __init__(self) -> None:
         super().__init__()
+        self._previous_heartbeat: float | None = None
+        self._last_time: float | None = None
+        self._heartbeat_tolerance_sec: float = 0.01
+        self._detected_in_current_cycle: bool = False
+        self.param: err_conf.ApplicationManagerNotRespondingParameters
+
+    def _parse_args(self, *args: object) -> tuple[float, float | None]:
+        if len(args) != 2:
+            raise ValueError("args must be (now, last_heartbeat)")
+        now = args[0]
+        last_heartbeat = args[1]
+        if not isinstance(now, float) or (
+            last_heartbeat is not None and not isinstance(last_heartbeat, float)
+        ):
+            raise ValueError("args must be float, float | None")
+        return now, last_heartbeat
+
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.application_manager_not_responding
+        self.is_enabled = self.param.is_enabled
 
     def detect_error(self, *args: object) -> bool:
+        now, last_heartbeat = self._parse_args(*args)
+        previous_heartbeat = self._previous_heartbeat
+        self._detected_in_current_cycle = False
+
+        if last_heartbeat is None or last_heartbeat <= 0.0:
+            is_stale = True
+            is_jump_error = False
+        elif previous_heartbeat is None or previous_heartbeat <= 0.0:
+            self._previous_heartbeat = last_heartbeat
+            self._last_time = None
+            return False
+        else:
+            heartbeat_delta = last_heartbeat - previous_heartbeat
+            is_stale = abs(heartbeat_delta) < self._heartbeat_tolerance_sec
+            is_jump_error = heartbeat_delta <= -self.param.error_threshold_sec
+
+        if is_stale:
+            if self._last_time is None:
+                self._last_time = now
+            elif now - self._last_time >= self.param.error_threshold_sec:
+                self.is_error.value = True
+                self.is_fail_safe.value = True
+                self._detected_in_current_cycle = True
+                if last_heartbeat is not None:
+                    self._previous_heartbeat = last_heartbeat
+                return True
+        else:
+            self._last_time = None
+
+        if is_jump_error:
+            self.is_error.value = True
+            self.is_fail_safe.value = True
+            self._detected_in_current_cycle = True
+            self._previous_heartbeat = last_heartbeat
+            return True
+
+        if last_heartbeat is not None:
+            self._previous_heartbeat = last_heartbeat
         return False
 
     def detect_recovery_error(self, *args: object) -> bool:
-        return True
+        if self._detected_in_current_cycle:
+            return False
+        now, last_heartbeat = self._parse_args(*args)
+        if last_heartbeat is None:
+            return False
+        if now - last_heartbeat <= self.param.error_threshold_sec and self.is_error.value:
+            self.is_error.value = False
+            return True
+        return False
 
     def detect_recovery_fail_safe(self, *args: object) -> bool:
-        return True
+        if self._detected_in_current_cycle:
+            return False
+        now, last_heartbeat = self._parse_args(*args)
+        if last_heartbeat is None:
+            return False
+        if (
+            now - last_heartbeat <= self.param.error_threshold_sec
+            and self.is_fail_safe.value
+        ):
+            self.is_fail_safe.value = False
+            return True
+        return False
+
+    def _error_log_output(self, err_idx: int, *args: object) -> None:
+        self._logger.error(
+            self.get_error_no(err_idx) + ": APPLICATION_MANAGER_NOT_RESPONDING detected"
+        )
+
+    def _recover_log_output(self, err_idx: int, *args: object) -> None:
+        self._logger.info(
+            self.get_error_no(err_idx)
+            + ": APPLICATION_MANAGER_NOT_RESPONDING recovered"
+        )
+
+    def _fail_safe_recover_log_output(self, err_idx: int, *args: object) -> None:
+        self._logger.info(
+            self.get_error_no(err_idx)
+            + ": APPLICATION_MANAGER_NOT_RESPONDING failsafe recovered"
+        )
 
 
 class ImuNConnectionErrorDiagnosis(StateErrorDiagnosisB):

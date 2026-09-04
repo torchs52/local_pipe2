@@ -240,6 +240,7 @@ class AppManagerProcess(ProcessBase):
         self._ser.state_errors_D[StateErrorDIndex.OTHER_HARDWARE_ERROR].log_output(
             *result, StateErrorDIndex.OTHER_HARDWARE_ERROR
         )
+        self._ser.AppMan_ex.is_started.value = False
 
         # チェック確認までしばらく待つ.
         time.sleep(5)
@@ -282,9 +283,14 @@ class AppManagerProcess(ProcessBase):
         MachineProfileHandler.log_register(self._app_logger_factory)
 
     def _shutdown(self) -> None:
+        self._ser.AppMan_ex.is_started.value = False
         with contextlib.suppress(Exception):
             if self._js_th is not None:
                 self._js_th.stop()
+
+    def _update_heartbeat(self) -> None:
+        self._ser.AppMan_ex.last_heartbeat.value = time.monotonic()
+        self._ser.AppMan_ex.is_started.value = True
 
     def _camera_healthy_check(self, now: float) -> None:
         for i in range(self._num_cameras):
@@ -524,6 +530,7 @@ class AppManagerProcess(ProcessBase):
         present_scrut_frame: int,
         not_active_count: int,
     ) -> tuple[int, int, int]:
+        self._update_heartbeat()
         self._update_log_compression_failure()
         self._update_log_time_reversal()
 
