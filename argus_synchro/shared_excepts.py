@@ -52,6 +52,9 @@ class SharedIMUExcept(SharedProcessExcept):
     def __init__(self) -> None:
         super().__init__()
         # エラーフラグをここに足していく.(Is... or Has...)
+        self.last_heartbeat: Synchronized[float] = create_shared_single_data(
+            INVALID_TIMESTAMP
+        )
         self.is_heartbeat_enabled: Synchronized[bool] = create_shared_single_data(False)
 
     def close(self) -> None:

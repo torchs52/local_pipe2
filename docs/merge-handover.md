@@ -332,6 +332,8 @@ SHI側だけで確認されたテスト:
 | M-028 | CE004 機体モデルファイル欠損/破損 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | action diagnosis/PointsRefine/Visual/tests | SHIの例外分類を維持し、ログは診断クラスへ委譲、vendorの起動失敗制御へ元例外を再送出する |
 | M-029 | CE011 MMAP read/writeエラー | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | action diagnosis/ErrorMonitor/Visual/main/tests | SHIの例外分類と境界別の継続・再送出を維持し、ログは診断クラスへ委譲する |
 | M-030 | CE012 再起動ループ検出 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | action diagnosis/error config/main/FILE_IO_ERROR/tests | `uptime_state.json` の直近5回を600秒窓で評価し、履歴異常はFILE_IO_ERRORへ委譲する |
+| M-031 | SHI担当だが未実装のCE003・CE007～CE010・SE036 | ユーザー確認 / 現行SHI | decision-needed | deferred | なし | 共通スケルトンから推測実装せず、SHI側で仕様・実装が確定するまで移植対象外とする |
+| M-032 | SE040・SE041 IMU接続エラー | 現行SHI / `docs/error_list.txt` | manual-port | verified | state diagnosis/shared heartbeat/IMU/AppManager/tests | 実データheartbeatを5秒監視し、1秒以内の連続受信を5秒確認して復帰する |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -655,6 +657,20 @@ SHI側だけで確認されたテスト:
 - mainでは既存の設定・logger登録後に起動履歴を1回評価する。起動順、再起動条件、モード遷移、process lifecycleは変更していない。SHI固有の広域 `DiagnosisRuntimePolicy` とmaintenance時の抑止は持ち込まず、vendorの既存Action Error基底と `is_enabled` を使用した。
 - `tests/test_reboot_loop_detected.py` で履歴件数不足、600秒境界、境界超過、診断所有ログ、正常JSONのcounter加算、不正JSON構造のFILE_IO_ERROR委譲を確認した。専用テストは6 passed、FILE_IO_ERROR・共有設定・CE011を含む関連テストは24 passed。変更箇所のVS Code診断なし、`compileall` 成功。
 - `test_detect2d.py` を除く全体回帰は224 passed、7 xfailed、通常失敗0件。
+
+### 2026-09-04 M-031確認記録
+
+- ユーザー確認により、CE003（機種情報不一致）、CE007～CE010（カメラ0～3校正データ不正）、SE036（ステータス情報未更新）はSHI担当だがSHI側も未実装である。名称、index、共通スケルトン、JSON雛形だけを根拠に推測実装せず、SHI側で仕様・runtime接続が確定するまで移植対象外とする。
+- CE006と校正設定validatorは従来どおりM-005の校正サブシステムと一緒に保留する。LiDAR・IMUの実装済み診断は移植対象として継続する。
+
+### 2026-09-04 M-032実施記録
+
+- 現行SHIのSE040/SE041を確認し、IMU接続診断をvendorへ移植した。IMU実データ到達時だけmonotonic heartbeatを最大0.5秒間隔で更新し、空ringまたは `TimeoutError` では更新しない。共有heartbeat初期値はvendorの既存死活監視と同じ `INVALID_TIMESTAMP=-1.0` とした。
+- 最初の有効heartbeatを基準値として保持した後、前回heartbeatまたは最終heartbeatから5秒以上経過した場合に接続エラーとフェイルセーフを検出する。復帰は1秒以内のheartbeat受信を5秒継続した場合で、初回基準サンプルは確認時間に含めない。
+- SHIではIMU0/IMU1の診断クラスが同一実装で重複していたため、vendorの既存index・登録構造を維持し、2indexに登録済みの共通 `ImuNConnectionErrorDiagnosis` へ状態機械を実装した。parameterもvendor既存の共通 `imu_n_connection_error` を両indexで使用する。
+- AppManagerはIMUごとの `is_heartbeat_enabled` が有効な場合だけ診断し、有効化時に診断履歴をclearする。SHI側で欠けていた監視有効化は、vendorのCamera/CAN/LiDARと同じくIMU startup完了時に有効、shutdown時に無効とし、起動途中や停止後を誤検出しない。
+- `tests/test_imu_connection_error.py` で実データ・空ring・Timeout時のheartbeat、shutdown無効化、初回未更新除外、5秒検出、1秒以内の連続受信による復帰、AppManagerの有効IMUだけへのdispatchを確認した。専用テストは7 passed、共有設定・AppManager関連は29 passed。変更箇所のVS Code診断なし、`compileall` 成功。
+- `test_detect2d.py` を除く全体回帰は231 passed、7 xfailed、通常失敗0件。
 
 ## 10. 次のCopilotへの開始指示
 

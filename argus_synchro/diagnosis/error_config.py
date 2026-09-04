@@ -360,6 +360,11 @@ class ApplicationManagerNotRespondingParameters(ErrorParameterBase):
 class ImuNConnectionErrorParameters(ErrorParameterBase):
     """IMUN接続エラー用パラメータ"""
 
+    error_threshold_sec: float = 5.0
+    error_recovery_confirm_duration_sec: float = 5.0
+    failsafe_recovery_confirm_duration_sec: float = 5.0
+    recovery_receive_interval_sec: float = 1.0
+
 
 @dataclass(frozen=False, slots=True)
 class LogOutputStoppedParameters(ErrorParameterBase):

@@ -2535,15 +2535,105 @@ class ImuNConnectionErrorDiagnosis(StateErrorDiagnosisB):
 
     def __init__(self) -> None:
         super().__init__()
+        self.param: err_conf.ImuNConnectionErrorParameters
+        self.clear()
+
+    def clear(self) -> None:
+        self._previous_heartbeat: float | None = None
+        self._recovery_prev_timestamp = -1.0
+        self._fail_safe_prev_timestamp = -1.0
+        self._error_recovery_start_time: float | None = None
+        self._fail_safe_recovery_start_time: float | None = None
+
+    def update(self, error_config: err_conf.ErrorConfig) -> None:
+        self.param = error_config.imu_n_connection_error
+        self.is_enabled = self.param.is_enabled
+
+    def _parse_args(self, *args: object) -> tuple[float, float]:
+        if len(args) != 2 or not all(isinstance(value, float) for value in args):
+            raise ValueError("args must be (now, last_heartbeat) as float")
+        return args[0], args[1]  # type: ignore[return-value]
 
     def detect_error(self, *args: object) -> bool:
+        now, last_heartbeat = self._parse_args(*args)
+        if self._previous_heartbeat is None or last_heartbeat < 0.0:
+            self._previous_heartbeat = last_heartbeat
+            return False
+        is_error = (
+            last_heartbeat - self._previous_heartbeat >= self.param.error_threshold_sec
+            or now - last_heartbeat >= self.param.error_threshold_sec
+        )
+        self._previous_heartbeat = last_heartbeat
+        if is_error:
+            self.is_error.value = True
+            self.is_fail_safe.value = True
+            return True
         return False
 
     def detect_recovery_error(self, *args: object) -> bool:
-        return True
+        now, last_heartbeat = self._parse_args(*args)
+        if last_heartbeat < 0.0:
+            return False
+        interval = last_heartbeat - self._recovery_prev_timestamp
+        self._recovery_prev_timestamp = last_heartbeat
+        if (
+            interval > self.param.recovery_receive_interval_sec
+            or now - last_heartbeat > self.param.recovery_receive_interval_sec
+        ):
+            self._error_recovery_start_time = None
+            return False
+        if self._error_recovery_start_time is None:
+            self._error_recovery_start_time = last_heartbeat
+        elif (
+            last_heartbeat - self._error_recovery_start_time
+            >= self.param.error_recovery_confirm_duration_sec
+        ):
+            self._error_recovery_start_time = None
+            self.is_error.value = False
+            return True
+        return False
 
     def detect_recovery_fail_safe(self, *args: object) -> bool:
-        return True
+        now, last_heartbeat = self._parse_args(*args)
+        if last_heartbeat < 0.0:
+            return False
+        interval = last_heartbeat - self._fail_safe_prev_timestamp
+        self._fail_safe_prev_timestamp = last_heartbeat
+        if (
+            interval > self.param.recovery_receive_interval_sec
+            or now - last_heartbeat > self.param.recovery_receive_interval_sec
+        ):
+            self._fail_safe_recovery_start_time = None
+            return False
+        if self._fail_safe_recovery_start_time is None:
+            self._fail_safe_recovery_start_time = last_heartbeat
+        elif (
+            last_heartbeat - self._fail_safe_recovery_start_time
+            >= self.param.failsafe_recovery_confirm_duration_sec
+        ):
+            self._fail_safe_recovery_start_time = None
+            self.is_fail_safe.value = False
+            return True
+        return False
+
+    def _error_log_output(self, err_idx: int, *args: object) -> None:
+        index = _sensor_index(args)
+        self._logger.warning(
+            self.get_error_no(err_idx) + f": IMU[{index}] connection error detected."
+        )
+
+    def _recover_log_output(self, err_idx: int, *args: object) -> None:
+        index = _sensor_index(args)
+        self._logger.info(
+            self.get_error_no(err_idx) + f": IMU[{index}] connection error recovered."
+        )
+
+    def _fail_safe_recover_log_output(self, err_idx: int, *args: object) -> None:
+        index = _sensor_index(args)
+        self._logger.info(
+            self.get_error_no(err_idx)
+            + f": IMU[{index}] connection error recovered from failsafe."
+        )
 
 
 class LogOutputStoppedDiagnosis(StateErrorDiagnosisC):

@@ -211,7 +211,11 @@
         "is_enabled": true
     },
     "imu_n_connection_error": {
-        "is_enabled": true
+        "is_enabled": true,
+        "error_threshold_sec": 5.0,
+        "error_recovery_confirm_duration_sec": 5.0,
+        "failsafe_recovery_confirm_duration_sec": 5.0,
+        "recovery_receive_interval_sec": 1.0
     },
     "log_output_stopped": {
         "is_enabled": true

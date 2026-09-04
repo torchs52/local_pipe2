@@ -11,7 +11,8 @@ LiDARの慣性データ取得プロセス
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, final
+import time
+from typing import TYPE_CHECKING, Final, final
 
 import numpy as np
 
@@ -38,13 +39,16 @@ class ImuProviderProcess(InputProcess[ImuData]):
         "_app_config",
         "_end_frame",
         "_err_config",
+        "_heartbeat_interval",
         "_index",
+        "_last_heartbeat",
         "_last_updated",
         "_lidar_config",
         "_lidar_config_index_map",
         "_provider",
         "_sac",
         "_scrutinizer_conf",
+        "_sec_imu",
         "_ser",
         "_unique_lidar_name",
     )
@@ -63,10 +67,13 @@ class ImuProviderProcess(InputProcess[ImuData]):
         self._index: int = index
         self._sac: SharedAppConfig = sac
         self._ser: SharedErrors = ser
+        self._sec_imu: SharedIMUExcept = sec_imu
         self._provider: ImuProvider
         self._lidar_config: dict[str, dict[str, str | int]] = {}
         self._lidar_config_index_map: dict[int, str] = {}
         self._unique_lidar_name: str = ""
+        self._heartbeat_interval: Final[float] = 0.5
+        self._last_heartbeat: float = time.monotonic()
 
         # _startupで初期化
         self._err_config: ErrorConfig
@@ -99,6 +106,7 @@ class ImuProviderProcess(InputProcess[ImuData]):
         self._read_lidar_config()
         self._change_device()
         self.create_producer_and_consumer()
+        self._sec_imu.is_heartbeat_enabled.value = True
 
     def create_producer_and_consumer(self) -> None:
         self.producer: Producer[ImuData] = self._producer_flow.create_producer()
@@ -121,16 +129,23 @@ class ImuProviderProcess(InputProcess[ImuData]):
         self._lidar_config_index_map = dict(enumerate(keys))
 
     def _shutdown(self) -> None:
-        pass
+        self._sec_imu.is_heartbeat_enabled.value = False
 
     @log_target("IMU入力I/F", ProfCategory.Process)
     def _update(self) -> ImuData | None:
-        imu_ring, t = self._provider.get_accum_point()
+        try:
+            imu_ring, t = self._provider.get_accum_point()
+        except TimeoutError:
+            return None
 
         # 最新状態（len ≤ 1000）を縦結合 → write_bufへコピー
         if imu_ring:
             cube = np.stack(imu_ring, axis=0)
             flat = cube.reshape(cube.shape[0], -1)
+            now = time.monotonic()
+            if now - self._last_heartbeat > self._heartbeat_interval:
+                self._sec_imu.last_heartbeat.value = now
+                self._last_heartbeat = now
             return ImuData(0, t, flat)
         return ImuData(0, t, np.zeros((2, 2), dtype=np.float64))
 

@@ -98,6 +98,7 @@ class AppManagerProcess(ProcessBase):
         self._err_config: ErrorConfig
         self._is_last_camera_diag_enabled: list[bool]
         self._is_last_can_diag_enabled: bool
+        self._is_last_imu_diag_enabled: list[bool]
         self._is_last_lidar_sm_diag_enabled: bool
 
     def _config_load(self) -> None:
@@ -129,6 +130,10 @@ class AppManagerProcess(ProcessBase):
         for i in range(self._num_cameras):
             self._ser.state_errors_A_C[
                 StateErrorIndex.CAMERA0_CONNECTION_ERROR + i
+            ].update(self._err_config)
+        for i in range(self._num_lidars):
+            self._ser.state_errors_A_C[
+                StateErrorIndex.IMU0_CONNECTION_ERROR + i
             ].update(self._err_config)
         self._ser.state_errors_A_C[StateErrorIndex.CAN_CONNECTION_ERROR].update(
             self._err_config
@@ -256,6 +261,7 @@ class AppManagerProcess(ProcessBase):
 
         self._is_last_camera_diag_enabled = [False] * self._num_cameras
         self._is_last_can_diag_enabled = False
+        self._is_last_imu_diag_enabled = [False] * self._num_lidars
         self._is_last_lidar_sm_diag_enabled = False
 
         result: tuple[ResultDiagnosis, ResultDiagnosis] = self._ser.state_errors_D[
@@ -390,6 +396,23 @@ class AppManagerProcess(ProcessBase):
             self._sec.CAN_ex.is_received_enabled.value
         )
 
+    def _imu_healthy_check(self, now: float) -> None:
+        for i in range(self._num_lidars):
+            is_enabled = bool(self._sec.IMU_ex[i].is_heartbeat_enabled.value)
+            if is_enabled:
+                diagnosis = self._ser.state_errors_A_C[
+                    StateErrorIndex.IMU0_CONNECTION_ERROR + i
+                ]
+                if self._is_last_imu_diag_enabled[i] is False:
+                    diagnosis.clear()
+                result = diagnosis.errors_diagnosis(
+                    now, self._sec.IMU_ex[i].last_heartbeat.value
+                )
+                diagnosis.log_output(
+                    *result, StateErrorIndex.IMU0_CONNECTION_ERROR + i, i
+                )
+            self._is_last_imu_diag_enabled[i] = is_enabled
+
     def _lidar_shift_monitoring_healthy_check(self, now: float) -> None:
         if self._sec.Lidar_SM_ex.is_heartbeat_enabled.value:
             lidar_position_misalignment_not_responding = self._ser.state_errors_A_C[
@@ -416,6 +439,7 @@ class AppManagerProcess(ProcessBase):
         now: float = time.perf_counter()
         self._camera_healthy_check(now)
         self._can_healthy_check(now)
+        self._imu_healthy_check(now)
         self._lidar_shift_monitoring_healthy_check(now)
 
     def _surround_monitor_modules_healthy_check(self) -> None:
