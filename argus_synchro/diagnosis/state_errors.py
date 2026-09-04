@@ -9,6 +9,7 @@ from numpy.typing import NDArray
 
 import argus_synchro.diagnosis.error_config as err_conf
 from argus_synchro.diagnosis.error_diagnosis import (
+    DiagnosisRuntimePolicy,
     StateErrorDiagnosisA,
     StateErrorDiagnosisB,
     StateErrorDiagnosisC,
@@ -27,8 +28,8 @@ def _sensor_index(args: tuple[object, ...]) -> int:
 class LidarNConnectionErrorDiagnosis(StateErrorDiagnosisA):
     """LIDARX_CONNECTION_ERROR: LidarX接続エラー"""
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, runtime_policy: DiagnosisRuntimePolicy | None = None) -> None:
+        super().__init__(runtime_policy)
         self.param: err_conf.LidarNConnectionErrorParameters
         self.clear()
 
@@ -50,6 +51,9 @@ class LidarNConnectionErrorDiagnosis(StateErrorDiagnosisA):
 
     def detect_error(self, *args: object) -> bool:
         now, last_heartbeat = self._parse_args(*args)
+        # メンテナンスモード中は対象機器の停止を新規検出しない。
+        if self.is_suppressed_in_maintenance:
+            return False
         if (
             self._previous_heartbeat is None
             or self._previous_heartbeat < 0.0
@@ -296,8 +300,8 @@ class CameraNConnectionErrorDiagnosis(StateErrorDiagnosisB):
 class CanConnectionErrorDiagnosis(StateErrorDiagnosisA):
     """CAN_CONNECTION_ERROR: CAN接続エラー"""
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, runtime_policy: DiagnosisRuntimePolicy | None = None) -> None:
+        super().__init__(runtime_policy)
         self._previous_heartbeat: float | None = None
         self._recovery_prev_timestamp = 0.0
         self._fail_safe_prev_timestamp = 0.0
@@ -337,6 +341,9 @@ class CanConnectionErrorDiagnosis(StateErrorDiagnosisA):
         最後の取得時刻が、現在から規定秒より前の場合にエラー(True)。
         """
         now, last_heartbeat = self._parse_args(*args)
+        # メンテナンスモード中は対象機器の停止を新規検出しない。
+        if self.is_suppressed_in_maintenance:
+            return False
         if self._previous_heartbeat is None or last_heartbeat < 0.0:
             self._previous_heartbeat = last_heartbeat
             return False
@@ -1142,8 +1149,8 @@ class CameraNInvalidDataDiagnosis(StateErrorDiagnosisB):
 class YawAngleInfoErrorDiagnosis(StateErrorDiagnosisA):
     """YAW_ANGLE_INFO_ERROR: 旋回角情報エラー"""
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, runtime_policy: DiagnosisRuntimePolicy | None = None) -> None:
+        super().__init__(runtime_policy)
         self._initial_diagnosis_time: float | None = None
         self._last_received_time: float | None = None
         self._error_receive_recovery_start_time: float | None = None
@@ -1174,6 +1181,9 @@ class YawAngleInfoErrorDiagnosis(StateErrorDiagnosisA):
 
     def detect_error(self, *args: object) -> bool:
         timestamp, now = self._parse_args(*args)
+        # メンテナンスモード中は旋回角異常を新規検出しない。
+        if self.is_suppressed_in_maintenance:
+            return False
 
         if self._initial_diagnosis_time is None:
             self._initial_diagnosis_time = now
@@ -2423,8 +2433,8 @@ class GpuPerformanceDegradedDiagnosis(StateErrorDiagnosisC):
 class MonitorProcessNotRespondingDiagnosis(StateErrorDiagnosisA):
     """MONITOR_PROCESS_NOT_RESPONDING: Monitorプロセス未応答"""
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, runtime_policy: DiagnosisRuntimePolicy | None = None) -> None:
+        super().__init__(runtime_policy)
         self._previous_heartbeat: float | None = None
         self._last_time: float | None = None
         self._heartbeat_tolerance_sec: float = 0.1
@@ -2457,6 +2467,9 @@ class MonitorProcessNotRespondingDiagnosis(StateErrorDiagnosisA):
         最後の取得時刻が、現在から規定秒より前の場合にエラー(True)。
         """
         now, last_heartbeat = self._parse_args(*args)
+        # メンテナンスモード中は監視プロセス停止を新規検出しない。
+        if self.is_suppressed_in_maintenance:
+            return False
         previous_heartbeat = self._previous_heartbeat
 
         is_stale = False
@@ -2533,8 +2546,8 @@ class StatusInfoNotUpdatedDiagnosis(StateErrorDiagnosisA):
 class SurroundMonitorModuleNotRespondingDiagnosis(StateErrorDiagnosisA):
     """SURROUND_MONITOR_MODULE_NOT_RESPONDING: 周辺監視モジュール 未応答"""
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, runtime_policy: DiagnosisRuntimePolicy | None = None) -> None:
+        super().__init__(runtime_policy)
         self._last_max_elapsed_sec: float = 0.0
         self.param: err_conf.SurroundMonitorModuleNotRespondingParameters
 
@@ -2565,7 +2578,11 @@ class SurroundMonitorModuleNotRespondingDiagnosis(StateErrorDiagnosisA):
         self.is_enabled = self.param.is_enabled
 
     def detect_error(self, *args: object) -> bool:
-        if self._evaluate_elapsed(*args):
+        is_any_not_responding = self._evaluate_elapsed(*args)
+        # メンテナンスモード中は周辺監視モジュール停止を新規検出しない。
+        if self.is_suppressed_in_maintenance:
+            return False
+        if is_any_not_responding:
             self.is_error.value = True
             self.is_fail_safe.value = True
             return True
@@ -2734,8 +2751,8 @@ class LidarPositionMisalignmentNotRespondingDiagnosis(StateErrorDiagnosisB):
 class ApplicationManagerNotRespondingDiagnosis(StateErrorDiagnosisA):
     """APPLICATION_MANAGER_NOT_RESPONDING: アプリケーションマネージャー未応答"""
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, runtime_policy: DiagnosisRuntimePolicy | None = None) -> None:
+        super().__init__(runtime_policy)
         self._previous_heartbeat: float | None = None
         self._last_time: float | None = None
         self._heartbeat_tolerance_sec: float = 0.01
@@ -2759,8 +2776,11 @@ class ApplicationManagerNotRespondingDiagnosis(StateErrorDiagnosisA):
 
     def detect_error(self, *args: object) -> bool:
         now, last_heartbeat = self._parse_args(*args)
-        previous_heartbeat = self._previous_heartbeat
         self._detected_in_current_cycle = False
+        # メンテナンスモード中はAppManager停止を新規検出しない。
+        if self.is_suppressed_in_maintenance:
+            return False
+        previous_heartbeat = self._previous_heartbeat
 
         if last_heartbeat is None or last_heartbeat <= 0.0:
             is_stale = True

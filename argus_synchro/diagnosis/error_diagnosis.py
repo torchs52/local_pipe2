@@ -9,6 +9,24 @@ from argus_synchro.diagnosis.error_config import ErrorConfig
 from argus_synchro.shared_data import create_shared_single_data
 
 
+class DiagnosisRuntimePolicy:
+    """診断のメンテナンスモード制御をプロセス間で共有する。
+
+    ``in_factory`` は既存設定キー名だが、工場と市場でのサービス作業を含む
+    製品仕様上の正式名称は「メンテナンスモード」である。
+    """
+
+    def __init__(self, *, in_factory: bool = False) -> None:
+        self._in_factory: Synchronized[bool] = create_shared_single_data(in_factory)
+
+    @property
+    def in_factory(self) -> bool:
+        return bool(self._in_factory.value)
+
+    def update_in_factory(self, in_factory: bool) -> None:
+        self._in_factory.value = in_factory
+
+
 class ResultDiagnosis(IntEnum):
     """
     診断結果
@@ -34,10 +52,16 @@ class ResultDiagnosis(IntEnum):
 
 
 class StateErrorDiagnosisBase(ABC):
-    def __init__(self) -> None:
+    def __init__(self, runtime_policy: DiagnosisRuntimePolicy | None = None) -> None:
         super().__init__()
         self._logger: AppLogger = AppLoggerFactory.from_type(self.__class__)
         self.is_enabled: bool = False
+        self._runtime_policy = runtime_policy
+
+    @property
+    def is_suppressed_in_maintenance(self) -> bool:
+        """メンテナンスモード中に対象診断の新規検出を抑制する。"""
+        return self._runtime_policy is not None and self._runtime_policy.in_factory
 
     @abstractmethod
     def excepts_diagnosis(self, e: Exception) -> bool:
@@ -106,8 +130,8 @@ class StateErrorDiagnosisBase(ABC):
 
 
 class StateErrorDiagnosisA(StateErrorDiagnosisBase):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, runtime_policy: DiagnosisRuntimePolicy | None = None) -> None:
+        super().__init__(runtime_policy)
         self.is_error: Synchronized[bool] = create_shared_single_data(False)
         """
         エラーフラグ
@@ -364,9 +388,10 @@ class StateErrorDiagnosisD(StateErrorDiagnosisBase):
 
 
 class ActionErrorDiagnosisBase(ABC):
-    def __init__(self) -> None:
+    def __init__(self, runtime_policy: DiagnosisRuntimePolicy | None = None) -> None:
         super().__init__()
         self._logger: AppLogger = AppLoggerFactory.from_type(self.__class__)
+        self._runtime_policy = runtime_policy
         self.is_enabled: bool = False
         self.err_cnt: Synchronized[int] = create_shared_single_data(0)
         """
@@ -378,6 +403,11 @@ class ActionErrorDiagnosisBase(ABC):
         """
         self.diag_param: dict[str, object] = {}
         self.is_enabled: bool = False
+
+    @property
+    def is_suppressed_in_maintenance(self) -> bool:
+        """メンテナンスモード中に対象診断の新規検出を抑制する。"""
+        return self._runtime_policy is not None and self._runtime_policy.in_factory
 
     @abstractmethod
     def detect_error(self, *args: object) -> bool:
@@ -467,8 +497,8 @@ class ActionErrorDiagnosisBase(ABC):
 
 
 class ActionErrorDiagnosisA(ActionErrorDiagnosisBase):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, runtime_policy: DiagnosisRuntimePolicy | None = None) -> None:
+        super().__init__(runtime_policy)
         self.is_idle: Synchronized[bool] = create_shared_single_data(False)
         """
         アイドル状態フラグ

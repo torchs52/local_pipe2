@@ -105,6 +105,10 @@ class AppManagerProcess(ProcessBase):
     def _config_load(self) -> None:
         self._app_config: AppConfig = self._sac.read()
         self._last_updated = self._sac.last_updated
+        # 設定再読込時も共有メンテナンスモード状態を更新する。
+        self._ser.diagnosis_runtime_policy.update_in_factory(
+            self._app_config.General.in_factory
+        )
 
         # ログ取得時は1を設定.(default: 0)
         self._logmode = self._app_config.AppManager.logmode

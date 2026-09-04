@@ -1023,6 +1023,10 @@ def load_config(
 
             sac = SharedAppConfig(directory_config)
             app_config: AppConfig = sac.read()
+            # in_factoryはメンテナンスモードを表す既存設定キー。
+            ser.diagnosis_runtime_policy.update_in_factory(
+                app_config.General.in_factory
+            )
             sec = SharedExcepts(app_config=app_config, app_manager_ex=ser.AppMan_ex)
 
             sensor_calib_diagnosis = ser.action_errors_A_C[

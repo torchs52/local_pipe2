@@ -18,6 +18,7 @@ from argus_synchro.diagnosis.action_errors import (
     SensorCalibDataInvalidDiagnosis,
 )
 from argus_synchro.diagnosis.error_config import ErrorConfig
+from argus_synchro.diagnosis.error_diagnosis import DiagnosisRuntimePolicy
 from argus_synchro.shared_errors import ActionErrorIndex
 
 
@@ -124,8 +125,10 @@ def test_load_config_dispatches_target_exception_to_diagnosis(monkeypatch) -> No
         },
         AppMan_ex=app_manager_ex,
         shared_err_conf=SimpleNamespace(read=ErrorConfig),
+        diagnosis_runtime_policy=DiagnosisRuntimePolicy(in_factory=True),
     )
     app_config = SimpleNamespace(
+        General=SimpleNamespace(in_factory=False),
         calibration=SimpleNamespace(BothLidars="", Lidar_calib_files=[])
     )
     shared_app_config = MagicMock()
@@ -168,6 +171,7 @@ def test_load_config_dispatches_target_exception_to_diagnosis(monkeypatch) -> No
         shared_calibration,
     )
     assert diagnosis.err_cnt.value == 1
+    assert shared_errors.diagnosis_runtime_policy.in_factory is False
     diagnosis._logger.error.assert_called_once_with(
         "CE005: CONFIG_FILE_MISSING: FileNotFoundError: settings.ini",
         exc_info=True,
@@ -192,8 +196,10 @@ def test_load_config_reports_ce006_without_ce005_retry(
         },
         AppMan_ex=object(),
         shared_err_conf=SimpleNamespace(read=ErrorConfig),
+        diagnosis_runtime_policy=DiagnosisRuntimePolicy(),
     )
     app_config = SimpleNamespace(
+        General=SimpleNamespace(in_factory=True),
         calibration=SimpleNamespace(
             BothLidars=str(tmp_path / "missing_both.csv"),
             Lidar_calib_files=[str(tmp_path / "missing_lidar0.csv")],
@@ -237,5 +243,6 @@ def test_load_config_reports_ce006_without_ce005_retry(
     )
     assert sensor_calib_diagnosis.err_cnt.value == 1
     assert config_diagnosis.err_cnt.value == 0
+    assert shared_errors.diagnosis_runtime_policy.in_factory is True
     sensor_calib_diagnosis._logger.error.assert_called_once()
     profile_handler.apply_model_specific_config.assert_called_once()

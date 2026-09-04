@@ -18,6 +18,7 @@ from argus_synchro.diagnosis.error_diagnosis import (
     ActionErrorDiagnosisA,
     ActionErrorDiagnosisB,
     ActionErrorDiagnosisC,
+    DiagnosisRuntimePolicy,
 )
 from argus_synchro.diagnosis.lidar_calib_validator import (
     LidarCalibValidationIssue,
@@ -29,8 +30,8 @@ from argus_synchro.shared_excepts import SharedLidarShiftMonitorExcept
 class LidarPositionMisalignmentDetectedDiagnosis(ActionErrorDiagnosisA):
     """LIDAR_POSITION_MISALIGNMENT_DETECTED: LiDAR位置ズレ検出"""
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, runtime_policy: DiagnosisRuntimePolicy | None = None) -> None:
+        super().__init__(runtime_policy)
 
     def update(self, err_conf: err_conf.ErrorConfig) -> None:
         self.param: err_conf.LidarPositionMisalignmentDetectedParameters = (
@@ -53,6 +54,9 @@ class LidarPositionMisalignmentDetectedDiagnosis(ActionErrorDiagnosisA):
 
     def detect_error(self, *args: object) -> bool:
         sec_lidar_sm: SharedLidarShiftMonitorExcept = self._parse_args(*args)
+        # サービス作業中は位置ずれを新規エラーとして扱わない。
+        if self.is_suppressed_in_maintenance:
+            return False
         if sec_lidar_sm.has_not_calibrated:
             # NOTE: 校正未実施フラグが立っている場合は、LiDAR位置ズレ検出の診断を行わない
             return False
@@ -88,8 +92,8 @@ class LidarPositionMisalignmentDetectedDiagnosis(ActionErrorDiagnosisA):
 class SensorCalibrationRequiredDiagnosis(ActionErrorDiagnosisA):
     """SENSOR_CALIBRATION_REQUIRED: 要センサ校正"""
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, runtime_policy: DiagnosisRuntimePolicy | None = None) -> None:
+        super().__init__(runtime_policy)
         self._last_detect_error_pid: int = 0
         self._last_detect_recovery_fail_safe_pid: int = 0
 
@@ -121,6 +125,9 @@ class SensorCalibrationRequiredDiagnosis(ActionErrorDiagnosisA):
         # NOTE: この診断はプロセス起動毎に1回のみ行う
 
         sec_lidar_sm, pid = self._parse_args(*args)
+        # サービス作業中は校正要求を新規エラーとして扱わない。
+        if self.is_suppressed_in_maintenance:
+            return False
         if pid == self._last_detect_error_pid:
             return False
         self._last_detect_error_pid = pid
@@ -454,24 +461,27 @@ class MmapReadWriteErrorDiagnosis(ActionErrorDiagnosisB):
 class RebootLoopDetectedDiagnosis(ActionErrorDiagnosisA):
     """REBOOT_LOOP_DETECTED: 再起動ループ検出"""
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, runtime_policy: DiagnosisRuntimePolicy | None = None) -> None:
+        super().__init__(runtime_policy)
         self.param: err_conf.RebootLoopDetectedParameters
 
-    def update(self, error_config: err_conf.ErrorConfig) -> None:
-        self.param = error_config.reboot_loop_detected
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.reboot_loop_detected
         self.is_enabled = self.param.is_enabled
 
     def _parse_args(self, *args: object) -> list[float]:
         if len(args) != 1 or not isinstance(args[0], list):
             raise ValueError("args must be (boot_times,)")
-        boot_times = args[0]
+        boot_times = cast(list[object], args[0])
         if not all(isinstance(boot_time, float) for boot_time in boot_times):
             raise ValueError("boot_times must be list[float]")
-        return boot_times
+        return cast(list[float], boot_times)
 
     def detect_error(self, *args: object) -> bool:
         boot_times = self._parse_args(*args)
+        # メンテナンス作業に伴う再起動は新規エラーとして扱わない。
+        if self.is_suppressed_in_maintenance:
+            return False
         if len(boot_times) < self.param.required_boot_count:
             return False
         # 直近N回の起動がW秒以内なら再起動ループとする。Nは初回起動を含む起動記録数。

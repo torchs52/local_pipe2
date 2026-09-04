@@ -25,6 +25,7 @@ from argus_synchro.diagnosis.error_diagnosis import (
     ActionErrorDiagnosisA,
     ActionErrorDiagnosisB,
     ActionErrorDiagnosisC,
+    DiagnosisRuntimePolicy,
     ResultDiagnosis,
     StateErrorDiagnosisA,
     StateErrorDiagnosisD,
@@ -349,6 +350,8 @@ class SharedErrors:
         self.ErrMoni_ex = SharedErrorMonitorExcept()  # エラー監視機能例外処理フラグ
         self.AppMan_ex = SharedAppManagerExcept()  # AppManager診断用heartbeat
         self.reduced_load_mode: ReducedLoadMode = ReducedLoadMode()  # 負荷低減モード
+        # 全processで同じメンテナンスモード状態を参照する。
+        self.diagnosis_runtime_policy = DiagnosisRuntimePolicy()
         self.shared_err_conf = SharedErrorConfig(
             err_conf_path
         )  # エラー設定ファイルの共有メモリ
@@ -363,13 +366,13 @@ class SharedErrors:
         self.state_errors_A_C: tuple[
             StateErrorDiagnosisA | StateErrorDiagnosisB | StateErrorDiagnosisC, ...
         ] = (
-            LidarNConnectionErrorDiagnosis(),  # LIDAR0_CONNECTION_ERROR  # Lidar0接続エラー
-            LidarNConnectionErrorDiagnosis(),  # LIDAR1_CONNECTION_ERROR  # Lidar1接続エラー
+            LidarNConnectionErrorDiagnosis(self.diagnosis_runtime_policy),  # LIDAR0_CONNECTION_ERROR  # Lidar0接続エラー
+            LidarNConnectionErrorDiagnosis(self.diagnosis_runtime_policy),  # LIDAR1_CONNECTION_ERROR  # Lidar1接続エラー
             CameraNConnectionErrorDiagnosis(),  # CAMERA0_CONNECTION_ERROR  # カメラ0接続エラー
             CameraNConnectionErrorDiagnosis(),  # CAMERA1_CONNECTION_ERROR  # カメラ1接続エラー
             CameraNConnectionErrorDiagnosis(),  # CAMERA2_CONNECTION_ERROR  # カメラ2接続エラー
             CameraNConnectionErrorDiagnosis(),  # CAMERA3_CONNECTION_ERROR  # カメラ3接続エラー
-            CanConnectionErrorDiagnosis(),  # CAN_CONNECTION_ERROR  # CAN接続エラー
+            CanConnectionErrorDiagnosis(self.diagnosis_runtime_policy),  # CAN_CONNECTION_ERROR  # CAN接続エラー
             LidarNCommQualityDegradedDiagnosis(),  # LIDAR0_COMM_QUALITY_DEGRADED  # Lidar0通信品質低下
             LidarNCommQualityDegradedDiagnosis(),  # LIDAR1_COMM_QUALITY_DEGRADED  # Lidar1通信品質低下
             CameraNCommQualityDegradedDiagnosis(),  # CAMERA0_COMM_QUALITY_DEGRADED  # カメラ0通信品質低下
@@ -388,7 +391,7 @@ class SharedErrors:
             CameraNInvalidDataDiagnosis(),  # CAMERA1_INVALID_DATA  # カメラ1データ不正
             CameraNInvalidDataDiagnosis(),  # CAMERA2_INVALID_DATA  # カメラ2データ不正
             CameraNInvalidDataDiagnosis(),  # CAMERA3_INVALID_DATA  # カメラ3データ不正
-            YawAngleInfoErrorDiagnosis(),  # YAW_ANGLE_INFO_ERROR  # 旋回角情報エラー
+            YawAngleInfoErrorDiagnosis(self.diagnosis_runtime_policy),  # YAW_ANGLE_INFO_ERROR  # 旋回角情報エラー
             CanCommQualityDegradedDiagnosis(),  # CAN_COMM_QUALITY_DEGRADED  # CAN通信品質低下
             CanCommQualityErrorDiagnosis(),  # CAN_COMM_QUALITY_ERROR  # CAN通信品質エラー
             CanInvalidDataDiagnosis(),  # CAN_INVALID_DATA_DIAGNOSIS  # CANデータ不正
@@ -397,11 +400,11 @@ class SharedErrors:
             ProcessingSpeedDegradationTrendDiagnosis(),  # PROCESSING_SPEED_DEGRADATION_TREND  # 処理速度低下トレンド
             OutOfMemoryDiagnosis(),  # OUT_OF_MEMORY  # メモリ不足
             GpuPerformanceDegradedDiagnosis(),  # GPU_PERFORMANCE_DEGRADED  # GPU性能低下
-            MonitorProcessNotRespondingDiagnosis(),  # MONITOR_PROCESS_NOT_RESPONDING  # Monitorプロセス未応答
+            MonitorProcessNotRespondingDiagnosis(self.diagnosis_runtime_policy),  # MONITOR_PROCESS_NOT_RESPONDING  # Monitorプロセス未応答
             StatusInfoNotUpdatedDiagnosis(),  # STATUS_INFO_NOT_UPDATED  # ステータス情報　未更新
-            SurroundMonitorModuleNotRespondingDiagnosis(),  # SURROUND_MONITOR_MODULE_NOT_RESPONDING  # 周辺監視モジュール 未応答
+            SurroundMonitorModuleNotRespondingDiagnosis(self.diagnosis_runtime_policy),  # SURROUND_MONITOR_MODULE_NOT_RESPONDING  # 周辺監視モジュール 未応答
             LidarPositionMisalignmentNotRespondingDiagnosis(),  # LIDAR_POSITION_MISALIGNMENT_NOT_RESPONDING  # Lidar位置ズレ検出 未応答
-            ApplicationManagerNotRespondingDiagnosis(),  # APPLICATION_MANAGER_NOT_RESPONDING  # アプリケーションマネージャー未応答
+            ApplicationManagerNotRespondingDiagnosis(self.diagnosis_runtime_policy),  # APPLICATION_MANAGER_NOT_RESPONDING  # アプリケーションマネージャー未応答
             ImuNConnectionErrorDiagnosis(),  # IMU0_CONNECTION_ERROR  # imu0接続エラー
             ImuNConnectionErrorDiagnosis(),  # IMU1_CONNECTION_ERROR  # imu1接続エラー
             LogOutputStoppedDiagnosis(),  # LOG_OUTPUT_STOPPED  # ログ出力停止
@@ -476,8 +479,8 @@ class SharedErrors:
         self.action_errors_A_C: tuple[
             ActionErrorDiagnosisA | ActionErrorDiagnosisB | ActionErrorDiagnosisC, ...
         ] = (
-            LidarPositionMisalignmentDetectedDiagnosis(),  # LIDAR_POSITION_MISALIGNMENT_DETECTED  # LiDAR位置ズレ検出
-            SensorCalibrationRequiredDiagnosis(),  # SENSOR_CALIBRATION_REQUIRED  # 要センサ校正
+            LidarPositionMisalignmentDetectedDiagnosis(self.diagnosis_runtime_policy),  # LIDAR_POSITION_MISALIGNMENT_DETECTED  # LiDAR位置ズレ検出
+            SensorCalibrationRequiredDiagnosis(self.diagnosis_runtime_policy),  # SENSOR_CALIBRATION_REQUIRED  # 要センサ校正
             ModelInfoMismatchDiagnosis(),  # MODEL_INFO_MISMATCH  # 機種情報不一致
             CraneModelFileMissingDiagnosis(),  # CRANE_MODEL_FILE_MISSING  # 機体モデルファイル欠損/破損
             ConfigFileMissingDiagnosis(),  # CONFIG_FILE_MISSING  # 設定ファイル欠損/破損
@@ -487,7 +490,7 @@ class SharedErrors:
             CameraXCalibDataInvalidDiagnosis(),  # CAMERA2_CALIB_DATA_INVALID  # カメラ2校正データ不正
             CameraXCalibDataInvalidDiagnosis(),  # CAMERA3_CALIB_DATA_INVALID  # カメラ3校正データ不正
             MmapReadWriteErrorDiagnosis(),  # MMAP_READ_WRITE_ERROR  # MMAP read/writeエラー
-            RebootLoopDetectedDiagnosis(),  # REBOOT_LOOP_DETECTED  # 再起動ループ検出
+            RebootLoopDetectedDiagnosis(self.diagnosis_runtime_policy),  # REBOOT_LOOP_DETECTED  # 再起動ループ検出
             AiModelLoadFailed(),  # AI_MODEL_LOAD_FAILED  # AIモデルロード失敗/破損
             OperationModeTransitionErrorDiagnosis(),  # OPERATION_MODE_TRANSITION_ERROR  # 動作モード遷移エラー
             LogFileIoErrorDiagnosis(),  # LOG_FILE_IO_ERROR  # ログファイルI/Oエラー

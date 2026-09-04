@@ -132,6 +132,14 @@ SHI担当エラーについては、SHI側の完成した判定ロジック、�
 - MonitorArgus heartbeatファイルとAppManager診断: `time.perf_counter()`
 - StatusMMAP鮮度、process停止deadline、ログ継続時間、tegrastats無出力timeout: `time.monotonic()`
 
+### 2.6 メンテナンスモードに限定した採用方針
+
+この節は統合全体の方針変更ではなく、メンテナンスモードの実装だけに適用する例外方針である。メンテナンスモードは工場出荷時だけでなく、市場でのサービス作業中にも使用する製品仕様上の正式名称である。2.1のvendorアーキテクチャ優先、`docs/error_list.txt`の実装分担、機能単位で移植する原則は引き続き維持する。
+
+SHI側の`in_factory`を使った制御は、工場出荷時またはサービス作業中に一部の重要度Aエラーが発生することを抑止するための必須要件として採用する。この要件を成立させるために必要な範囲では、SHI担当エラーだけでなくvendor担当エラーにも最小限の編集を加える。ソース構造や記述方法をSHI実装と一致させることは目的とせず、vendorの所有境界と制御方式へ適合させる。
+
+M-039で現行SHIの参照箇所を確認し、CE001、CE002、CE012、SE001/SE002、SE007、SE026、SE035、SE037、SE039だけを抑制対象とした。SE039は重要度BだがSHIで明示されているため対象に含む。メンテナンスモード中は新規検出とcounter・状態更新を抑制し、切替時に既存エラー状態を強制clearせず通常の復帰条件へ委ねる。重要度A全体への自動適用は行わない。
+
 ## 3. 最初に扱う領域: ファイルI/Oエラー
 
 SHI側では多くのファイル読取箇所へエラー処理が追加されている。変更は複数process、校正処理、logger、起動処理へ広がっており、ファイル単位・コミット単位の採用には向かない。
@@ -351,6 +359,7 @@ SHI側だけで確認されたテスト:
 | M-036 | SE014・SE015 LiDAR通信品質エラー | 現行SHI / `docs/error_list.txt` | manual-port | verified | state diagnosis/AppManager/tests | SE008/009 ONを30秒確認して検出し、OFFを30秒/60秒確認してerror/failsafe復帰する |
 | M-037 | SE020・SE021 LiDARデータ不正 | 現行SHI / `docs/error_list.txt` | manual-port | verified | MID360 provider/shared/Points/AppManager/state diagnosis/tests | filter前のXYZ原点点割合70%以上を3秒確認して検出し、30%未満を3秒/5秒確認してerror/failsafe復帰する |
 | M-038 | CE006 センサ校正データ不正（基本健全性） | 現行SHI / `docs/error_list.txt` | manual-port | verified | action diagnosis/validator/load_config/tests | CSVの存在・読込・4x4形状・有限値を起動時に検査。参照差分・校正生成結果判定はM-005と一緒に保留する |
+| M-039 | メンテナンスモード中の指定エラー抑制 | 現行SHI `in_factory` / ユーザー要件 | manual-port | verified | runtime policy/対象診断/AppManager・起動経路/tests | SHI指定のCE001/002/012、SE001/002/007/026/035/037/039だけを抑制し、重要度A全体へは適用しない |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -756,6 +765,15 @@ SHI側だけで確認されたテスト:
 - 設定には`check_lidar2lidar`、`check_lidar2crane`、`enforce_shape_4x4`、`finite_value_only`だけを追加した。SHIの参照差分parameter、並進・回転・XY変位判定、3D-3D校正生成直後の検証は追加しておらず、M-005の採用方針決定まで保留する。
 - `tests/test_sensor_calib_data_invalid.py`と`tests/test_config_file_missing.py`で正常4x4、全対象欠損、解析不能、不正形状、NaN、無効化、全件検査、counter、CE006ログ、CE005非計上、起動継続を確認した。CE006専用・起動統合は26 passed、共有設定は3 passed。新規箇所のVS Code診断なし、残る`action_errors.py`の診断は既存CE012箇所だけである。
 - `test_detect2d.py`を除く全体回帰は275 passed、7 xfailed、通常失敗0件。
+
+### 2026-09-04 M-039実施記録
+
+- 現行SHIの`is_suppressed_in_maintenance`参照箇所を確認し、CE001 LiDAR位置ずれ、CE002 要センサ校正、CE012 再起動ループ、SE001/SE002 LiDAR接続、SE007 CAN接続、SE026 旋回角情報、SE035 Monitor未応答、SE037 周辺監視module未応答、SE039 AppManager未応答へ限定して移植した。SE039は重要度BだがSHIの明示対象であるため含めた。
+- `DiagnosisRuntimePolicy`がmultiprocessing共有値として`in_factory`を保持し、`SharedErrors`が単一instanceを所有して対象診断へ明示注入する。対象外診断へ自動適用せず、重要度A全体を一律抑止しない。
+- 対象診断はメンテナンスモード中の新規検出を`False`とし、counter、error、failsafe、idleを更新しない。メンテナンスモードへの切替時に検出済み状態を強制clearする処理は追加せず、SHIと同じく既存状態は通常の復帰条件へ委ねる。
+- 起動時は`load_config()`が`General.in_factory`を共有policyへ反映し、実行中の設定再読込時はAppManagerの`_config_load()`が同じ共有値を更新する。診断instanceを再生成せず切替が反映される。
+- `tests/test_maintenance_mode_error_suppression.py`で対象10診断instanceの抑制、counter・状態非更新、通常モードへの動的切替、対象外への非注入、AppManager再読込を確認し12 passed。`tests/test_config_file_missing.py`で起動時同期を含め21 passed。変更箇所の`compileall`は成功し、新規policy、基底、状態診断、共有登録、起動、テストにVS Code診断はない。
+- `test_detect2d.py`を除く全体回帰は287 passed、7 xfailed、通常失敗0件。
 
 ## 10. 次のCopilotへの開始指示
 
