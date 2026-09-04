@@ -137,6 +137,9 @@ class AppManagerProcess(ProcessBase):
                 StateErrorIndex.LIDAR0_CONNECTION_ERROR + i
             ].update(self._err_config)
             self._ser.state_errors_A_C[
+                StateErrorIndex.LIDAR0_COMM_QUALITY_DEGRADED + i
+            ].update(self._err_config)
+            self._ser.state_errors_A_C[
                 StateErrorIndex.IMU0_CONNECTION_ERROR + i
             ].update(self._err_config)
         self._ser.state_errors_A_C[StateErrorIndex.CAN_CONNECTION_ERROR].update(
@@ -434,6 +437,18 @@ class AppManagerProcess(ProcessBase):
                 diagnosis.log_output(
                     *result, StateErrorIndex.LIDAR0_CONNECTION_ERROR + i, i
                 )
+                if not bool(diagnosis.is_error.value):
+                    quality_diagnosis = self._ser.state_errors_A_C[
+                        StateErrorIndex.LIDAR0_COMM_QUALITY_DEGRADED + i
+                    ]
+                    quality_result = quality_diagnosis.errors_diagnosis(
+                        now, self._sec.LiDAR_ex[i].last_quality_degraded.value
+                    )
+                    quality_diagnosis.log_output(
+                        *quality_result,
+                        StateErrorIndex.LIDAR0_COMM_QUALITY_DEGRADED + i,
+                        i,
+                    )
             self._is_last_lidar_diag_enabled[i] = is_enabled
 
     def _lidar_shift_monitoring_healthy_check(self, now: float) -> None:

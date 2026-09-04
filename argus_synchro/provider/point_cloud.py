@@ -388,6 +388,10 @@ class CalibMid360PointCloudProvider(PointCloudProvider):
         self._device: MID360Points = device
         self.LidarConfig = lidarconfig
 
+    @property
+    def last_quality_degraded(self) -> float:
+        return self._device.last_quality_degraded
+
     def get_points(self) -> tuple[NDArray[np.float64], float] | None:
         try:
             points, ts = self._device.get_points()
@@ -441,6 +445,10 @@ class CalibMid360PointCloudProvider(PointCloudProvider):
 class Mid360PointCloudProvider(PointCloudProvider):
     def __init__(self, device: MID360Points) -> None:
         self._device: MID360Points = device
+
+    @property
+    def last_quality_degraded(self) -> float:
+        return self._device.last_quality_degraded
 
     def get_points(self) -> tuple[NDArray[np.float64], float] | None:
         try:

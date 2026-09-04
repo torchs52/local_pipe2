@@ -347,6 +347,7 @@ SHI側だけで確認されたテスト:
 | M-032 | SE040・SE041 IMU接続エラー | 現行SHI / `docs/error_list.txt` | manual-port | verified | state diagnosis/shared heartbeat/IMU/AppManager/tests | 実データheartbeatを5秒監視し、1秒以内の連続受信を5秒確認して復帰する |
 | M-033 | SE001・SE002 LiDAR接続エラー | 現行SHI / `docs/error_list.txt` | manual-port | verified | state diagnosis/Points/AppManager/tests | 実点群heartbeatを5秒監視し、1秒以内の連続受信を5秒確認して復帰する |
 | M-034 | 死活・経過時間クロック監査 | vendor通常運転経路 | vendor-keep | verified | sensor/process heartbeat/StatusMMAP/停止deadline/tests | 絶対時刻依存を除去し、書込側と比較側のclock APIを統一する |
+| M-035 | SE008・SE009 LiDAR通信品質低下 | 現行SHI / `docs/error_list.txt` | manual-port | verified | MID360 device/provider/shared/Points/AppManager/state diagnosis/tests | packet連番欠落・点数低下イベントの3秒継続で検出し、正常5秒で復帰する |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -704,6 +705,16 @@ SHI側だけで確認されたテスト:
 - `tests/test_status_mmap.py` ではwall clockを未来・過去へ大幅に変更しても鮮度判定がmonotonic経過だけに従うことを確認した。`tests/test_elapsed_time_clocks.py` ではprocess停止待ちとtegrastats timeoutのmonotonic利用を確認する。
 - クロック専用・接続診断テストは19 passed、AppManager・ErrorMonitor・ProcessManagerを含む関連テストは58 passed。変更箇所のVS Code診断なし、`compileall` と `git diff --check` は成功した。
 - `test_detect2d.py` を除く全体回帰は240 passed、7 xfailed、通常失敗0件。
+
+### 2026-09-04 M-035実施記録
+
+- 現行SHIのSE008/SE009を確認し、LiDAR通信品質低下をvendorへ移植した。MID360 packet headerの `udp_cnt` 欠番、または `dot_num` が設定閾値50未満の場合に品質低下イベントとする。`udp_cnt == 0` はframe境界として連番をresetし、最初のpacketは欠番判定しない。
+- MID360 deviceで最後の品質低下イベント時刻を保持し、provider、Points、`SharedLIDExcept` を経由してAppManagerへ渡す。SHIではmonotonic時刻だったが、M-034のclock契約に従い、LiDAR heartbeat・AppManager sensor診断と同じ `time.perf_counter()` へ入口と出口を統一した。OS絶対時刻の変更は判定へ影響しない。
+- 直近1秒以内に品質低下イベントがある状態を低下中とし、3秒継続でSE008/SE009のエラー・フェイルセーフを検出する。品質低下イベントがない状態を5秒継続すると復帰する。SHIのLiDAR0/1重複クラスは持ち込まず、vendorで2indexへ登録済みの共通 `LidarNCommQualityDegradedDiagnosis` と共通parameterを使用する。
+- AppManagerはSE001/SE002接続エラーがONの場合、下位診断であるSE008/SE009を評価しない。SE014/SE015通信品質エラーはSE008/SE009状態に依存する次段のため、今回接続していない。
+- packet品質観測は現行SHIと同じMID360実機経路だけに追加した。OS0128、AIRY96/192、SHI-lib、file inputは対応するpacket情報または観測propertyを持たないため、品質低下イベントを生成しない。
+- `tests/test_lidar_comm_quality_degraded.py` で連番、欠番、frame境界、点数閾値、perf_counterイベント、provider/Points伝搬、3秒検出、5秒復帰、index付きログ、SE001排他、AppManager dispatchを確認した。SE001/002・データ欠落を含む縦経路は21 passed、共有設定とPoints既存経路を含む関連テストは30 passed。変更箇所のVS Code診断なし、`compileall` と `git diff --check` は成功した。
+- `test_detect2d.py` を除く全体回帰は249 passed、7 xfailed、通常失敗0件。
 
 ## 10. 次のCopilotへの開始指示
 

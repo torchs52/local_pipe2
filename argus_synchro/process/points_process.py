@@ -276,6 +276,12 @@ class PointsProviderProcess(InputProcess[PointCloudData]):
         if pcd is None:
             return None
 
+        if hasattr(self._provider, "last_quality_degraded"):
+            self._sec_lid.last_quality_degraded.value = max(
+                self._sec_lid.last_quality_degraded.value,
+                self._provider.last_quality_degraded,  # type: ignore[attr-defined]
+            )
+
         is_connection_error = bool(
             self._ser.state_errors_A_C[
                 StateErrorIndex.LIDAR0_CONNECTION_ERROR + self._index
@@ -368,6 +374,9 @@ class PointsProviderProcess(InputProcess[PointCloudData]):
 
     def _change_device(self) -> None:
         use_shi_lib: bool = self._app_config.DEFAULT.use_shi_lib
+        dot_num_low_threshold = (
+            self._err_config.lidar_n_comm_quality_degraded.dot_num_low_threshold
+        )
 
         calib_mode: bool = bool(self._app_config.General.operation_mode == OPM.CALIB)
         if self._file_input:
@@ -445,6 +454,7 @@ class PointsProviderProcess(InputProcess[PointCloudData]):
                     self._index,
                     lidar_config,
                     self._app_logger_factory,
+                    dot_num_low_threshold,
                 )
                 self._provider = CalibMid360PointCloudProvider(
                     self._index,
@@ -464,6 +474,7 @@ class PointsProviderProcess(InputProcess[PointCloudData]):
                     self._index,
                     lidar_config,
                     self._app_logger_factory,
+                    dot_num_low_threshold,
                 )
                 self._provider = Mid360PointCloudProvider(device)
             elif lidar_name == "OS0128":

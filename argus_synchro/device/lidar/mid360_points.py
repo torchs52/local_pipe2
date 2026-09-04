@@ -1,4 +1,5 @@
 import socket
+import time
 from typing import Final
 
 import numpy as np
@@ -86,6 +87,7 @@ class MID360Points:
         index: int,
         lidar_config: dict[str, str | int],
         app_logger_factory: AppLoggerFactory,
+        dot_num_low_threshold: int = 50,
     ) -> None:
         self._logger: AppLogger = app_logger_factory.register_from_type(self.__class__)
 
@@ -100,6 +102,9 @@ class MID360Points:
         # mid360クラスを宣言したタイミングでMID360にも接続する。
         # point: 点群データ受け取り用。
         self._socket: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._prev_udp_cnt: int | None = None
+        self._last_quality_degraded = 0.0
+        self._dot_num_low_threshold: Final[int] = dot_num_low_threshold
         self.connect()
 
     def __del__(self) -> None:
@@ -174,6 +179,23 @@ class MID360Points:
             / 1e9
         )
 
+    def _check_packet_quality(self, dst_byte: bytes) -> bool:
+        dot_num = int.from_bytes(dst_byte[5:7], "little", signed=False)
+        udp_cnt = int.from_bytes(dst_byte[7:9], "little", signed=False)
+        has_issue = False
+        if udp_cnt == 0:
+            self._prev_udp_cnt = 0
+        elif self._prev_udp_cnt is not None and udp_cnt != self._prev_udp_cnt + 1:
+            has_issue = True
+        self._prev_udp_cnt = udp_cnt
+        if dot_num < self._dot_num_low_threshold:
+            has_issue = True
+        return has_issue
+
+    @property
+    def last_quality_degraded(self) -> float:
+        return self._last_quality_degraded
+
     @staticmethod
     def _get_point(
         dst_byte: bytes,
@@ -193,6 +215,9 @@ class MID360Points:
         offset: int = 14  # 1ポイント毎のバイト数
         dst_byte, _ = self._socket.recvfrom(1500)
         packet_data: list[tuple[float, float, float, int]] = []
+
+        if self._check_packet_quality(dst_byte):
+            self._last_quality_degraded = time.perf_counter()
 
         # 1フレームごとに 14*96 byteのデータが送信される(96点分).
         for i in range(96):

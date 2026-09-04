@@ -97,6 +97,11 @@ class CanConnectionErrorParameters(ErrorParameterBase):
 class LidarCommQualityDegradedParameters(ErrorParameterBase):
     """LidarN通信品質低下用パラメータ"""
 
+    dot_num_low_threshold: int = 50
+    recent_event_threshold_sec: float = 1.0
+    error_confirm_duration_sec: float = 3.0
+    recovery_confirm_duration_sec: float = 5.0
+
 
 @dataclass(frozen=False, slots=True)
 class CameraCommQualityDegradedParameters(ErrorParameterBase):

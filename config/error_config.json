@@ -21,7 +21,11 @@
         "recovery_receive_interval_sec": 1.0
     },
     "lidar_n_comm_quality_degraded": {
-        "is_enabled": true
+        "is_enabled": true,
+        "dot_num_low_threshold": 50,
+        "recent_event_threshold_sec": 1.0,
+        "error_confirm_duration_sec": 3.0,
+        "recovery_confirm_duration_sec": 5.0
     },
     "camera_n_comm_quality_degraded": {
         "is_enabled": true,
