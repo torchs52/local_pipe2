@@ -21,7 +21,12 @@ from argus_synchro.profiler import log_main, log_target
 from argus_synchro.profiler.prof_fps import ProfFps
 from argus_synchro.profiler.prof_mode import ProfCategory
 from argus_synchro.shared_app_config import SharedAppConfig
-from argus_synchro.shared_errors import ModuleErrorIndex, SharedErrors, StateErrorDIndex
+from argus_synchro.shared_errors import (
+    ActionErrorIndex,
+    ModuleErrorIndex,
+    SharedErrors,
+    StateErrorDIndex,
+)
 from argus_synchro.shared_excepts import SharedExcepts, SharedScrutinizerExcept
 
 if TYPE_CHECKING:
@@ -157,22 +162,41 @@ class ObjectDetectProcess(ProcessBase):
 
     def _apply_parameters(self) -> None:
         if self._app_config.detect2d.is_applied:
-            if self._applied_detect2d is None:
-                from argus_synchro.detect2d import Detect2dDamoYoloOnnx
+            try:
+                if self._applied_detect2d is None:
+                    from argus_synchro.detect2d import Detect2dDamoYoloOnnx
 
-                process_instance = psutil.Process(self.pid)
-                affinity_cores: list[int] = process_instance.cpu_affinity()
-                self._logger.info("damo yolo is selected")
-                self._applied_detect2d = Detect2dDamoYoloOnnx(
-                    conf_thresh=self._app_config.detect2d.conf_thresh,
-                    nms_thresh=self._app_config.detect2d.nms_thresh,
-                    onnx_model_path=self._app_config.detect2d.onnx_model_path,
-                    batch_size=self._app_config.camera.count,
-                    app_logger_factory=self._app_logger_factory,
-                    affinity_cores=affinity_cores,
-                )
-            self._detect2d = self._applied_detect2d
-            self._applied_detect2d.update(self._app_config)
+                    process_instance = psutil.Process(self.pid)
+                    affinity_cores: list[int] = process_instance.cpu_affinity()
+                    self._logger.info("damo yolo is selected")
+                    self._applied_detect2d = Detect2dDamoYoloOnnx(
+                        conf_thresh=self._app_config.detect2d.conf_thresh,
+                        nms_thresh=self._app_config.detect2d.nms_thresh,
+                        onnx_model_path=self._app_config.detect2d.onnx_model_path,
+                        batch_size=self._app_config.camera.count,
+                        app_logger_factory=self._app_logger_factory,
+                        affinity_cores=affinity_cores,
+                    )
+                self._detect2d = self._applied_detect2d
+                self._applied_detect2d.update(self._app_config)
+            except Exception as e:
+                diagnosis = self._ser.action_errors_A_C[
+                    ActionErrorIndex.AI_MODEL_LOAD_FAILED
+                ]
+                is_ce013 = diagnosis.excepts_diagnosis(e)
+
+                from argus_synchro.detect2d import NotAppliedObjDetection
+
+                self._detect2d = NotAppliedObjDetection()
+                self._applied_detect2d = None
+                if is_ce013:
+                    diagnosis.log_output(
+                        True, False, ActionErrorIndex.AI_MODEL_LOAD_FAILED, e
+                    )
+                else:
+                    self._logger.warning(
+                        f"AI model initialization warning (ignored): {e!r}"
+                    )
         else:
             from argus_synchro.detect2d import NotAppliedObjDetection
 

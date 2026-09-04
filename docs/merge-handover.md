@@ -323,6 +323,7 @@ SHI側だけで確認されたテスト:
 | M-019 | Dレベルモニタ接続エラー | `docs/error_list.txt` | decision-needed | deferred | なし | SHI側も未実装のためスキップ |
 | M-020 | Dレベル検知対象エラー | `docs/error_list.txt` | decision-needed | deferred | なし | SHI側も未実装のためスキップ |
 | M-021 | Dレベル連続リトライ上限超過 | `docs/error_list.txt` | decision-needed | deferred | なし | SHI側も未実装のためスキップ |
+| M-022 | CE013 AIモデルロード失敗/破損 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | action diagnosis/ObjectDetect/tests | SHIの例外分類とフォールバックを維持し、CE013ログはvendor責務分担どおり診断クラスが出力する |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -556,6 +557,16 @@ SHI側だけで確認されたテスト:
 ### 2026-09-04 SHI担当Dレベル未実装項目
 
 - 「モニタ接続エラー」「検知対象エラー」「連続リトライ上限超過」は、ユーザー確認によりSHI側も未実装である。共通スケルトンやJSON雛形だけを根拠に推測実装せず、M-019～M-021としてスキップする。
+
+### 2026-09-04 M-022実施記録
+
+- SHIコミット `4b4674c` と現行SHIを直接確認し、CE013には診断ロジックと通常運転の `ObjectDetectProcess` 接続が存在することを確認した。校正内のAIモデル読込経路はM-005の保留方針に従い対象外とした。
+- SHI担当実装どおり、`FileNotFoundError`、`PermissionError`、`OSError`、`RuntimeError`、`ValueError`、`ImportError`、`ModuleNotFoundError` だけをCE013としてcounterへ加算する。それ以外の例外はCE013へ計上しない。
+- モデル生成または設定更新で例外が発生した場合は、SHIと同じく適用中モデルを破棄して `NotAppliedObjDetection` へ切り替え、frame処理を継続する。
+- SHIではprocessがCE013ログ文面を直接出力していたため、その部分だけvendor責務分担へ変更した。processは例外を分類して診断へ渡し、`AiModelLoadFailed.log_output()` がエラー番号、文面、loggerを所有する。CE013非該当例外の観測warningは維持した。
+- 過去の `error-handling-review-ledger.md` には例外分類を実装済みとする記録があったが、統合開始時のvendorコードはスケルトンへ戻っていた。今回、同文書の確定済み対象例外・counter条件とSHI実装が一致することを確認して復元した。
+- `tests/test_ai_model_load_failed.py` で対象7例外、非対象例外、診断所有ログ、対象・非対象それぞれのObjectDetectフォールバックを確認した。専用テストは11 passed、AI推論・action error・共有設定を含む関連テストは47 passed。変更箇所のVS Code診断なし、`compileall` とCRLF考慮のdiff checkに成功した。
+- `test_detect2d.py` を除く全体回帰は141 passed、7 xfailed、通常失敗0件。
 
 ## 10. 次のCopilotへの開始指示
 

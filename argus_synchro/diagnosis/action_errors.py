@@ -315,6 +315,23 @@ class AiModelLoadFailed(ActionErrorDiagnosisB):
     def __init__(self) -> None:
         super().__init__()
 
+    def excepts_diagnosis(self, e: Exception) -> bool:
+        is_target = isinstance(
+            e,
+            (
+                FileNotFoundError,
+                PermissionError,
+                OSError,
+                RuntimeError,
+                ValueError,
+                ImportError,
+                ModuleNotFoundError,
+            ),
+        )
+        if is_target:
+            self.increment_counter()
+        return is_target
+
     def detect_error(self, *args: object) -> bool:
         return False
 
@@ -323,6 +340,18 @@ class AiModelLoadFailed(ActionErrorDiagnosisB):
 
     def detect_recovery_fail_safe(self, *args: object) -> bool:
         return True
+
+    def log_output(self, err: bool, recover: bool, err_idx: int, *args: object) -> None:
+        if err:
+            self._error_log_output(err_idx, *args)
+
+    def _error_log_output(self, err_idx: int, *args: object) -> None:
+        if len(args) != 1 or not isinstance(args[0], Exception):
+            raise ValueError("args must be (Exception,)")
+        self._logger.error(
+            self.get_error_no(err_idx)
+            + f": AI model initialization failed: {args[0]!r}"
+        )
 
 
 class OperationModeTransitionErrorDiagnosis(ActionErrorDiagnosisB):
