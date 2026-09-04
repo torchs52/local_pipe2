@@ -857,6 +857,31 @@ def stop_calib_pipeline(
     return CompositeClosable(), new_process_activator
 
 
+def is_automated_calibration_run(app_config: AppConfig, mode: str) -> bool:
+    """外部スクリプトから反復するファイル入力の校正評価かを判定する。
+
+    実機入力またはSCRUTモードでは、量産向けの確実な停止と強制終了診断を
+    維持するため、この条件を有効にしない。
+    """
+    return app_config.DEFAULT.File_Input and mode == "CALIB"
+
+
+def stop_automated_calibration_pipeline(
+    closables: CompositeClosable,
+    process_activator: ProcessActivator,
+) -> tuple[CompositeClosable, ProcessActivator]:
+    """自動校正評価の1試行を軽量に終了し、外部スクリプトへ制御を返す。
+
+    Activator停止と通信資源の解放だけを行い、terminate/killと強制終了診断は
+    行わない。子プロセスの終了待ちは呼出し側の既存join処理へ委ねる。
+    """
+    process_activator.disable()
+    closables.close()
+    new_process_activator = ProcessActivator()
+    new_process_activator.disable()
+    return CompositeClosable(), new_process_activator
+
+
 def start_scrut_pipeline(
     sac_calib: SharedAppConfigCalibration,
     sac: SharedAppConfig,
@@ -1331,7 +1356,12 @@ def main() -> None:
                     recover=False,
                     err_idx=ActionErrorIndex.PROCESS_STARTUP_ERROR,
                 )
-                if current_mode == "SCRUT":
+                if is_automated_calibration_run(app_config, current_mode):
+                    # 起動失敗も校正評価の1試行として終了し、次回実行へ進める。
+                    closables, process_activator = stop_automated_calibration_pipeline(
+                        closables, process_activator
+                    )
+                elif current_mode == "SCRUT":
                     stop_scrut_pipeline(closables, processes, ser)
                 else:
                     stop_calib_pipeline(closables, processes, ser)
@@ -1373,9 +1403,17 @@ def main() -> None:
                     _logger.info("switch SCRUT -> CALIB")
                     # モード切替中は診断を停止する
                     processes.stop_diagnosis()
-                    closables, process_activator = stop_scrut_pipeline(
-                        closables, processes, ser
-                    )
+                    if is_automated_calibration_run(app_config, "CALIB"):
+                        # 自動校正評価への遷移では強制終了診断を行わない。
+                        closables, process_activator = (
+                            stop_automated_calibration_pipeline(
+                                closables, process_activator
+                            )
+                        )
+                    else:
+                        closables, process_activator = stop_scrut_pipeline(
+                            closables, processes, ser
+                        )
                     processes.join()
                     process_activator.enable()
                     sec.reset_operation_mode_calib_ex()
@@ -1421,9 +1459,17 @@ def main() -> None:
                 elif current_mode == "CALIB" and not set_calib:
                     # モード切替中は診断を停止する
                     processes.stop_diagnosis()
-                    closables, process_activator = stop_calib_pipeline(
-                        closables, processes, ser
-                    )
+                    if is_automated_calibration_run(app_config, current_mode):
+                        # 自動校正評価の試行結果を強制終了診断へ昇格させない。
+                        closables, process_activator = (
+                            stop_automated_calibration_pipeline(
+                                closables, process_activator
+                            )
+                        )
+                    else:
+                        closables, process_activator = stop_calib_pipeline(
+                            closables, processes, ser
+                        )
                     processes.join()
                     process_activator.enable()
                     sec.reset_operation_mode_scrut_ex()
@@ -1464,6 +1510,9 @@ def main() -> None:
                     current_mode = "SCRUT"
 
                 if current_mode == "SCRUT" and sec.check_scrut_mode_is_finished():
+                    system_activator.disable()
+                if current_mode == "CALIB" and sec.CalMatGen_ex.IsFinished.value:
+                    # 校正評価の1試行完了後はjoinへ進み、外部スクリプトへ制御を返す。
                     system_activator.disable()
                 time.sleep(0.2)
 

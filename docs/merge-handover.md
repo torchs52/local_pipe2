@@ -361,6 +361,7 @@ SHI側だけで確認されたテスト:
 | M-038 | CE006 センサ校正データ不正（基本健全性） | 現行SHI / `docs/error_list.txt` | manual-port | verified | action diagnosis/validator/load_config/tests | CSVの存在・読込・4x4形状・有限値を起動時に検査。参照差分・校正生成結果判定はM-005と一緒に保留する |
 | M-039 | メンテナンスモード中の指定エラー抑制 | 現行SHI `in_factory` / ユーザー要件 | manual-port | verified | runtime policy/対象診断/AppManager・起動経路/tests | SHI指定のCE001/002/012、SE001/002/007/026/035/037/039だけを抑制し、重要度A全体へは適用しない |
 | M-040 | File watch設定再読込の一時失敗リトライ | 現行SHI `file_watch.py` / ユーザー要件 | manual-port | verified | file watch/CE005/tests | atomic save中の一時欠損・書込み途中を3回、0.2秒間隔で再試行し、全失敗時だけCE005へ渡す。起動時の無限再試行は維持する |
+| M-041 | 自動校正ファイル入力の軽量終了制御 | 現行SHI `__main__.py` / ユーザー要件 | manual-port | verified | main/ProcessActivator/closables/tests | CALIBかつFile Inputの反復評価だけActivator停止と通信資源解放を行い、実機CALIBとSCRUTは量産向け停止・強制終了診断を維持する |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -782,6 +783,14 @@ SHI側だけで確認されたテスト:
 - `DebouncedEventHandler.process_event()`だけを対象とし、`SharedAppConfig.write()`を最大3回、0.2秒間隔で再試行する。途中で成功した場合はCE005診断とエラーログを行わず、3回すべて失敗した場合だけ既存の`ConfigFileMissingDiagnosis.excepts_diagnosis()`へ最後の例外を渡す。
 - 起動時`load_config()`のリトライは別の制御境界である。vendorの復帰優先方針に従って無限再試行を維持し、SHIの有限リトライ段階は今回移植していない。機体設定・校正設定のFile watch拡張も対象外とした。
 - `tests/test_file_watch_reload_retry.py`で2回の一時失敗後の成功、診断・ログ非発生、0.2秒間隔、debounceイベント解放、および3回失敗後だけのCE005 dispatchを確認し2 passed。
+
+### 2026-09-04 M-041実施記録
+
+- 校正パラメータや入力ファイルを少しずつ変更し、外部スクリプトから無人で反復起動する校正評価用途をSHIから移植した。適用条件は`app_config.DEFAULT.File_Input`が有効かつ現在または遷移先が`CALIB`の場合だけである。
+- 自動校正評価では`ProcessActivator.disable()`と`CompositeClosable.close()`だけを行い、新しい無効状態のActivatorと空のclosablesを返す。呼出し直後の既存`ProcessManager.join()`は維持し、子プロセスの終了を待ってから次へ進む。
+- この軽量経路では量産向け`graceful_stop_all()`のterminate/killと`PROCESS_FORCED_TERMINATION`診断を実行しない。実機入力のCALIBとSCRUTでは従来の`stop_calib_pipeline()`または`stop_scrut_pipeline()`を維持する。
+- 適用箇所は自動校正パイプラインの起動失敗、SCRUTからファイル入力CALIBへの遷移、ファイル入力CALIBからSCRUTへの遷移である。また、CALIB処理完了時は共有`CalMatGen_ex.IsFinished`を確認してsystem loopを抜け、既存の`ProcessManager.join()`へ進む。その他の終了・再起動制御は変更していない。
+- `tests/test_automated_calibration_shutdown.py`でFile Inputとモードの全4組合せ、および軽量停止がActivator停止・通信資源解放だけを行うことを確認し5 passed。量産向け停止基盤を含む集中回帰は10 passed、`test_detect2d.py`を除く全体回帰は294 passed、7 xfailed、通常失敗0件。`compileall`とCRLFを考慮したdiff checkも成功した。
 
 ## 10. 次のCopilotへの開始指示
 
