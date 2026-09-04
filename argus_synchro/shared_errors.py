@@ -48,6 +48,7 @@ from argus_synchro.diagnosis.state_d_errors import (
     LidarModuleError,
     LidarShiftMonitorModuleError,
     LogCompressionFailure,
+    LogTimeReversal,
     MainModuleError,
     MemoryLeakDetected,
     NumericAnomalyException,
@@ -303,6 +304,7 @@ class StateErrorDIndex(IntEnum):
     PROCESS_FORCED_TERMINATION = auto()  # プロセスの強制終了を実施
     FILE_IO_ERROR = auto()  # ファイルI/Oエラー
     LOG_COMPRESSION_FAILURE = auto()  # ログ圧縮失敗
+    LOG_TIME_REVERSAL = auto()  # ログ時刻逆転
 
 
 class ModuleErrorIndex(IntEnum):
@@ -429,6 +431,7 @@ class SharedErrors:
             ProcessForcedTermination(),
             FileIoError(),
             LogCompressionFailure(),
+            LogTimeReversal(),
         )
         """
         重要度D検出クラスリスト

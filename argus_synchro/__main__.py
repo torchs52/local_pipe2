@@ -7,7 +7,7 @@ import time
 import traceback
 from multiprocessing import Process
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from argus_synchro import machine_profile
 from argus_synchro.common import paths
@@ -18,6 +18,10 @@ from argus_synchro.diagnosis.error_config import ErrorConfig
 from argus_synchro.diagnosis.error_diagnosis import (
     ResultDiagnosis,
     StateErrorDiagnosisD,
+)
+from argus_synchro.diagnosis.state_d_errors import (
+    LogCompressionFailure,
+    LogTimeReversal,
 )
 from argus_synchro.edge_det.base import EdgeDetectionResult
 from argus_synchro.process import MessageFlow, SyncType
@@ -1112,11 +1116,19 @@ def main() -> None:
         app_logger_factory.update()
         ce015_diag = ser.action_errors_A_C[ActionErrorIndex.LOG_FILE_IO_ERROR]
         app_logger_factory.set_io_error_callback(ce015_diag.excepts_diagnosis)
-        log_compression_failure = ser.state_errors_D[
-            StateErrorDIndex.LOG_COMPRESSION_FAILURE
-        ]
+        log_compression_failure = cast(
+            LogCompressionFailure,
+            ser.state_errors_D[StateErrorDIndex.LOG_COMPRESSION_FAILURE],
+        )
         app_logger_factory.set_compression_error_callback(
             log_compression_failure.report_event
+        )
+        log_time_reversal = cast(
+            LogTimeReversal,
+            ser.state_errors_D[StateErrorDIndex.LOG_TIME_REVERSAL],
+        )
+        app_logger_factory.set_time_reversal_callback(
+            log_time_reversal.report_record_time
         )
 
         config_dir = paths.get_config_dir(directory_config)

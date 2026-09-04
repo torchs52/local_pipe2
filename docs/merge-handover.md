@@ -306,6 +306,7 @@ SHI側だけで確認されたテスト:
 | M-013a | Visual終了時のactivator状態ログ | SHI `VisualProcess._loop()` | manual-port | verified | vendor `visual_process.py`, tests | vendorの終了フラグ・既存終了ログを維持して観測ログだけを追加 |
 | M-013b | message flow停止開始processログ | SHI `ProcessBase._unsubscribe()` | manual-port | verified | vendor `process.py`, tests | logger初期化前を許容し、既存flow停止処理を維持 |
 | M-014 | ログローテーション後のgzip圧縮失敗診断 | SHI `LogCompressionFailure` / logger callback | manual-port | verified | logger/D診断/AppManager/tests | 未圧縮backupを保持し、CE015へ重複計上しない |
+| M-015 | ログレコード時刻逆行診断 | SHI `LogTimeReversal` / logger callback | manual-port | verified | logger/D診断/AppManager/tests | 許容秒を超える逆行を共有イベントとして診断 |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -474,6 +475,17 @@ SHI側だけで確認されたテスト:
 - ログ時刻逆行診断は引き続き別の統合項目とし、M-014には含めていない。
 - `tests/test_log_compression_failure.py` とM-004テストの組合せは10 passed。新規変更箇所のVS Code診断なし、`git diff --check` 成功。
 - AppManager・共有設定を含む関連テストは18 passed。`test_detect2d.py` を除く全体回帰は101 passed、7 xfailed、通常失敗0件。`py_compile` 成功。
+
+### 2026-09-04 M-015実施記録
+
+- M-004から分離したSHIのログレコード時刻逆行Dレベル診断を、M-014と同じ共有イベント方式でvendorへ移植した。
+- 既存 `StateErrorDIndex` 0～8を変更せず、`LOG_TIME_REVERSAL` を末尾へ追加した。
+- 圧縮有効・無効の両file handlerが直前の `LogRecord.created` をhandler単位で保持する。初回recordは比較せず、2件目以降の時刻対だけを診断callbackへ渡す。
+- `LogTimeReversalParameters.allowed_backward_sec` はSHIと同じ既定値0.0秒を追加した。JSONキー省略時も既定値を使うため既存設定と互換性がある。
+- 診断は `current_time < previous_time - allowed_backward_sec` の場合だけ共有イベントを加算する。AppManagerが周期的に消費し、vendorのDレベル `errors_diagnosis()` / `log_output()` 経路から「ログ記録時刻の逆転を検出しました。」を出力する。
+- callbackはfactoryのlogger追加・handler再生成後にも伝播する。console handlerは対象外で、file handlerだけを監視する。
+- `tests/test_log_time_reversal.py` で圧縮有無、初回非通知、許容幅、AppManager消費、index登録、factory更新後のcallback維持を確認した。6 passed。M-004/M-014/M-015と共有設定の組合せは19 passed。新規変更箇所のVS Code診断なし。
+- `test_detect2d.py` を除く全体回帰は107 passed、7 xfailed、通常失敗0件。`py_compile` と `git diff --check` 成功。
 
 ## 10. 次のCopilotへの開始指示
 

@@ -587,6 +587,8 @@ class LogCompressionFailureParameters(ErrorParameterBase):
 class LogTimeReversalParameters(ErrorParameterBase):
     """ログ時刻逆転用パラメータ"""
 
+    allowed_backward_sec: float = 0.0
+
 
 @dataclass(frozen=False, slots=True)
 class LidarModuleErrorParameters(ErrorParameterBase):

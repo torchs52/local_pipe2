@@ -22,6 +22,19 @@ class GZipRotatingFileHandler(RotatingFileHandler):
 
     io_error_callback: Callable[[Exception], None] | None
     compression_error_callback: Callable[[Exception], None] | None
+    time_reversal_callback: Callable[[float, float], None] | None
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._previous_record_time: float | None = None
+
+    def emit(self, record: logging.LogRecord) -> None:
+        previous_time = self._previous_record_time
+        self._previous_record_time = record.created
+        callback = getattr(self, "time_reversal_callback", None)
+        if callback is not None and previous_time is not None:
+            callback(previous_time, record.created)
+        super().emit(record)
 
     def handleError(self, record: logging.LogRecord) -> None:  # noqa: N802
         super().handleError(record)
@@ -57,6 +70,19 @@ class _RotatingFileHandlerWithCallback(RotatingFileHandler):
     """CE015 コールバック付き RotatingFileHandler (圧縮無効時使用)"""
 
     io_error_callback: Callable[[Exception], None] | None
+    time_reversal_callback: Callable[[float, float], None] | None
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._previous_record_time: float | None = None
+
+    def emit(self, record: logging.LogRecord) -> None:
+        previous_time = self._previous_record_time
+        self._previous_record_time = record.created
+        callback = getattr(self, "time_reversal_callback", None)
+        if callback is not None and previous_time is not None:
+            callback(previous_time, record.created)
+        super().emit(record)
 
     def handleError(self, record: logging.LogRecord) -> None:  # noqa: N802
         super().handleError(record)
@@ -88,6 +114,7 @@ class AppLogger:
         self._logger.handlers.clear()
         self._io_error_callback: Callable[[Exception], None] | None = None
         self._compression_error_callback: Callable[[Exception], None] | None = None
+        self._time_reversal_callback: Callable[[float, float], None] | None = None
 
         self.update(
             formatter=formatter,
@@ -123,6 +150,17 @@ class AppLogger:
         for handler in self._logger.handlers:
             if isinstance(handler, GZipRotatingFileHandler):
                 handler.compression_error_callback = callback
+
+    def set_time_reversal_callback(
+        self, callback: Callable[[float, float], None] | None
+    ) -> None:
+        """ログ時刻逆転検知用コールバックを登録する。"""
+        self._time_reversal_callback = callback
+        for handler in self._logger.handlers:
+            if isinstance(
+                handler, (GZipRotatingFileHandler, _RotatingFileHandlerWithCallback)
+            ):
+                handler.time_reversal_callback = callback
 
     def update(
         self,
@@ -209,6 +247,8 @@ class AppLogger:
             and self._compression_error_callback is not None
         ):
             fh.compression_error_callback = self._compression_error_callback
+        if self._time_reversal_callback is not None:
+            fh.time_reversal_callback = self._time_reversal_callback
         return fh
 
     def _create_console_handler(
@@ -244,6 +284,7 @@ class AppLoggerFactory:
         self._loggers: list[AppLogger] = []
         self._io_error_callback: Callable[[Exception], None] | None = None
         self._compression_error_callback: Callable[[Exception], None] | None = None
+        self._time_reversal_callback: Callable[[float, float], None] | None = None
 
         self._to_console: bool = (
             self.__DEFAULT_TO_CONSOLE if to_console is None else to_console
@@ -279,6 +320,14 @@ class AppLoggerFactory:
         for logger in self._loggers:
             logger.set_compression_error_callback(callback)
 
+    def set_time_reversal_callback(
+        self, callback: Callable[[float, float], None] | None
+    ) -> None:
+        """ログ時刻逆転コールバックを全ロガーに伝播する。"""
+        self._time_reversal_callback = callback
+        for logger in self._loggers:
+            logger.set_time_reversal_callback(callback)
+
     def update(self) -> None:
         """
         管理下にある全てのAppLoggerをデフォルト値で更新する
@@ -302,6 +351,8 @@ class AppLoggerFactory:
                 logger.set_compression_error_callback(
                     self._compression_error_callback
                 )
+            if self._time_reversal_callback is not None:
+                logger.set_time_reversal_callback(self._time_reversal_callback)
 
     def append_logger(self, logger: AppLogger) -> None:
         self._loggers.append(logger)
@@ -309,6 +360,8 @@ class AppLoggerFactory:
             logger.set_io_error_callback(self._io_error_callback)
         if self._compression_error_callback is not None:
             logger.set_compression_error_callback(self._compression_error_callback)
+        if self._time_reversal_callback is not None:
+            logger.set_time_reversal_callback(self._time_reversal_callback)
 
     def register_from_name(
         self,
@@ -350,6 +403,8 @@ class AppLoggerFactory:
             logger.set_io_error_callback(self._io_error_callback)
         if self._compression_error_callback is not None:
             logger.set_compression_error_callback(self._compression_error_callback)
+        if self._time_reversal_callback is not None:
+            logger.set_time_reversal_callback(self._time_reversal_callback)
 
         return logger
 

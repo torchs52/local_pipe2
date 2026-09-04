@@ -501,6 +501,35 @@ class LogCompressionFailure(StateErrorDiagnosisD):
         )
 
 
+class LogTimeReversal(StateErrorDiagnosisD):
+    """LOG_TIME_REVERSAL: ログレコード時刻の逆転"""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._event_count = create_shared_single_data(0)
+        self._processed_event_count = 0
+        self.param: err_conf.LogTimeReversalParameters
+
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.log_time_reversal
+        self.is_enabled = self.param.is_enabled
+
+    def report_record_time(self, previous_time: float, current_time: float) -> None:
+        if current_time < previous_time - self.param.allowed_backward_sec:
+            self._event_count.value += 1
+
+    def detect_error(self, *args: object) -> bool:
+        if self._event_count.value == self._processed_event_count:
+            return False
+        self._processed_event_count = self._event_count.value
+        return True
+
+    def _error_log_output(self, err_idx: int, *args: object) -> None:
+        self._logger.warning(
+            self.get_error_no(err_idx) + ": ログ記録時刻の逆転を検出しました。"
+        )
+
+
 class LidarModuleError(StateErrorDiagnosisD):
     """LIDAR_MODULE_ERROR: LiDARモジュールエラー"""
 
