@@ -1025,6 +1025,22 @@ def load_config(
             app_config: AppConfig = sac.read()
             sec = SharedExcepts(app_config=app_config, app_manager_ex=ser.AppMan_ex)
 
+            sensor_calib_diagnosis = ser.action_errors_A_C[
+                ActionErrorIndex.SENSOR_CALIB_DATA_INVALID
+            ]
+            sensor_calib_diagnosis.update(ser.shared_err_conf.read())
+            calibration_issues = (
+                sensor_calib_diagnosis.validate_calibration_matrices(
+                    app_config.calibration
+                )
+            )
+            sensor_calib_diagnosis.log_output(
+                bool(calibration_issues),
+                False,
+                ActionErrorIndex.SENSOR_CALIB_DATA_INVALID,
+                calibration_issues,
+            )
+
             calib_settings_path = str(
                 paths.normalize_path("calib_settings.ini", directory_config.config_dir)
             )

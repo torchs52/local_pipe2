@@ -13,7 +13,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from argus_synchro import __main__ as app_main
-from argus_synchro.diagnosis.action_errors import ConfigFileMissingDiagnosis
+from argus_synchro.diagnosis.action_errors import (
+    ConfigFileMissingDiagnosis,
+    SensorCalibDataInvalidDiagnosis,
+)
+from argus_synchro.diagnosis.error_config import ErrorConfig
 from argus_synchro.shared_errors import ActionErrorIndex
 
 
@@ -110,13 +114,20 @@ def test_config_file_missing_owns_error_log_output() -> None:
 def test_load_config_dispatches_target_exception_to_diagnosis(monkeypatch) -> None:
     diagnosis = ConfigFileMissingDiagnosis()
     diagnosis._logger = MagicMock()
+    sensor_calib_diagnosis = SensorCalibDataInvalidDiagnosis()
     main_logger = MagicMock()
     app_manager_ex = object()
     shared_errors = SimpleNamespace(
-        action_errors_A_C={ActionErrorIndex.CONFIG_FILE_MISSING: diagnosis},
+        action_errors_A_C={
+            ActionErrorIndex.CONFIG_FILE_MISSING: diagnosis,
+            ActionErrorIndex.SENSOR_CALIB_DATA_INVALID: sensor_calib_diagnosis,
+        },
         AppMan_ex=app_manager_ex,
+        shared_err_conf=SimpleNamespace(read=ErrorConfig),
     )
-    app_config = object()
+    app_config = SimpleNamespace(
+        calibration=SimpleNamespace(BothLidars="", Lidar_calib_files=[])
+    )
     shared_app_config = MagicMock()
     shared_app_config.read.return_value = app_config
     shared_excepts = object()
@@ -166,3 +177,65 @@ def test_load_config_dispatches_target_exception_to_diagnosis(monkeypatch) -> No
         app_config=app_config,
         app_manager_ex=app_manager_ex,
     )
+
+
+def test_load_config_reports_ce006_without_ce005_retry(
+    monkeypatch, tmp_path: Path
+) -> None:
+    config_diagnosis = ConfigFileMissingDiagnosis()
+    sensor_calib_diagnosis = SensorCalibDataInvalidDiagnosis()
+    sensor_calib_diagnosis._logger = MagicMock()
+    shared_errors = SimpleNamespace(
+        action_errors_A_C={
+            ActionErrorIndex.CONFIG_FILE_MISSING: config_diagnosis,
+            ActionErrorIndex.SENSOR_CALIB_DATA_INVALID: sensor_calib_diagnosis,
+        },
+        AppMan_ex=object(),
+        shared_err_conf=SimpleNamespace(read=ErrorConfig),
+    )
+    app_config = SimpleNamespace(
+        calibration=SimpleNamespace(
+            BothLidars=str(tmp_path / "missing_both.csv"),
+            Lidar_calib_files=[str(tmp_path / "missing_lidar0.csv")],
+        )
+    )
+    shared_app_config = MagicMock()
+    shared_app_config.read.return_value = app_config
+    shared_excepts = object()
+    shared_calibration = object()
+    profile_handler = MagicMock()
+
+    monkeypatch.setattr(
+        app_main.machine_profile,
+        "MachineProfileHandler",
+        MagicMock(return_value=profile_handler),
+    )
+    monkeypatch.setattr(
+        app_main, "SharedAppConfig", MagicMock(return_value=shared_app_config)
+    )
+    monkeypatch.setattr(
+        app_main, "SharedExcepts", MagicMock(return_value=shared_excepts)
+    )
+    monkeypatch.setattr(
+        app_main,
+        "SharedAppConfigCalibration",
+        MagicMock(return_value=shared_calibration),
+    )
+    monkeypatch.setattr(app_main.paths, "normalize_path", lambda *args: Path("x"))
+
+    result = app_main.load_config(
+        shared_errors,
+        MagicMock(),
+        SimpleNamespace(config_dir=Path("config")),
+    )
+
+    assert result == (
+        shared_app_config,
+        shared_excepts,
+        app_config,
+        shared_calibration,
+    )
+    assert sensor_calib_diagnosis.err_cnt.value == 1
+    assert config_diagnosis.err_cnt.value == 0
+    sensor_calib_diagnosis._logger.error.assert_called_once()
+    profile_handler.apply_model_specific_config.assert_called_once()

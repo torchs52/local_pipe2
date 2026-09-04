@@ -10,12 +10,18 @@ from configparser import (
     NoSectionError,
     ParsingError,
 )
+from typing import cast
 
 import argus_synchro.diagnosis.error_config as err_conf
+from argus_synchro.config.app_config import CalibrationConf
 from argus_synchro.diagnosis.error_diagnosis import (
     ActionErrorDiagnosisA,
     ActionErrorDiagnosisB,
     ActionErrorDiagnosisC,
+)
+from argus_synchro.diagnosis.lidar_calib_validator import (
+    LidarCalibValidationIssue,
+    LidarCalibValidator,
 )
 from argus_synchro.shared_excepts import SharedLidarShiftMonitorExcept
 
@@ -337,6 +343,27 @@ class SensorCalibDataInvalidDiagnosis(ActionErrorDiagnosisB):
 
     def __init__(self) -> None:
         super().__init__()
+        self.param = err_conf.SensorCalibDataInvalidParameters()
+
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.sensor_calib_data_invalid
+        self.is_enabled = self.param.is_enabled
+
+    def validate_calibration_matrices(
+        self, calibration_conf: CalibrationConf
+    ) -> tuple[LidarCalibValidationIssue, ...]:
+        if not self.is_enabled:
+            return ()
+        issues = LidarCalibValidator(self.param).validate(calibration_conf)
+        if issues:
+            self.increment_counter()
+        return issues
+
+    def excepts_diagnosis(self, e: Exception) -> bool:
+        is_target = isinstance(e, (OSError, UnicodeError, ValueError))
+        if is_target:
+            self.increment_counter()
+        return is_target
 
     def detect_error(self, *args: object) -> bool:
         return False
@@ -346,6 +373,27 @@ class SensorCalibDataInvalidDiagnosis(ActionErrorDiagnosisB):
 
     def detect_recovery_fail_safe(self, *args: object) -> bool:
         return True
+
+    def log_output(self, err: bool, recover: bool, err_idx: int, *args: object) -> None:
+        if err:
+            self._error_log_output(err_idx, *args)
+
+    def _error_log_output(self, err_idx: int, *args: object) -> None:
+        if len(args) != 1 or not isinstance(args[0], tuple):
+            raise ValueError("args must be (tuple[LidarCalibValidationIssue, ...],)")
+        issue_args = cast(tuple[object, ...], args[0])
+        if not issue_args or not all(
+            isinstance(issue, LidarCalibValidationIssue) for issue in issue_args
+        ):
+            raise ValueError("args must be (tuple[LidarCalibValidationIssue, ...],)")
+        issues = cast(tuple[LidarCalibValidationIssue, ...], issue_args)
+        first = issues[0]
+        self._logger.error(
+            self.get_error_no(err_idx)
+            + ": SENSOR_CALIB_DATA_INVALID: "
+            + f"kind={first.matrix_kind} path={first.matrix_path} "
+            + f"detail={first.detail} issues={len(issues)}"
+        )
 
 
 class CameraXCalibDataInvalidDiagnosis(ActionErrorDiagnosisB):

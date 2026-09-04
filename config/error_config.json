@@ -270,7 +270,11 @@
         "is_enabled": true
     },
     "sensor_calib_data_invalid": {
-        "is_enabled": true
+        "is_enabled": true,
+        "check_lidar2lidar": true,
+        "check_lidar2crane": true,
+        "enforce_shape_4x4": true,
+        "finite_value_only": true
     },
     "camera_n_calib_data_invalid": {
         "is_enabled": true

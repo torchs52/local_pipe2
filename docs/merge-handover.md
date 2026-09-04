@@ -350,6 +350,7 @@ SHI側だけで確認されたテスト:
 | M-035 | SE008・SE009 LiDAR通信品質低下 | 現行SHI / `docs/error_list.txt` | manual-port | verified | MID360 device/provider/shared/Points/AppManager/state diagnosis/tests | packet連番欠落・点数低下イベントの3秒継続で検出し、正常5秒で復帰する |
 | M-036 | SE014・SE015 LiDAR通信品質エラー | 現行SHI / `docs/error_list.txt` | manual-port | verified | state diagnosis/AppManager/tests | SE008/009 ONを30秒確認して検出し、OFFを30秒/60秒確認してerror/failsafe復帰する |
 | M-037 | SE020・SE021 LiDARデータ不正 | 現行SHI / `docs/error_list.txt` | manual-port | verified | MID360 provider/shared/Points/AppManager/state diagnosis/tests | filter前のXYZ原点点割合70%以上を3秒確認して検出し、30%未満を3秒/5秒確認してerror/failsafe復帰する |
+| M-038 | CE006 センサ校正データ不正（基本健全性） | 現行SHI / `docs/error_list.txt` | manual-port | verified | action diagnosis/validator/load_config/tests | CSVの存在・読込・4x4形状・有限値を起動時に検査。参照差分・校正生成結果判定はM-005と一緒に保留する |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -736,6 +737,25 @@ SHI側だけで確認されたテスト:
 - 経過時間はAppManagerから渡す `time.perf_counter()` の `now` だけで計測するため、OS絶対時刻の変更は判定へ影響しない。観測値が正常・異常になった最初の診断呼出し時刻を継続確認の起点とし、診断呼出し間を遡って補完しない。
 - `tests/test_lidar_invalid_data.py` で70%検出境界、timer reset、30%復帰境界、3秒/5秒の独立復帰、引数検証、通常MID360 providerのfilter前比率、Points共有転送、SE001排他、AppManager dispatch、index付きログを確認した。専用テストは12 passed、SE001/002・SE008/009・SE014/015を含むLiDAR関連テストは34 passed。変更箇所のVS Code診断なし。
 - `test_detect2d.py` を除く全体回帰は269 passed、7 xfailed、通常失敗0件。
+
+### 2026-09-04 M-038検討記録
+
+- `docs/error_list.txt` ではCE006「センサ校正データ不正」はSHI担当である。vendorにはindex、`SensorCalibDataInvalidParameters`、`SensorCalibDataInvalidDiagnosis`、`error_config.json`の雛形があるが、診断は空実装でruntime接続されていない。
+- 現行SHIはLiDAR校正CSVについて、存在、読込、4x4形状、有限値を起動時の`load_config()`で検証する。異常時はCE006 counterとログを記録するが、CE005の設定再読込へは流さず起動を継続する。通常運転で実際に校正行列を読む所有箇所は`interface/pcd_calib.py`である。
+- 現行SHIは上記に加え、理想位置の参照行列との差分として並進、回転、XY評価グリッド最大変位を検証し、3D-3D校正生成直後にも同じvalidatorを使用する。ただしCE006専用テストは存在しない。
+- SHIの起動時validatorは`zip(targets, references)`で対象と参照を対応付ける。`check_lidar2lidar=True`ではLiDAR間行列を先頭のLiDAR-機体参照へ誤対応させ、対象数と参照数が異なる場合は末尾対象を未検査にする可能性がある。この実装をそのまま採用しない。
+- 次の独立マージ候補は、通常運転が消費する`CalibrationConf.BothLidars`と`Lidar_calib_files`に対する存在、CSV読込、4x4形状、有限値の基本健全性だけとする。診断クラスがparameter、counter、ログを所有し、`load_config()`はvendorのCE005再試行制御を維持したままCE006を記録する。
+- 参照行列との差分判定、閾値、3D-3D校正生成直後の判定は校正アルゴリズムと参照データ対応に依存するため、M-005の採用方針決定まで保留する。基本健全性マージでは`enable_reference_diff_check`等を追加しない。
+- 基本健全性を実装する場合の最小受入テストは、正常4x4、欠損、CSV解析不能、不正形状、NaN/inf、無効化、複数対象の全件検査、CE006 index・counter・ログ、CE005へ誤分類せず`load_config()`が継続することとする。
+
+### 2026-09-04 M-038実施記録
+
+- CE006のうち通常運転が消費するLiDAR校正CSVの基本健全性だけをvendorへ移植した。`CalibrationConf.BothLidars`と`Lidar_calib_files`を対象とし、存在・CSV読込可否、4x4形状、有限値を検査する。対象と参照を`zip`しないため、設定された全対象を途中打切りせず検査する。
+- 純粋なファイル検証は`diagnosis/lidar_calib_validator.py`へ置き、`SensorCalibDataInvalidDiagnosis`が有効化、parameter、CE006 counter、先頭issueと総issue数を含むログを所有する。複数issueがあっても一回の起動時検査につきcounterは一回だけ増加する。
+- `load_config()`はvendorの設定読込とCE005再試行制御を維持し、`SharedAppConfig`読込後にCE006を一回検査する。校正CSV異常はCE006として記録するがCE005へ渡さず、`SharedAppConfigCalibration`読込と起動を継続する。
+- 設定には`check_lidar2lidar`、`check_lidar2crane`、`enforce_shape_4x4`、`finite_value_only`だけを追加した。SHIの参照差分parameter、並進・回転・XY変位判定、3D-3D校正生成直後の検証は追加しておらず、M-005の採用方針決定まで保留する。
+- `tests/test_sensor_calib_data_invalid.py`と`tests/test_config_file_missing.py`で正常4x4、全対象欠損、解析不能、不正形状、NaN、無効化、全件検査、counter、CE006ログ、CE005非計上、起動継続を確認した。CE006専用・起動統合は26 passed、共有設定は3 passed。新規箇所のVS Code診断なし、残る`action_errors.py`の診断は既存CE012箇所だけである。
+- `test_detect2d.py`を除く全体回帰は275 passed、7 xfailed、通常失敗0件。
 
 ## 10. 次のCopilotへの開始指示
 
