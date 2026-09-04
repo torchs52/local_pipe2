@@ -360,6 +360,7 @@ SHI側だけで確認されたテスト:
 | M-037 | SE020・SE021 LiDARデータ不正 | 現行SHI / `docs/error_list.txt` | manual-port | verified | MID360 provider/shared/Points/AppManager/state diagnosis/tests | filter前のXYZ原点点割合70%以上を3秒確認して検出し、30%未満を3秒/5秒確認してerror/failsafe復帰する |
 | M-038 | CE006 センサ校正データ不正（基本健全性） | 現行SHI / `docs/error_list.txt` | manual-port | verified | action diagnosis/validator/load_config/tests | CSVの存在・読込・4x4形状・有限値を起動時に検査。参照差分・校正生成結果判定はM-005と一緒に保留する |
 | M-039 | メンテナンスモード中の指定エラー抑制 | 現行SHI `in_factory` / ユーザー要件 | manual-port | verified | runtime policy/対象診断/AppManager・起動経路/tests | SHI指定のCE001/002/012、SE001/002/007/026/035/037/039だけを抑制し、重要度A全体へは適用しない |
+| M-040 | File watch設定再読込の一時失敗リトライ | 現行SHI `file_watch.py` / ユーザー要件 | manual-port | verified | file watch/CE005/tests | atomic save中の一時欠損・書込み途中を3回、0.2秒間隔で再試行し、全失敗時だけCE005へ渡す。起動時の無限再試行は維持する |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -774,6 +775,13 @@ SHI側だけで確認されたテスト:
 - 起動時は`load_config()`が`General.in_factory`を共有policyへ反映し、実行中の設定再読込時はAppManagerの`_config_load()`が同じ共有値を更新する。診断instanceを再生成せず切替が反映される。
 - `tests/test_maintenance_mode_error_suppression.py`で対象10診断instanceの抑制、counter・状態非更新、通常モードへの動的切替、対象外への非注入、AppManager再読込を確認し12 passed。`tests/test_config_file_missing.py`で起動時同期を含め21 passed。変更箇所の`compileall`は成功し、新規policy、基底、状態診断、共有登録、起動、テストにVS Code診断はない。
 - `test_detect2d.py`を除く全体回帰は287 passed、7 xfailed、通常失敗0件。
+
+### 2026-09-04 M-040実施記録
+
+- SHIのFile watch差分を確認し、エディタのatomic saveによる一時renameや書込み途中を設定ファイル破損・欠損として誤確定しない短時間リトライをvendorへ移植した。
+- `DebouncedEventHandler.process_event()`だけを対象とし、`SharedAppConfig.write()`を最大3回、0.2秒間隔で再試行する。途中で成功した場合はCE005診断とエラーログを行わず、3回すべて失敗した場合だけ既存の`ConfigFileMissingDiagnosis.excepts_diagnosis()`へ最後の例外を渡す。
+- 起動時`load_config()`のリトライは別の制御境界である。vendorの復帰優先方針に従って無限再試行を維持し、SHIの有限リトライ段階は今回移植していない。機体設定・校正設定のFile watch拡張も対象外とした。
+- `tests/test_file_watch_reload_retry.py`で2回の一時失敗後の成功、診断・ログ非発生、0.2秒間隔、debounceイベント解放、および3回失敗後だけのCE005 dispatchを確認し2 passed。
 
 ## 10. 次のCopilotへの開始指示
 

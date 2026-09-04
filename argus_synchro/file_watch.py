@@ -20,6 +20,9 @@ from argus_synchro.shared_excepts import SharedExcepts
 
 
 class DebouncedEventHandler(RegexMatchingEventHandler):
+    _RELOAD_RETRY_COUNT = 3
+    _RELOAD_RETRY_INTERVAL_SEC = 0.2
+
     def __init__(
         self,
         sac: SharedAppConfig,
@@ -60,7 +63,15 @@ class DebouncedEventHandler(RegexMatchingEventHandler):
 
     def process_event(self, path: str) -> None:
         try:
-            self.sac.write(sec=self._sec)
+            # atomic save中の一時的な欠損・書込み途中をCE005と誤判定しない。
+            for attempt in range(self._RELOAD_RETRY_COUNT):
+                try:
+                    self.sac.write(sec=self._sec)
+                    return
+                except Exception:
+                    if attempt == self._RELOAD_RETRY_COUNT - 1:
+                        raise
+                    time.sleep(self._RELOAD_RETRY_INTERVAL_SEC)
         except Exception as e:
             error: bool = self._ser.action_errors_A_C[
                 ActionErrorIndex.CONFIG_FILE_MISSING
