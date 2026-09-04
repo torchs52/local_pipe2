@@ -32,6 +32,7 @@ from argus_synchro.diagnosis.error_diagnosis import (
 from argus_synchro.diagnosis.reduced_load_mode import ReducedLoadMode
 from argus_synchro.diagnosis.state_d_errors import (
     AccumulationModuleError,
+    AiInferenceResultError,
     AppManagerModuleError,
     ArrayShapeError,
     CalibrationModuleError,
@@ -307,6 +308,7 @@ class StateErrorDIndex(IntEnum):
     LOG_COMPRESSION_FAILURE = auto()  # ログ圧縮失敗
     LOG_TIME_REVERSAL = auto()  # ログ時刻逆転
     LIDAR_DATA_MISSING = auto()  # Lidarデータ欠落
+    AI_INFERENCE_RESULT_ERROR = auto()  # AI推論結果異常
 
 
 class ModuleErrorIndex(IntEnum):
@@ -435,12 +437,14 @@ class SharedErrors:
             LogCompressionFailure(),
             LogTimeReversal(),
             LidarDataMissing(),
+            AiInferenceResultError(),
         )
         """
         重要度D検出クラスリスト
         """
         self.state_errors_D_ex: tuple[StateErrorDiagnosisD, ...] = (
             self.state_errors_D[StateErrorDIndex.NUMERIC_ANOMALY_EXCEPTION],
+            self.state_errors_D[StateErrorDIndex.AI_INFERENCE_RESULT_ERROR],
         )
         """
         重要度D例外検出クラスリスト

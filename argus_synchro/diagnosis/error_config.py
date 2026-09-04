@@ -564,6 +564,9 @@ class FileIoErrorParameters(ErrorParameterBase):
 class AiInferenceResultErrorParameters(ErrorParameterBase):
     """AI推論結果異常用パラメータ"""
 
+    score_min: float = 0.0
+    score_max: float = 1.0
+
 
 @dataclass(frozen=False, slots=True)
 class DetectionTargetErrorParameters(ErrorParameterBase):

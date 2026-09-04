@@ -50,6 +50,8 @@ git -C "$SHI_REPO" log -1 --format='%H %ad %s' --date=iso
 
 このため、エラー定義、診断クラス、JSONパラメータが片側にだけ存在するdiffを、もう片側が意図的に削除・拒否した証拠とは扱わない。原則として共通スケルトンから担当側だけが書き加えた結果と解釈し、履歴、`docs/error_list.txt` の担当、呼出し元、実装内容を確認して採否を判断する。特にvendor側に名称、空メソッド、JSON雛形が残り、SHI側に具体的な判定・ログ・runtime接続がある場合は、SHI担当機能の移植候補として優先的に検討する。
 
+一部には、担当外のエラーであってもスケルトンを超えて実装を進めたように見える箇所があり得る。その場合も、原則として `docs/error_list.txt` 上の担当者が作成した実装を正とし、担当外側の実装だけを根拠に上書きしない。両側に実装がある場合は、先に担当、判定条件、パラメータ、ログ、runtime接続、テストを比較して、担当実装を欠落なく移植する。
+
 したがって、次を禁止する。
 
 - `git merge --allow-unrelated-histories` を主たる統合手段にする
@@ -104,6 +106,10 @@ SHI版 `startup_reset_policy.py` は起動時に `operation_mode=0` を設定す
 ### 2.4 ログ実装の維持方針
 
 既存ログの基本的な呼出し方と責任分界はvendor方式を優先する。SHI側の書き方へ統一すること自体を目的に変更しない。
+
+SHI担当エラーについては、SHI側の完成した判定ロジック、状態遷移、設定パラメータ、ログ内容を尊重する。一方、検出からログ出力までの責務分担と基本構造はvendor方式へ変更して統合する。具体的には、観測値と例外の取得は所有process、診断の登録と例外分類は `SharedErrors`、有効化・判定・状態遷移・ログ文面・logger所有は各診断クラス、出力選択は共通 `log_output()` の責務とする。processや `SharedErrors` がDレベルのログ文面を直接組み立てて出力するSHI実装は、そのまま採用しない。
+
+命名、クラス構成、引数形式、ログ記述など、上記の責務分担に必須ではない追加統一は機能マージと同時に広げず、マージ完了後の別レビューで相談して決める。
 
 特に次を原則として維持する。
 
@@ -313,6 +319,10 @@ SHI側だけで確認されたテスト:
 | M-015 | ログレコード時刻逆行診断 | SHI `LogTimeReversal` / logger callback | manual-port | verified | logger/D診断/AppManager/tests | 許容秒を超える逆行を共有イベントとして診断 |
 | M-016 | CANサブシステムの混合統合 | SHI `47ada36` ほか | decision-needed | deferred | CAN sensor/file/config/diagnosis/tests | vendorとSHI双方に必要な実装があり、全体diffと実機仕様を確認して一括判断する |
 | M-017 | DレベルLidarデータ欠落 | SHI `a487f5f` / `docs/error_list.txt` | manual-port | verified | D診断/Points/shared errors/config/tests | 接続エラー中を除外し、0より多く閾値未満の点群をエッジ診断する |
+| M-018 | DレベルAI推論結果異常 | SHI `a487f5f` / `docs/error_list.txt` | manual-port | verified | D診断/ObjectDetect/shared errors/config/tests | 推論結果内容を検査し、推論例外時はDログ後に空検出へフォールバックする |
+| M-019 | Dレベルモニタ接続エラー | `docs/error_list.txt` | decision-needed | deferred | なし | SHI側も未実装のためスキップ |
+| M-020 | Dレベル検知対象エラー | `docs/error_list.txt` | decision-needed | deferred | なし | SHI側も未実装のためスキップ |
+| M-021 | Dレベル連続リトライ上限超過 | `docs/error_list.txt` | decision-needed | deferred | なし | SHI側も未実装のためスキップ |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -532,6 +542,20 @@ SHI側だけで確認されたテスト:
 - Pointsは点群取得成功後にLiDAR番号対応の接続エラー状態を参照し、点数とともに診断へ渡す。provider、clock、heartbeat、ファイルI/O診断などの既存制御は変更していない。
 - `tests/test_lidar_data_missing.py` で閾値境界、0点除外、接続エラー中の除外、発生・継続・復帰、引数検証、Points配線を確認した。専用テストは6 passed、関連テストは13 passed。変更箇所のVS Code診断なし、`py_compile` 成功。
 - `test_detect2d.py` を除く全体回帰は120 passed、7 xfailed、通常失敗0件。`config/error_config.json` は既存CRLFを維持しているため、差分検証は `git -c core.whitespace=cr-at-eol diff --check` を使用する。
+
+### 2026-09-04 M-018実施記録
+
+- `docs/error_list.txt` のSHI担当Dレベル「AI推論結果異常」を通常運転の `ObjectDetectProcess` へ移植した。校正内の2つのAI推論経路はM-005の保留方針に従い対象外とした。
+- SHI担当実装どおり、boxesとscoresのNaN/Inf、設定範囲外のscore、0未満またはboxes件数を超える `valid_detects` を異常と判定する。`score_min=0.0`、`score_max=1.0` をparameterとJSONへ追加した。
+- 正常に返った推論結果はDレベルのエッジ診断へ渡し、異常の初回だけカメラ番号付きwarningを出す。正常値へ戻ればD基底の状態を復帰させる。
+- 推論実行だけを例外境界とし、通常例外はAI推論結果異常として記録した後、`NotAppliedObjDetection` の空検出結果へフォールバックしてframe処理を継続する。歪み補正、入力診断など推論外の例外と、Dレベルで分類されない例外は従来どおり上位へ伝播する。
+- SHIでは内容検査用ログ引数がカメラindex、例外分類用が例外オブジェクトであるため、同じ診断クラスの `_error_log_output()` が両方を受けるよう最小限補正した。ログ内容と安全動作はSHI実装を維持した。
+- `tests/test_ai_inference_result_error.py` でNaN/Inf、score上下限、valid件数、復帰、例外ログ、process配線、例外時フォールバックを確認した。専用テストは10 passed、共有設定・module errorを含む関連テストは31 passed。変更箇所のVS Code診断なし、`py_compile` とJSONパース成功。
+- `test_detect2d.py` を除く全体回帰は130 passed、7 xfailed、通常失敗0件。
+
+### 2026-09-04 SHI担当Dレベル未実装項目
+
+- 「モニタ接続エラー」「検知対象エラー」「連続リトライ上限超過」は、ユーザー確認によりSHI側も未実装である。共通スケルトンやJSON雛形だけを根拠に推測実装せず、M-019～M-021としてスキップする。
 
 ## 10. 次のCopilotへの開始指示
 

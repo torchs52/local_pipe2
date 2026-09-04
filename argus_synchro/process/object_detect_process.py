@@ -105,6 +105,9 @@ class ObjectDetectProcess(ProcessBase):
         self._ser.state_errors_D[StateErrorDIndex.ARRAY_SHAPE_ERROR].update(
             self._err_config
         )
+        self._ser.state_errors_D[
+            StateErrorDIndex.AI_INFERENCE_RESULT_ERROR
+        ].update(self._err_config)
         self._ser.module_errors[
             ModuleErrorIndex.CAMERA_HUMAN_DETECTION_MODULE_ERROR
         ].update(self._err_config)
@@ -303,6 +306,23 @@ class ObjectDetectProcess(ProcessBase):
                     else:
                         raise e
 
+    def _ai_inference_result_content_diagnosis(
+        self, camera_detect_data: CameraDetectionsData
+    ) -> None:
+        ai_inference_result_error = self._ser.state_errors_D[
+            StateErrorDIndex.AI_INFERENCE_RESULT_ERROR
+        ]
+        result = ai_inference_result_error.errors_diagnosis(
+            camera_detect_data.boxes,
+            camera_detect_data.scores,
+            camera_detect_data.valid_detects,
+        )
+        ai_inference_result_error.log_output(
+            *result,
+            StateErrorDIndex.AI_INFERENCE_RESULT_ERROR,
+            self._index,
+        )
+
     @log_target("画像処理", ProfCategory.Process)
     def _update(
         self,
@@ -319,9 +339,20 @@ class ObjectDetectProcess(ProcessBase):
 
         if self.input_detect2d_data_diagnosis():
             return None
-        camera_detect_data: CameraDetectionsData = self._detect2d.object_detect(
-            self.sec, self._frames_buf
-        )
+        try:
+            camera_detect_data: CameraDetectionsData = self._detect2d.object_detect(
+                self.sec, self._frames_buf
+            )
+        except Exception as error:
+            from argus_synchro.detect2d import NotAppliedObjDetection
+
+            if not self._ser.is_state_error_d_exception(error, self._logger):
+                raise
+            camera_detect_data = NotAppliedObjDetection().object_detect(
+                self.sec, self._frames_buf
+            )
+        else:
+            self._ai_inference_result_content_diagnosis(camera_detect_data)
 
         camera_detect_data.index = camera_input_data[0].index
         camera_detect_data.frame = camera_input_data[0].frame

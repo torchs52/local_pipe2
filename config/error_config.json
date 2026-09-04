@@ -394,7 +394,9 @@
         "is_enabled": true
     },
     "ai_inference_result_error": {
-        "is_enabled": true
+        "is_enabled": true,
+        "score_min": 0.0,
+        "score_max": 1.0
     },
     "detection_target_error": {
         "is_enabled": true

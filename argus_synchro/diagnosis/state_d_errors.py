@@ -60,6 +60,69 @@ class LidarDataMissing(StateErrorDiagnosisD):
         )
 
 
+class AiInferenceResultError(StateErrorDiagnosisD):
+    """AI推論結果異常（ログのみ）"""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.param: err_conf.AiInferenceResultErrorParameters
+
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.ai_inference_result_error
+        self.is_enabled = self.param.is_enabled
+
+    def excepts_diagnosis(self, e: Exception) -> bool:
+        if not self.is_enabled:
+            return False
+        return not isinstance(e, (KeyboardInterrupt, SystemExit))
+
+    def _parse_args(
+        self, *args: object
+    ) -> tuple[NDArray[np.float32], NDArray[np.float32], NDArray[np.int32]]:
+        if len(args) != 3:
+            raise ValueError("args must be (boxes, scores, valid_detects)")
+        boxes, scores, valid_detects = args
+        if not isinstance(boxes, np.ndarray):
+            raise ValueError("args[0] must be NDArray")
+        if not isinstance(scores, np.ndarray):
+            raise ValueError("args[1] must be NDArray")
+        if not isinstance(valid_detects, np.ndarray):
+            raise ValueError("args[2] must be NDArray")
+        return (
+            cast(NDArray[np.float32], boxes),
+            cast(NDArray[np.float32], scores),
+            cast(NDArray[np.int32], valid_detects),
+        )
+
+    def detect_error(self, *args: object) -> bool:
+        boxes, scores, valid_detects = self._parse_args(*args)
+        if not np.all(np.isfinite(boxes)):
+            return True
+        if not np.all(np.isfinite(scores)):
+            return True
+        if np.any((scores < self.param.score_min) | (scores > self.param.score_max)):
+            return True
+        return bool(
+            np.any(valid_detects < 0) or np.any(valid_detects > boxes.shape[1])
+        )
+
+    def _error_log_output(self, err_idx: int, *args: object) -> None:
+        if len(args) != 1:
+            raise ValueError("args must be (index_or_exception,)")
+        if isinstance(args[0], Exception):
+            error = args[0]
+            self._logger.warning(
+                f"D-level exception: {type(error).__name__}: {error}"
+            )
+            return
+        if not isinstance(args[0], int):
+            raise ValueError("args[0] must be int or Exception")
+        self._logger.warning(
+            self.get_error_no(err_idx)
+            + f": AI推論結果異常: カメラ{args[0]}の推論結果にNaN/Inf/範囲外スコアを検出しました。"
+        )
+
+
 class CameraDataMissing(StateErrorDiagnosisD):
     """CAMERA_DATA_MISSING: カメラデータ欠落"""
 
