@@ -571,8 +571,34 @@ class CameraModuleError(StateErrorDiagnosisD):
 class AccumulationModuleError(StateErrorDiagnosisD):
     """ACCUMULATION_MODULE_ERROR: 蓄積モジュールエラー"""
 
+    def __init__(self) -> None:
+        super().__init__()
+        self._last_signature: tuple[str, str] | None = None
+        self._last_log_mono: float | None = None
+        self._ongoing_log_interval_sec: float = 60.0
+
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.storage_module_error
+        self.is_enabled = self.param.is_enabled
+        self._ongoing_log_interval_sec = self.param.ongoing_log_interval_sec
+
     def excepts_diagnosis(self, e: Exception) -> bool:
         return not isinstance(e, KeyboardInterrupt)
+
+    def _should_log(self, e: Exception, now_mono: float) -> tuple[bool, bool]:
+        signature = (type(e).__name__, str(e).splitlines()[0] if str(e) else "")
+        include_traceback = self._last_signature != signature
+        if include_traceback:
+            self._last_signature = signature
+            self._last_log_mono = now_mono
+            return True, True
+        if (
+            self._last_log_mono is None
+            or now_mono - self._last_log_mono >= self._ongoing_log_interval_sec
+        ):
+            self._last_log_mono = now_mono
+            return True, False
+        return False, False
 
     def _error_log_output(self, err_idx: int, *args: object) -> None:
         if len(args) != 1:
@@ -581,10 +607,12 @@ class AccumulationModuleError(StateErrorDiagnosisD):
             e: Exception = args[0]
         else:
             raise ValueError("args[0] must be Exception")
-        self._logger.warning(
-            f"蓄積モジュールエラー: {type(e).__name__}: {e}",
-            exc_info=True,
-        )
+        should_log, include_traceback = self._should_log(e, time.monotonic())
+        if should_log:
+            self._logger.warning(
+                f"蓄積モジュールエラー: {type(e).__name__}: {e}",
+                exc_info=include_traceback,
+            )
 
 
 class CanModuleError(StateErrorDiagnosisD):

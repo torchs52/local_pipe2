@@ -606,6 +606,8 @@ class CameraModuleErrorParameters(ErrorParameterBase):
 class StorageModuleErrorParameters(ErrorParameterBase):
     """蓄積モジュールエラー用パラメータ"""
 
+    ongoing_log_interval_sec: float = 60.0
+
 
 @dataclass(frozen=False, slots=True)
 class CanModuleErrorParameters(ErrorParameterBase):
