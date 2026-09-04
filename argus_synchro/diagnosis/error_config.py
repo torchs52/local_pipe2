@@ -592,6 +592,8 @@ class LogTimeReversalParameters(ErrorParameterBase):
 class LidarModuleErrorParameters(ErrorParameterBase):
     """LiDARモジュールエラー用パラメータ"""
 
+    ongoing_log_interval_sec: float = 60.0
+
 
 @dataclass(frozen=False, slots=True)
 class CameraModuleErrorParameters(ErrorParameterBase):

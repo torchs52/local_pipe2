@@ -296,8 +296,9 @@ SHI側だけで確認されたテスト:
 | M-009 | カメラJSON読取検証 | SHI `image_process.py` | drop | verified | docs/固有CE設計 | SHIの汎用FILE_IO事前検証は不採用。通常設定はCE005、fisheyeはCE007-CE010で別途接続する |
 | M-010 | 重要度D状態診断のエッジ化 | SHI `error_diagnosis.py` | shi-adopt | verified | vendor D基底, tests | vendor index/APIを維持し、DETECTION/KEEPING/RECOVERY/NORMALを返す |
 | M-011 | モジュール例外traceback | vendor `state_d_errors.py` | vendor-keep | verified | module error classes, tests | vendorの `exc_info=True` で実ファイルへのtraceback出力を確認 |
-| M-012 | 継続モジュール例外の時間間引き | SHI `_ModuleError` | manual-port | in-review | error config/module errors/process catch | カメラ経路をM-012aで検証済み。他moduleは個別に展開する |
+| M-012 | 継続モジュール例外の時間間引き | SHI `_ModuleError` | manual-port | in-review | error config/module errors/process catch | カメラ・LiDAR経路を検証済み。他moduleは個別に展開する |
 | M-012a | カメラ継続モジュール例外の時間間引き | SHI `_ModuleError` | manual-port | verified | camera error config/module error/image process/tests | 同一signatureを60秒間抑止し、初回・変更時はtraceback、時間経過後は要約 |
+| M-012b | LiDAR継続モジュール例外の時間間引き | SHI `_ModuleError` | manual-port | verified | lidar error config/module error/points process/tests | vendorのlog_output契約を維持し、同一signatureを時間間引き |
 | M-013 | process終了時の診断情報 | SHI process `finally` | manual-port | pending | visual/calib/get_dataほか | vendorの終了処理を残し、観測ログだけを候補ごとにレビューする |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
@@ -383,6 +384,15 @@ SHI側だけで確認されたテスト:
 - `tests/test_module_error_logging.py` でvendorの `log_output()` を経由し、初回、時間内抑止、60秒後要約、signature変更を検証した。
 - module logging、camera FILE_IO、shared error configの関連テストは8件pass。対象ファイルのVS Code/Pylance診断は0件。
 - M-012の他module展開では、各設定型とcatchを個別に確認し、同じ共通契約を適用する。
+
+### 2026-09-04 M-012b実施記録
+
+- `PointsProviderProcess` はvendor形式の `log_output(ResultDiagnosis.DETECTION, ResultDiagnosis.DETECTION, ModuleErrorIndex.LIDAR_MODULE_ERROR, exception, lidar_index)` を使用する。
+- 既存catchでは `LidarModuleError._error_log_output()` が要求するLiDAR番号が欠けていたため、呼出し構造を変えず末尾に `self._index` を補った。
+- `LidarModuleErrorParameters` に省略可能な `ongoing_log_interval_sec` を既定値60秒で追加した。
+- 間引き判断は `LidarModuleError._error_log_output()` 内部へ限定し、初回・signature変更時はtraceback、同一signatureの時間経過後は要約を記録する。
+- カメラとLiDARで共通基底への再編は行わず、vendorの既存module errorクラス構造を維持した。
+- module logging、LiDAR FILE_IO、shared error configの関連テストは9件pass。対象ファイルのVS Code/Pylance診断は0件。
 
 ## 10. 次のCopilotへの開始指示
 

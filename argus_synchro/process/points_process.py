@@ -313,6 +313,7 @@ class PointsProviderProcess(InputProcess[PointCloudData]):
                             ResultDiagnosis.DETECTION,
                             ModuleErrorIndex.LIDAR_MODULE_ERROR,
                             e,
+                            self._index,
                         )
                     else:
                         raise e
