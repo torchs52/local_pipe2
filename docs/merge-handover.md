@@ -329,6 +329,7 @@ SHI側だけで確認されたテスト:
 | M-025 | SE037 周辺監視モジュール未応答 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | state diagnosis/shared heartbeat/4 processes/AppManager/tests | GetData/ObjectDetect/PointsRefine/Visualの個別heartbeatを監視し、vendorの共通ログdispatchへ接続する |
 | M-026 | CE005 設定ファイル欠損/破損 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | action diagnosis/load_config/tests | SHIの例外分類とcounter間引きを維持し、ログはvendor責務分担どおり診断クラスへ委譲する |
 | M-027 | CE005 settings値域・型検証 | SHI `a487f5f`, `e2362ec` | manual-port | verified | config validation/common paths/tests | SHIのsettings規則とstrict/normalize方針を維持し、設定スキーマの責務としてconfig層へ配置する |
+| M-028 | CE004 機体モデルファイル欠損/破損 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | action diagnosis/PointsRefine/Visual/tests | SHIの例外分類を維持し、ログは診断クラスへ委譲、vendorの起動失敗制御へ元例外を再送出する |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -625,6 +626,15 @@ SHI側だけで確認されたテスト:
 - section名が壊れた場合、validatorは未知sectionを自動生成せず、その後の `AppConfig` 構築が `NoSectionError` / `NoOptionError` を送出する。これらもM-026でCE005対象済みであり、誤ったsectionを暗黙補完せず設定破損として扱う。
 - 現行SHIには専用validatorテストがなかったため、vendor側で上下限、不正型、normalize、読込直後の実行、section名破損からCE005分類までを追加した。現行vendorの `config/*settings*.ini` 12ファイルはすべてstrict規則に適合し、専用テストは6 passed、CE005・AppConfig・共有エラー設定を含む関連テストは35 passed。変更箇所のVS Code診断なし、CRLF考慮のdiff checkに成功した。
 - `test_detect2d.py` を除く全体回帰は195 passed、7 xfailed、通常失敗0件。`compileall` も成功した。
+
+### 2026-09-04 M-028実施記録
+
+- SHIコミット `4b4674c` と現行SHIを確認し、CE004の機体モデルファイル欠損・破損分類をvendorへ移植した。対象は `FileNotFoundError`、`PermissionError`、`IsADirectoryError`、`NotADirectoryError`、`OSError`、`UnicodeDecodeError`、`JSONDecodeError`、`ValueError`、`KeyError`、`RuntimeError` であり、非対象例外はCE004へ計上しない。
+- runtime接続は `SubScrutinizer.create_machine_points()` を呼ぶPointsRefineの機体除去初期化、衝突・崖初期化、Visual初期化の3境界に限定した。機体モデル生成後の八分木、崖検出、表示初期化アルゴリズムは変更していない。
+- SHIではprocessがCE004ログ文面を直接所有していたが、vendorの責務分担に合わせてエラー番号、文面、logger、traceback指定を `CraneModelFileMissingDiagnosis.log_output()` へ集約した。processは例外分類とログdispatch後に元例外を再送出し、vendor既存のprocess起動失敗・停止制御を維持する。
+- M-005の校正設定・校正アルゴリズムとM-016のCAN統合は今回の対象に含めていない。広域の再試行、フォールバック、process lifecycleも追加していない。
+- `tests/test_crane_model_file_missing.py` で対象10例外、非対象例外、診断所有ログ、PointsRefine・Visualの分類と再送出を確認した。専用テストは14 passed、既存Visual終了テストを含む関連テストは15 passed。変更箇所のVS Code診断なし、`compileall` 成功。
+- `test_detect2d.py` を除く全体回帰は209 passed、7 xfailed、通常失敗0件。
 
 ## 10. 次のCopilotへの開始指示
 

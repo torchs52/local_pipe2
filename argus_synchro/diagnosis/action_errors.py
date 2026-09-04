@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from configparser import (
     DuplicateOptionError,
@@ -182,6 +183,26 @@ class CraneModelFileMissingDiagnosis(ActionErrorDiagnosisA):
     def __init__(self) -> None:
         super().__init__()
 
+    def excepts_diagnosis(self, e: Exception) -> bool:
+        is_target = isinstance(
+            e,
+            (
+                FileNotFoundError,
+                PermissionError,
+                IsADirectoryError,
+                NotADirectoryError,
+                OSError,
+                UnicodeDecodeError,
+                json.JSONDecodeError,
+                ValueError,
+                KeyError,
+                RuntimeError,
+            ),
+        )
+        if is_target:
+            self.increment_counter()
+        return is_target
+
     def detect_error(self, *args: object) -> bool:
         return False
 
@@ -190,6 +211,19 @@ class CraneModelFileMissingDiagnosis(ActionErrorDiagnosisA):
 
     def detect_recovery_fail_safe(self, *args: object) -> bool:
         return True
+
+    def log_output(self, err: bool, recover: bool, err_idx: int, *args: object) -> None:
+        if err:
+            self._error_log_output(err_idx, *args)
+
+    def _error_log_output(self, err_idx: int, *args: object) -> None:
+        if len(args) != 1 or not isinstance(args[0], Exception):
+            raise ValueError("args must be (Exception,)")
+        self._logger.error(
+            self.get_error_no(err_idx)
+            + f": CRANE_MODEL_FILE_MISSING: {args[0]!r}",
+            exc_info=True,
+        )
 
 
 class ConfigFileMissingDiagnosis(ActionErrorDiagnosisA):

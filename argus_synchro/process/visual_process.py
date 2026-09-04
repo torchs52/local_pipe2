@@ -44,6 +44,7 @@ from argus_synchro.py_octotree.detectable_points import (
     get_detectable_z_range,
 )
 from argus_synchro.shared_errors import (
+    ActionErrorIndex,
     ModuleErrorIndex,
     SharedErrors,
     StateErrorDIndex,
@@ -410,6 +411,26 @@ class VisualProcess(ProcessBase):
         ]
         self.keep_cluster2entity_by_camera = [{} for _ in range(len(self.camera))]
 
+    def _create_machine_points(self):
+        diagnosis = self._ser.action_errors_A_C[
+            ActionErrorIndex.CRANE_MODEL_FILE_MISSING
+        ]
+        try:
+            return SubScrutinizer.create_machine_points(
+                self._app_config.OctoTree.col_machine_dir,
+                self._app_config.LiDARPosition,
+                self._app_config.OctoTree.json_col_machine_file,
+            )
+        except Exception as error:
+            is_target = diagnosis.excepts_diagnosis(error)
+            diagnosis.log_output(
+                is_target,
+                False,
+                ActionErrorIndex.CRANE_MODEL_FILE_MISSING,
+                error,
+            )
+            raise
+
     def _startup(self) -> None:
         self._config_load()
         self._err_config_load()
@@ -452,11 +473,7 @@ class VisualProcess(ProcessBase):
             self._l_machine_col,
             self._machine_mobile_points_measure,
             self._machine_immobile_points_measure,
-        ) = SubScrutinizer.create_machine_points(
-            self._app_config.OctoTree.col_machine_dir,
-            self._app_config.LiDARPosition,
-            self._app_config.OctoTree.json_col_machine_file,
-        )
+        ) = self._create_machine_points()
 
         self._det_point_mobile_gen, self._det_point_immobile_gen = (
             SubScrutinizer.initialize_detectable_point_generators(

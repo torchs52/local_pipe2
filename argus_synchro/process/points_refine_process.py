@@ -43,7 +43,12 @@ from argus_synchro.profiler import log_main, log_target
 from argus_synchro.profiler.prof_fps import ProfFps
 from argus_synchro.profiler.prof_mode import ProfCategory
 from argus_synchro.py_octotree.detectable_points import get_detectable_z_range
-from argus_synchro.shared_errors import ModuleErrorIndex, SharedErrors, StateErrorDIndex
+from argus_synchro.shared_errors import (
+    ActionErrorIndex,
+    ModuleErrorIndex,
+    SharedErrors,
+    StateErrorDIndex,
+)
 from argus_synchro_lib import controller as octo_ctrl
 
 if typing.TYPE_CHECKING:
@@ -304,11 +309,7 @@ class PointsRefineProcess(ProcessBase):
             self._l_machine_col,
             machine_mobile_points_measure,
             machine_immobile_points_measure,
-        ) = SubScrutinizer.create_machine_points(
-            self._app_config.OctoTree.col_machine_dir,
-            self._app_config.LiDARPosition,
-            self._app_config.OctoTree.json_col_machine_file,
-        )
+        ) = self._create_machine_points()
 
         if self._app_config.calibration.calib_lidar2crane:
             self._pcd_proofreading = MultiCalib(
@@ -363,6 +364,26 @@ class PointsRefineProcess(ProcessBase):
             machine_center=self._app_config.machine.offset_rotate_center,
         )
 
+    def _create_machine_points(self):
+        diagnosis = self._ser.action_errors_A_C[
+            ActionErrorIndex.CRANE_MODEL_FILE_MISSING
+        ]
+        try:
+            return SubScrutinizer.create_machine_points(
+                self._app_config.OctoTree.col_machine_dir,
+                self._app_config.LiDARPosition,
+                self._app_config.OctoTree.json_col_machine_file,
+            )
+        except Exception as error:
+            is_target = diagnosis.excepts_diagnosis(error)
+            diagnosis.log_output(
+                is_target,
+                False,
+                ActionErrorIndex.CRANE_MODEL_FILE_MISSING,
+                error,
+            )
+            raise
+
     def _startup_accum(self) -> None:
         self._crane_state_est = CraneStateEstimator(
             app_config=self._app_config,
@@ -390,11 +411,7 @@ class PointsRefineProcess(ProcessBase):
             _,
             machine_mobile_points_measure,
             self._machine_immobile_points_measure,
-        ) = SubScrutinizer.create_machine_points(
-            self._app_config.OctoTree.col_machine_dir,
-            self._app_config.LiDARPosition,
-            self._app_config.OctoTree.json_col_machine_file,
-        )
+        ) = self._create_machine_points()
 
         result_edge_det = create_edge_detection(
             self._app_config,
