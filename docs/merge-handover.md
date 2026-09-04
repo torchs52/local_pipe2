@@ -290,7 +290,7 @@ SHI側だけで確認されたテスト:
 | M-003 | 周辺監視LiDARファイル入力I/O | SHI `points_process.py` | manual-port | verified | vendor `points_process.py`, tests | ファイル入力時だけ診断、元例外を再送出、専用テスト2件pass |
 | M-004 | CE015ログファイルI/O | SHI logger/action diagnosis | manual-port | verified | `common/app_logger.py`, action diagnosis, `__main__.py`, tests | handler callbackで検知し、同一signatureの連続計上を抑止 |
 | M-005 | 校正サブシステムのI/O境界 | SHI `9432a4f` | decision-needed | deferred | calibration modules | 校正全体を後段で扱い、ユーザー側アルゴリズム変更の採用方針と合わせて判断する |
-| M-006 | 負荷低減モード | SHI `2283a0a` | decision-needed | pending | diagnosis/process/accumulation | 性能と復帰条件を別レビュー |
+| M-006 | 負荷低減モード | SHI `2283a0a` | manual-port | verified | vendor reduced-load制御/accumulation/tests | vendor閾値を維持し、モード別deque実効上限だけを追加 |
 | M-007 | ファイル入力ループ | SHI `e2362ec` ほか | decision-needed | pending | process/provider | モード制御と分離してレビュー |
 | M-008 | 周辺監視カメラ動画入力I/O | SHI `image_process.py` | manual-port | verified | vendor `image_process.py`, tests | 動画open/initだけを診断、専用テスト2件pass |
 | M-009 | カメラJSON読取検証 | SHI `image_process.py` | drop | verified | docs/固有CE設計 | SHIの汎用FILE_IO事前検証は不採用。通常設定はCE005、fisheyeはCE007-CE010で別途接続する |
@@ -486,6 +486,18 @@ SHI側だけで確認されたテスト:
 - callbackはfactoryのlogger追加・handler再生成後にも伝播する。console handlerは対象外で、file handlerだけを監視する。
 - `tests/test_log_time_reversal.py` で圧縮有無、初回非通知、許容幅、AppManager消費、index登録、factory更新後のcallback維持を確認した。6 passed。M-004/M-014/M-015と共有設定の組合せは19 passed。新規変更箇所のVS Code診断なし。
 - `test_detect2d.py` を除く全体回帰は107 passed、7 xfailed、通常失敗0件。`py_compile` と `git diff --check` 成功。
+
+### 2026-09-04 M-006実施記録
+
+- 現行vendorには負荷低減モードの判定、処理速度・点群数・thermal入力、状態更新、voxel size切替がすでに接続されていることを確認した。
+- SHIの点群数しきい値40%/30%への変更は実験用であり、ユーザー判断により移植しない。vendorの90%/80%、開始・復帰継続回数、warningログを維持する。
+- SHIのうち、負荷低減モードに応じて点群蓄積dequeの実効上限を変更する制御だけを移植した。
+- dequeの `maxlen` は生成後に変更できないため、通常・負荷低減の設定値の大きい方を物理上限として初期化する。これにより、どちらの設定値が大きい場合でも対応する。
+- `accumulate_point()` の先頭で現在モードの実効上限を選び、上限超過分を最古の履歴から削除する。縮小時は最新履歴を保持し、通常モードへ戻った後は新規フレームにより物理上限まで自然に増加する。
+- trimは蓄積済み点群の座標変換・結合より前に行うため、負荷低減へ切り替わったフレームから処理対象履歴数を減らす。
+- SHIのPointsRefine切替ログは機能に必須ではなく、vendor差分を抑えるため移植しない。process側の既存 `reduced_load_mode.enabled` 伝搬は変更していない。
+- `tests/test_reduced_load_accumulation_buffer.py` で最新履歴保持、通常復帰後の再拡張、通常・負荷低減設定の大きい方を物理上限にすること、0以下の上限拒否を確認した。3 passed。変更箇所のVS Code診断なし。
+- 共有設定を含む関連テストは6 passed。`test_detect2d.py` を除く全体回帰は110 passed、7 xfailed、通常失敗0件。`py_compile` と `git diff --check` 成功。
 
 ## 10. 次のCopilotへの開始指示
 

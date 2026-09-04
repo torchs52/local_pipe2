@@ -173,6 +173,16 @@ def transform_np(
 EYE = np.eye(4)
 
 
+def trim_accumulated_frames(
+    accumulated_frames: deque[NDArray[np.float64]],
+    max_frames: int,
+) -> None:
+    if max_frames <= 0:
+        raise ValueError("max accumulated frames must be greater than zero")
+    while len(accumulated_frames) > max_frames:
+        accumulated_frames.popleft()
+
+
 def accumulate_point(
     xyz: NDArray[np.float64],
     counter: NDArray[np.int32],
@@ -198,6 +208,18 @@ def accumulate_point(
     # ------------------------------------------------------------------
     # accum_counterの初期値=-1
     accum_counter += 1
+
+    if is_reduced_load_mode:
+        max_accumulated_frames = accumulation.max_accumulated_frames_reduced_load
+        max_accumulated_frames_ground = (
+            accumulation.max_accumulated_frames_ground_reduced_load
+        )
+    else:
+        max_accumulated_frames = accumulation.max_accumulated_frames
+        max_accumulated_frames_ground = accumulation.max_accumulated_frames_ground
+
+    trim_accumulated_frames(accum_points_dq, max_accumulated_frames)
+    trim_accumulated_frames(accum_ground_dq, max_accumulated_frames_ground)
 
     non_ground_pts: NDArray[np.float64]
     ground_pts: NDArray[np.float64]

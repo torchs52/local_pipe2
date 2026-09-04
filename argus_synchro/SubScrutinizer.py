@@ -508,10 +508,16 @@ def initialize_accum_counter(
 
     # 初期化
     accum_points_dq: deque[NDArray[np.float64]] = deque(
-        maxlen=accum_conf.max_accumulated_frames,
+        maxlen=max(
+            accum_conf.max_accumulated_frames,
+            accum_conf.max_accumulated_frames_reduced_load,
+        ),
     )
     accum_ground_dq: deque[NDArray[np.float64]] = deque(
-        maxlen=accum_conf.max_accumulated_frames_ground,
+        maxlen=max(
+            accum_conf.max_accumulated_frames_ground,
+            accum_conf.max_accumulated_frames_ground_reduced_load,
+        ),
     )
     accum_counter: int = -1
 
