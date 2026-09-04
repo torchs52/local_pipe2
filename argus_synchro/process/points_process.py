@@ -47,6 +47,7 @@ from argus_synchro.shared_errors import (
     ModuleErrorIndex,
     SharedErrors,
     StateErrorDIndex,
+    StateErrorIndex,
 )
 from argus_synchro.shared_excepts import INVALID_TIMESTAMP, SharedLIDExcept
 
@@ -131,6 +132,9 @@ class PointsProviderProcess(InputProcess[PointCloudData]):
             self._err_config
         )
         self._ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR].update(
+            self._err_config
+        )
+        self._ser.state_errors_D[StateErrorDIndex.LIDAR_DATA_MISSING].update(
             self._err_config
         )
 
@@ -271,6 +275,23 @@ class PointsProviderProcess(InputProcess[PointCloudData]):
 
         if pcd is None:
             return None
+
+        is_connection_error = bool(
+            self._ser.state_errors_A_C[
+                StateErrorIndex.LIDAR0_CONNECTION_ERROR + self._index
+            ].is_error.value
+        )
+        lidar_data_missing = self._ser.state_errors_D[
+            StateErrorDIndex.LIDAR_DATA_MISSING
+        ]
+        result = lidar_data_missing.errors_diagnosis(
+            len(pcd), is_connection_error
+        )
+        lidar_data_missing.log_output(
+            *result,
+            StateErrorDIndex.LIDAR_DATA_MISSING,
+            self._index,
+        )
 
         # for healthy check
         now: float = time.time()

@@ -472,6 +472,8 @@ class MonitorConnectionErrorParameters(ErrorParameterBase):
 class LidarDataMissingParameters(ErrorParameterBase):
     """Lidarデータ欠落用パラメータ"""
 
+    min_point_count: int = 100
+
 
 @dataclass(frozen=False, slots=True)
 class CameraDataMissingParameters(ErrorParameterBase):

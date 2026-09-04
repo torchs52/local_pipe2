@@ -19,6 +19,47 @@ from argus_synchro.process.process import ProcessBase
 from argus_synchro.shared_data import create_shared_single_data
 
 
+class LidarDataMissing(StateErrorDiagnosisD):
+    """LIDAR_DATA_MISSING: Lidarデータ欠落"""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.param: err_conf.LidarDataMissingParameters
+
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.lidar_data_missing
+        self.is_enabled = self.param.is_enabled
+
+    def _parse_args(self, *args: object) -> tuple[int, bool]:
+        if len(args) != 2:
+            raise ValueError("args must be (point_count, is_connection_error)")
+
+        point_count = args[0]
+        is_connection_error = args[1]
+        if not isinstance(point_count, int):
+            raise ValueError("args[0] must be int")
+        if not isinstance(is_connection_error, bool):
+            raise ValueError("args[1] must be bool")
+        return point_count, is_connection_error
+
+    def detect_error(self, *args: object) -> bool:
+        point_count, is_connection_error = self._parse_args(*args)
+        if is_connection_error:
+            return False
+        return 0 < point_count < self.param.min_point_count
+
+    def _error_log_output(self, err_idx: int, *args: object) -> None:
+        if len(args) != 1:
+            raise ValueError("args must be (index,)")
+        if not isinstance(args[0], int):
+            raise ValueError("args[0] must be int")
+        index = args[0]
+        self._logger.info(
+            self.get_error_no(err_idx)
+            + f": Lidarデータ欠落: Lidar{index}の蓄積点数が閾値を下回りました。"
+        )
+
+
 class CameraDataMissing(StateErrorDiagnosisD):
     """CAMERA_DATA_MISSING: カメラデータ欠落"""
 

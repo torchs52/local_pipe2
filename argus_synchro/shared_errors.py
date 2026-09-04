@@ -45,6 +45,7 @@ from argus_synchro.diagnosis.state_d_errors import (
     ImuModuleError,
     Integrate2d3dModuleError,
     InvalidDataInput,
+    LidarDataMissing,
     LidarModuleError,
     LidarShiftMonitorModuleError,
     LogCompressionFailure,
@@ -305,6 +306,7 @@ class StateErrorDIndex(IntEnum):
     FILE_IO_ERROR = auto()  # ファイルI/Oエラー
     LOG_COMPRESSION_FAILURE = auto()  # ログ圧縮失敗
     LOG_TIME_REVERSAL = auto()  # ログ時刻逆転
+    LIDAR_DATA_MISSING = auto()  # Lidarデータ欠落
 
 
 class ModuleErrorIndex(IntEnum):
@@ -432,6 +434,7 @@ class SharedErrors:
             FileIoError(),
             LogCompressionFailure(),
             LogTimeReversal(),
+            LidarDataMissing(),
         )
         """
         重要度D検出クラスリスト

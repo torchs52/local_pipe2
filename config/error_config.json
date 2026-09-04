@@ -274,7 +274,8 @@
         "is_enabled": true
     },
     "lidar_data_missing": {
-        "is_enabled": true
+        "is_enabled": true,
+        "min_point_count": 100
     },
     "camera_data_missing": {
         "is_enabled": true,

@@ -46,6 +46,10 @@ git -C "$SHI_REPO" log -1 --format='%H %ad %s' --date=iso
 
 両リポジトリはGit上の共通履歴を持っていない。2026-09-03時点の概算では、生成物等を除外しても変更191ファイル、片側だけに存在するファイル45件、合計236件の差分がある。
 
+エラー処理の分担開始時点では、ユーザー側とvendor側で基本的な枠組みを共有していた。双方の `shared_errors.py` にエラー番号と名称を定義し、`action_errors.py`、`state_errors.py` などにも担当実装を追加する前の基本メソッドや空実装を置いた状態から、それぞれの担当範囲を別々に実装している。
+
+このため、エラー定義、診断クラス、JSONパラメータが片側にだけ存在するdiffを、もう片側が意図的に削除・拒否した証拠とは扱わない。原則として共通スケルトンから担当側だけが書き加えた結果と解釈し、履歴、`docs/error_list.txt` の担当、呼出し元、実装内容を確認して採否を判断する。特にvendor側に名称、空メソッド、JSON雛形が残り、SHI側に具体的な判定・ログ・runtime接続がある場合は、SHI担当機能の移植候補として優先的に検討する。
+
 したがって、次を禁止する。
 
 - `git merge --allow-unrelated-histories` を主たる統合手段にする
@@ -307,6 +311,8 @@ SHI側だけで確認されたテスト:
 | M-013b | message flow停止開始processログ | SHI `ProcessBase._unsubscribe()` | manual-port | verified | vendor `process.py`, tests | logger初期化前を許容し、既存flow停止処理を維持 |
 | M-014 | ログローテーション後のgzip圧縮失敗診断 | SHI `LogCompressionFailure` / logger callback | manual-port | verified | logger/D診断/AppManager/tests | 未圧縮backupを保持し、CE015へ重複計上しない |
 | M-015 | ログレコード時刻逆行診断 | SHI `LogTimeReversal` / logger callback | manual-port | verified | logger/D診断/AppManager/tests | 許容秒を超える逆行を共有イベントとして診断 |
+| M-016 | CANサブシステムの混合統合 | SHI `47ada36` ほか | decision-needed | deferred | CAN sensor/file/config/diagnosis/tests | vendorとSHI双方に必要な実装があり、全体diffと実機仕様を確認して一括判断する |
+| M-017 | DレベルLidarデータ欠落 | SHI `a487f5f` / `docs/error_list.txt` | manual-port | verified | D診断/Points/shared errors/config/tests | 接続エラー中を除外し、0より多く閾値未満の点群をエッジ診断する |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -509,6 +515,23 @@ SHI側だけで確認されたテスト:
 - SHIに同居するcamera JSON検証、heartbeat、接続診断、provider fallbackなどの変更は移植していない。vendorのclock、診断、process lifecycle、fallback処理を維持した。
 - `tests/test_surround_file_input_loop.py` で3 processの同期リセット、校正除外、ループ無効、GetDataのファイル入力・実機入力を確認した。3 passed。設定テストとの組合せは7 passed。変更箇所のVS Code診断なし。
 - 5つの設定ファイルすべてを `AppConfig` で読み込み、`file_input_loop=True` を確認した。`test_detect2d.py` を除く全体回帰は113 passed、7 xfailed、通常失敗0件。`py_compile` 成功。
+
+### 2026-09-04 M-016保留判断
+
+- CANはデコーダ分離だけを独立採用せず、vendorとSHIの全体diffを比較して混合反映する方針とする。ユーザー判断により後回しにした。
+- SHIコミット `47ada36` にはセンサ入力とファイル入力のデコーダ共通化、PGN設定、CSV値正規化が混在し、その後もSCX2000、新CAN反転デコーダ、CAN ID正規化、通信診断の変更が追加されている。
+- 現行vendorでは旧CANのoffsetがセンサ入力で減算、ファイル入力で加算になっている。どちらを正とするかは実機仕様を含めて確認する必要がある。
+- 一度作成したデコーダ分離の未コミット変更と専用テストは取り下げ、vendorの `CanHandler` 実装へ戻した。再開時はsensor/file/config/diagnosisと対応テストを一つの比較単位として扱う。
+
+### 2026-09-04 M-017実施記録
+
+- `docs/error_list.txt` のSHI担当エラーを棚卸しし、CANと校正の保留領域を避けて、独立して接続できるDレベル「Lidarデータ欠落」を最初の対象とした。
+- エラー処理は双方が名称、番号、基本メソッド、空実装などの共通スケルトンを持った状態から担当別に実装を進めている。このためvendorに残るparameterとJSON雛形を削除意思とは解釈せず、SHI側の具体的な判定、ログ、runtime接続を移植した。
+- `LidarDataMissingParameters.min_point_count` はSHIと同じ100を既定値およびJSONへ追加した。判定もSHIと同じく、LiDAR接続エラー中ではなく `0 < point_count < min_point_count` の場合に検出する。0点は接続系診断に委ねる。
+- D indexは既存0～9を変更せず末尾へ追加し、vendorの `StateErrorDiagnosisD` によるDETECTION/KEEPING/RECOVERY/NORMALのエッジ制御と `log_output()` 契約を利用する。
+- Pointsは点群取得成功後にLiDAR番号対応の接続エラー状態を参照し、点数とともに診断へ渡す。provider、clock、heartbeat、ファイルI/O診断などの既存制御は変更していない。
+- `tests/test_lidar_data_missing.py` で閾値境界、0点除外、接続エラー中の除外、発生・継続・復帰、引数検証、Points配線を確認した。専用テストは6 passed、関連テストは13 passed。変更箇所のVS Code診断なし、`py_compile` 成功。
+- `test_detect2d.py` を除く全体回帰は120 passed、7 xfailed、通常失敗0件。`config/error_config.json` は既存CRLFを維持しているため、差分検証は `git -c core.whitespace=cr-at-eol diff --check` を使用する。
 
 ## 10. 次のCopilotへの開始指示
 
