@@ -259,7 +259,10 @@
         "is_enabled": true
     },
     "reboot_loop_detected": {
-        "is_enabled": true
+        "is_enabled": true,
+        "uptime_state_path": "/var/lib/argus3d/uptime/uptime_state.json",
+        "required_boot_count": 5,
+        "window_sec": 600.0
     },
     "ai_model_load_failed": {
         "is_enabled": true

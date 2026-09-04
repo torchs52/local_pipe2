@@ -408,15 +408,49 @@ class RebootLoopDetectedDiagnosis(ActionErrorDiagnosisA):
 
     def __init__(self) -> None:
         super().__init__()
+        self.param: err_conf.RebootLoopDetectedParameters
+
+    def update(self, error_config: err_conf.ErrorConfig) -> None:
+        self.param = error_config.reboot_loop_detected
+        self.is_enabled = self.param.is_enabled
+
+    def _parse_args(self, *args: object) -> list[float]:
+        if len(args) != 1 or not isinstance(args[0], list):
+            raise ValueError("args must be (boot_times,)")
+        boot_times = args[0]
+        if not all(isinstance(boot_time, float) for boot_time in boot_times):
+            raise ValueError("boot_times must be list[float]")
+        return boot_times
 
     def detect_error(self, *args: object) -> bool:
-        return False
+        boot_times = self._parse_args(*args)
+        if len(boot_times) < self.param.required_boot_count:
+            return False
+        # 直近N回の起動がW秒以内なら再起動ループとする。Nは初回起動を含む起動記録数。
+        recent_boot_times = boot_times[: self.param.required_boot_count]
+        return max(recent_boot_times) - min(recent_boot_times) <= self.param.window_sec
 
     def detect_recovery_error(self, *args: object) -> bool:
         return True
 
     def detect_recovery_fail_safe(self, *args: object) -> bool:
         return True
+
+    def log_output(self, err: bool, recover: bool, err_idx: int, *args: object) -> None:
+        if err:
+            self._error_log_output(err_idx, *args)
+
+    def _error_log_output(self, err_idx: int, *args: object) -> None:
+        boot_times = self._parse_args(*args)
+        recent_boot_times = boot_times[: self.param.required_boot_count]
+        observed_span_sec = max(recent_boot_times) - min(recent_boot_times)
+        self._logger.warning(
+            self.get_error_no(err_idx)
+            + ": 再起動ループを検出しました: "
+            + f"boot_count={self.param.required_boot_count}, "
+            + f"window_sec={self.param.window_sec:.1f}, "
+            + f"observed_span_sec={observed_span_sec:.1f}"
+        )
 
 
 class AiModelLoadFailed(ActionErrorDiagnosisB):

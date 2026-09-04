@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import argparse
 import enum
+import json
 import multiprocessing as mp
 import time
 import traceback
+from datetime import datetime
 from multiprocessing import Process
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -1052,11 +1054,54 @@ def load_config(
 def load_err_config(ser: SharedErrors) -> None:
     err_config: ErrorConfig = ser.shared_err_conf.read()
     ser.state_errors_D[StateErrorDIndex.PROCESS_FORCED_TERMINATION].update(err_config)
+    ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR].update(err_config)
     ser.action_errors_A_C[ActionErrorIndex.OPERATION_MODE_TRANSITION_ERROR].update(
         err_config
     )
+    ser.action_errors_A_C[ActionErrorIndex.REBOOT_LOOP_DETECTED].update(err_config)
     ser.action_errors_A_C[ActionErrorIndex.PROCESS_STARTUP_ERROR].update(err_config)
     ser.module_errors[ModuleErrorIndex.MAIN_MODULE_ERROR].update(err_config)
+
+
+def _detect_reboot_loop(ser: SharedErrors) -> None:
+    diagnosis = ser.action_errors_A_C[ActionErrorIndex.REBOOT_LOOP_DETECTED]
+    file_io_error = ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR]
+    if not diagnosis.is_enabled:
+        return
+
+    state_path = Path(diagnosis.param.uptime_state_path)
+    try:
+        with state_path.open(encoding="utf-8") as state_file:
+            state = json.load(state_file)
+        last_boots = state["last_boots"]
+        if not isinstance(last_boots, list):
+            raise ValueError("last_boots must be a list")
+        boot_times: list[float] = []
+        for boot in last_boots:
+            if not isinstance(boot, dict) or not isinstance(
+                boot.get("boot_time_iso"), str
+            ):
+                raise ValueError("last_boots contains an invalid boot_time_iso")
+            boot_time = datetime.fromisoformat(boot["boot_time_iso"])
+            if boot_time.tzinfo is None:
+                raise ValueError("boot_time_iso must include a timezone")
+            boot_times.append(boot_time.timestamp())
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
+        result = file_io_error.errors_diagnosis(True)
+        file_io_error.log_output(
+            *result,
+            StateErrorDIndex.FILE_IO_ERROR,
+            str(state_path),
+            "read uptime state for CE012",
+            f"{type(error).__name__}: {error}",
+        )
+        return
+
+    file_io_error.errors_diagnosis(False)
+    result = diagnosis.errors_diagnosis(boot_times)
+    if result[0]:
+        diagnosis.increment_counter()
+    diagnosis.log_output(*result[:2], ActionErrorIndex.REBOOT_LOOP_DETECTED, boot_times)
 
 
 def _write_status_safe(
@@ -1142,6 +1187,7 @@ def main() -> None:
         MonitorArgus.log_register(app_logger_factory)
         ser.log_register(app_logger_factory)
         app_logger_factory.update()
+        _detect_reboot_loop(ser)
         ce015_diag = ser.action_errors_A_C[ActionErrorIndex.LOG_FILE_IO_ERROR]
         app_logger_factory.set_io_error_callback(ce015_diag.excepts_diagnosis)
         log_compression_failure = cast(

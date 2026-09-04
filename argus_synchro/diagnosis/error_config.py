@@ -448,6 +448,10 @@ class MmapReadWriteErrorParameters(ErrorParameterBase):
 class RebootLoopDetectedParameters(ErrorParameterBase):
     """再起動ループ検出用パラメータ"""
 
+    uptime_state_path: str = "/var/lib/argus3d/uptime/uptime_state.json"
+    required_boot_count: int = 5
+    window_sec: float = 600.0
+
 
 @dataclass(frozen=False, slots=True)
 class AiModelLoadFailedParameters(ErrorParameterBase):

@@ -331,6 +331,7 @@ SHI側だけで確認されたテスト:
 | M-027 | CE005 settings値域・型検証 | SHI `a487f5f`, `e2362ec` | manual-port | verified | config validation/common paths/tests | SHIのsettings規則とstrict/normalize方針を維持し、設定スキーマの責務としてconfig層へ配置する |
 | M-028 | CE004 機体モデルファイル欠損/破損 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | action diagnosis/PointsRefine/Visual/tests | SHIの例外分類を維持し、ログは診断クラスへ委譲、vendorの起動失敗制御へ元例外を再送出する |
 | M-029 | CE011 MMAP read/writeエラー | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | action diagnosis/ErrorMonitor/Visual/main/tests | SHIの例外分類と境界別の継続・再送出を維持し、ログは診断クラスへ委譲する |
+| M-030 | CE012 再起動ループ検出 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | action diagnosis/error config/main/FILE_IO_ERROR/tests | `uptime_state.json` の直近5回を600秒窓で評価し、履歴異常はFILE_IO_ERRORへ委譲する |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -645,6 +646,15 @@ SHI側だけで確認されたテスト:
 - 保護領域のmain制御フローは維持し、2つの `StatusMMAP.write_status()` を `_write_status_safe()` 呼出しへ置き換えただけに限定した。起動順、2秒待機、モード遷移、再起動条件、MMAP ABIは変更していない。
 - `tests/test_mmap_read_write_error.py` で対象4例外、非対象例外、診断所有ログ、ErrorMonitorの継続、Visualの再送出、main status書込みの継続を確認した。専用テストは9 passed、既存ErrorMonitor・Visual・StatusMMAPを含む関連テストは23 passed。変更したCE011箇所、main、ErrorMonitor、テストのVS Code診断なし、`compileall` 成功。Visualには今回の変更箇所以外の既存型指摘が残る。
 - `test_detect2d.py` を除く全体回帰は218 passed、7 xfailed、通常失敗0件。
+
+### 2026-09-04 M-030実施記録
+
+- SHIコミット `4b4674c` と現行SHIを確認し、CE012の再起動ループ検出をvendorへ移植した。`last_boots` の先頭から直近5回を評価し、最古と最新の差が600秒以内ならCE012 counterを1回加算してwarningを出力する。5回未満、および600秒を超える場合は検出しない。
+- ユーザー確認により、起動履歴は `/var/lib/argus3d/uptime/uptime_state.json` を正とした。vendor側テンプレートに見られる `runtime/runtime_state.json` 候補へは変更せず、SHIの `last_boots[].boot_time_iso` 形式を読み取る。時刻はtimezone付きISO 8601を必須とする。
+- 履歴ファイルの欠損、I/O失敗、JSON破損、必須キー・型・時刻形式の不正はCE012へ誤計上せず、既存DレベルFILE_IO_ERRORへパス、操作、例外詳細を渡す。正常読込時はFILE_IO_ERRORを正常状態へ戻してからCE012を評価する。
+- mainでは既存の設定・logger登録後に起動履歴を1回評価する。起動順、再起動条件、モード遷移、process lifecycleは変更していない。SHI固有の広域 `DiagnosisRuntimePolicy` とmaintenance時の抑止は持ち込まず、vendorの既存Action Error基底と `is_enabled` を使用した。
+- `tests/test_reboot_loop_detected.py` で履歴件数不足、600秒境界、境界超過、診断所有ログ、正常JSONのcounter加算、不正JSON構造のFILE_IO_ERROR委譲を確認した。専用テストは6 passed、FILE_IO_ERROR・共有設定・CE011を含む関連テストは24 passed。変更箇所のVS Code診断なし、`compileall` 成功。
+- `test_detect2d.py` を除く全体回帰は224 passed、7 xfailed、通常失敗0件。
 
 ## 10. 次のCopilotへの開始指示
 
