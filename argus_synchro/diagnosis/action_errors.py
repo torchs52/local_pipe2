@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from configparser import NoOptionError
 
 import argus_synchro.diagnosis.error_config as err_conf
@@ -361,6 +362,29 @@ class LogFileIoErrorDiagnosis(ActionErrorDiagnosisB):
 
     def __init__(self) -> None:
         super().__init__()
+        self._last_counted_mono: float = 0.0
+        self._last_counted_signature: tuple[str, str] | None = None
+        self._counter_throttle_sec: float = 1.0
+
+    def _should_increment_counter(self, e: Exception) -> bool:
+        now_mono = time.monotonic()
+        signature = (type(e).__name__, str(e).splitlines()[0] if str(e) else "")
+        elapsed = now_mono - self._last_counted_mono
+        if (
+            self._last_counted_signature == signature
+            and elapsed < self._counter_throttle_sec
+        ):
+            return False
+        self._last_counted_mono = now_mono
+        self._last_counted_signature = signature
+        return True
+
+    def excepts_diagnosis(self, e: Exception) -> bool:
+        if isinstance(e, OSError):
+            if self._should_increment_counter(e):
+                self.increment_counter()
+            return True
+        return False
 
     def detect_error(self, *args: object) -> bool:
         return False

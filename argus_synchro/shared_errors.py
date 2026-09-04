@@ -47,6 +47,7 @@ from argus_synchro.diagnosis.state_d_errors import (
     InvalidDataInput,
     LidarModuleError,
     LidarShiftMonitorModuleError,
+    LogCompressionFailure,
     MainModuleError,
     MemoryLeakDetected,
     NumericAnomalyException,
@@ -301,6 +302,7 @@ class StateErrorDIndex(IntEnum):
     ARRAY_SHAPE_ERROR = auto()  # 配列形状エラー
     PROCESS_FORCED_TERMINATION = auto()  # プロセスの強制終了を実施
     FILE_IO_ERROR = auto()  # ファイルI/Oエラー
+    LOG_COMPRESSION_FAILURE = auto()  # ログ圧縮失敗
 
 
 class ModuleErrorIndex(IntEnum):
@@ -426,6 +428,7 @@ class SharedErrors:
             ArrayShapeError(),
             ProcessForcedTermination(),
             FileIoError(),
+            LogCompressionFailure(),
         )
         """
         重要度D検出クラスリスト

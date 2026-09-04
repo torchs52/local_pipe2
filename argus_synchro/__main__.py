@@ -1110,6 +1110,14 @@ def main() -> None:
         MonitorArgus.log_register(app_logger_factory)
         ser.log_register(app_logger_factory)
         app_logger_factory.update()
+        ce015_diag = ser.action_errors_A_C[ActionErrorIndex.LOG_FILE_IO_ERROR]
+        app_logger_factory.set_io_error_callback(ce015_diag.excepts_diagnosis)
+        log_compression_failure = ser.state_errors_D[
+            StateErrorDIndex.LOG_COMPRESSION_FAILURE
+        ]
+        app_logger_factory.set_compression_error_callback(
+            log_compression_failure.report_event
+        )
 
         config_dir = paths.get_config_dir(directory_config)
         mmap_dir: Path = paths.get_mmap_dir(directory_config)

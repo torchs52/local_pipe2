@@ -16,6 +16,7 @@ from argus_synchro.diagnosis.error_diagnosis import (
     StateErrorDiagnosisD,
 )
 from argus_synchro.process.process import ProcessBase
+from argus_synchro.shared_data import create_shared_single_data
 
 
 class CameraDataMissing(StateErrorDiagnosisD):
@@ -469,6 +470,34 @@ class FileIoError(StateErrorDiagnosisD):
             self.get_error_no(err_idx)
             + f": ファイルI/Oエラー: operation={operation}, path={path}, "
             + f"error={error_detail}"
+        )
+
+
+class LogCompressionFailure(StateErrorDiagnosisD):
+    """LOG_COMPRESSION_FAILURE: ログローテーション後のgzip圧縮失敗"""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._event_count = create_shared_single_data(0)
+        self._processed_event_count = 0
+        self.param: err_conf.LogCompressionFailureParameters
+
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.log_compression_failure
+        self.is_enabled = self.param.is_enabled
+
+    def report_event(self, _error: Exception | None = None) -> None:
+        self._event_count.value += 1
+
+    def detect_error(self, *args: object) -> bool:
+        if self._event_count.value == self._processed_event_count:
+            return False
+        self._processed_event_count = self._event_count.value
+        return True
+
+    def _error_log_output(self, err_idx: int, *args: object) -> None:
+        self._logger.warning(
+            self.get_error_no(err_idx) + ": ログローテーション後の圧縮に失敗しました。"
         )
 
 

@@ -288,7 +288,7 @@ SHI側だけで確認されたテスト:
 | M-001 | 起動・プロセス・モード遷移骨格 | vendor最新版 | vendor-keep | decided | `__main__.py`, `SystemMonitor/`, boot scripts | vendor制御を基準にする |
 | M-002 | 汎用Dレベル `FILE_IO_ERROR` | SHI `a487f5f` ほか | manual-port | verified | `state_d_errors.py`, `shared_errors.py`, tests | index末尾へ追加、専用テスト6件pass |
 | M-003 | 周辺監視LiDARファイル入力I/O | SHI `points_process.py` | manual-port | verified | vendor `points_process.py`, tests | ファイル入力時だけ診断、元例外を再送出、専用テスト2件pass |
-| M-004 | CE015ログファイルI/O | SHI logger/action diagnosis | manual-port | pending | `common/app_logger.py` ほか | 再帰と重複計上を専用試験 |
+| M-004 | CE015ログファイルI/O | SHI logger/action diagnosis | manual-port | verified | `common/app_logger.py`, action diagnosis, `__main__.py`, tests | handler callbackで検知し、同一signatureの連続計上を抑止 |
 | M-005 | 校正サブシステムのI/O境界 | SHI `9432a4f` | decision-needed | deferred | calibration modules | 校正全体を後段で扱い、ユーザー側アルゴリズム変更の採用方針と合わせて判断する |
 | M-006 | 負荷低減モード | SHI `2283a0a` | decision-needed | pending | diagnosis/process/accumulation | 性能と復帰条件を別レビュー |
 | M-007 | ファイル入力ループ | SHI `e2362ec` ほか | decision-needed | pending | process/provider | モード制御と分離してレビュー |
@@ -305,6 +305,7 @@ SHI側だけで確認されたテスト:
 | M-013 | process終了時の診断情報 | SHI process `finally` | manual-port | verified | visual/process base | 校正を対象外とし、vendorの終了処理を残して観測ログだけを追加 |
 | M-013a | Visual終了時のactivator状態ログ | SHI `VisualProcess._loop()` | manual-port | verified | vendor `visual_process.py`, tests | vendorの終了フラグ・既存終了ログを維持して観測ログだけを追加 |
 | M-013b | message flow停止開始processログ | SHI `ProcessBase._unsubscribe()` | manual-port | verified | vendor `process.py`, tests | logger初期化前を許容し、既存flow停止処理を維持 |
+| M-014 | ログローテーション後のgzip圧縮失敗診断 | SHI `LogCompressionFailure` / logger callback | manual-port | verified | logger/D診断/AppManager/tests | 未圧縮backupを保持し、CE015へ重複計上しない |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -450,6 +451,29 @@ SHI側だけで確認されたテスト:
 - `tests/test_process_manager.py` にlogger初期化後と初期化前の2経路を追加し、ログ出力とsynchronizer停止を確認した。2 passed。
 - Visual、GetData、AppManager、共通ProcessBaseの比較を完了したため、校正を除くM-013をverifiedとした。
 - `test_detect2d.py` を除くM-013完了時の全体回帰は91 passed、7 xfailed、通常失敗0件。変更箇所のVS Code診断なし、`py_compile` と `git diff --check` 成功。
+
+### 2026-09-04 M-004実施記録
+
+- vendorの `AppLogger` / `AppLoggerFactory` 構造とlogger登録・更新順を維持し、SHIの `logging.Handler.handleError()` callback方式だけを移植した。
+- 圧縮有効時は既存 `GZipRotatingFileHandler`、無効時はcallback対応の `RotatingFileHandler` subclassで、logging内部が捕捉した `OSError` をCE015診断へ渡す。
+- callbackは同じfile loggerへログを出さず、`LogFileIoErrorDiagnosis.excepts_diagnosis()` が共有エラーカウンタだけを更新するため、ログ書込み失敗による再帰を作らない。
+- CE015は `OSError` とその派生例外だけを対象とする。同じ例外型・メッセージ先頭行は1秒間カウンタ加算を抑止し、loggingの連続失敗によるカウンタ洪水を防ぐ。
+- `__main__.py` は全loggerのfile handler更新後、既存 `ActionErrorIndex.LOG_FILE_IO_ERROR` の診断callbackをfactoryへ登録する。後続のlogger追加・再更新でもcallbackを伝播する。
+- SHIに隣接して存在する圧縮失敗専用D診断とログ時刻逆行診断はM-004の対象外とし、今回追加していない。
+- `tests/test_app_logger_io_error.py` で圧縮有無の書込み失敗、factory更新後のcallback維持、同一障害の時間抑止、非I/O例外の除外を確認した。5 passed。変更4ファイルのVS Code診断なし。
+- `test_detect2d.py` を除く全体回帰は96 passed、7 xfailed、通常失敗0件。`py_compile` と `git diff --check` 成功。
+
+### 2026-09-04 M-014実施記録
+
+- M-004から分離したSHIのログ圧縮失敗専用Dレベル診断を、vendorのD診断構造へ移植した。
+- 既存 `StateErrorDIndex` 0～7を変更せず、`LOG_COMPRESSION_FAILURE` を末尾へ追加した。設定parameter、`ErrorConfig.log_compression_failure`、JSON設定はvendor側に既存のものを利用する。
+- `GZipRotatingFileHandler` はローテーション後のgzip化だけを `try/except` し、失敗時は専用callbackへ通知する。ローテーション済みの未圧縮ファイルは削除せず、次回処理に備えて残す。
+- 圧縮失敗をhandler外へ再送出しないため、M-004のCE015 `handleError()` callbackには重複計上しない。圧縮失敗専用診断も同じfile loggerから直接ログを出さず、共有イベントカウンタだけを更新する。
+- AppManagerは設定更新時に診断を更新し、既存 `_update()` の先頭で共有イベントを消費してvendorの `errors_diagnosis()` / `log_output()` 経路から「ログローテーション後の圧縮に失敗しました。」を出力する。
+- SHIのcallbackは例外を渡す一方、`report_event()` は引数なしで不整合だったため、vendor側では任意の例外引数を受け取ってイベントだけを計上する契約にした。
+- ログ時刻逆行診断は引き続き別の統合項目とし、M-014には含めていない。
+- `tests/test_log_compression_failure.py` とM-004テストの組合せは10 passed。新規変更箇所のVS Code診断なし、`git diff --check` 成功。
+- AppManager・共有設定を含む関連テストは18 passed。`test_detect2d.py` を除く全体回帰は101 passed、7 xfailed、通常失敗0件。`py_compile` 成功。
 
 ## 10. 次のCopilotへの開始指示
 

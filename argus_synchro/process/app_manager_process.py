@@ -145,6 +145,9 @@ class AppManagerProcess(ProcessBase):
         self._ser.state_errors_D[StateErrorDIndex.MEMORY_LEAK_DETECTED].update(
             self._err_config
         )
+        self._ser.state_errors_D[StateErrorDIndex.LOG_COMPRESSION_FAILURE].update(
+            self._err_config
+        )
         self._ser.module_errors[ModuleErrorIndex.APP_MANAGER_MODULE_ERROR].update(
             self._err_config
         )
@@ -367,6 +370,13 @@ class AppManagerProcess(ProcessBase):
             *result, StateErrorIndex.MONITOR_PROCESS_NOT_RESPONDING
         )
 
+    def _update_log_compression_failure(self) -> None:
+        diagnosis = self._ser.state_errors_D[
+            StateErrorDIndex.LOG_COMPRESSION_FAILURE
+        ]
+        result = diagnosis.errors_diagnosis()
+        diagnosis.log_output(*result, StateErrorDIndex.LOG_COMPRESSION_FAILURE)
+
     def _update_thermal_throttling_state(self, metrics: Metrics | None) -> None:
         """サーマルスロットリング状態を負荷低減モードの判定に使用するために更新"""
         if metrics is None:
@@ -506,6 +516,8 @@ class AppManagerProcess(ProcessBase):
         present_scrut_frame: int,
         not_active_count: int,
     ) -> tuple[int, int, int]:
+        self._update_log_compression_failure()
+
         if self._app_config.General.operation_mode == OPM.SCRUT:
             # scrutinizerが動作しているかチェック. Appmanagerのカウンタだけ進行してたらおかしい.
             present_scrut_frame = int(self._sec.frame_number.value)

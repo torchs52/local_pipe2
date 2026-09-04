@@ -2,6 +2,8 @@ import gzip
 import logging
 import os
 import shutil
+import sys
+from collections.abc import Callable
 from logging.handlers import RotatingFileHandler
 from typing import Any, Final, LiteralString, TextIO
 
@@ -18,6 +20,17 @@ class GZipRotatingFileHandler(RotatingFileHandler):
     ログを .gz 形式でローテーション保存するカスタムハンドラ。
     """
 
+    io_error_callback: Callable[[Exception], None] | None
+    compression_error_callback: Callable[[Exception], None] | None
+
+    def handleError(self, record: logging.LogRecord) -> None:  # noqa: N802
+        super().handleError(record)
+        callback = getattr(self, "io_error_callback", None)
+        if callback is not None:
+            exc = sys.exc_info()[1]
+            if isinstance(exc, Exception):
+                callback(exc)
+
     def doRollover(self) -> None:
         super().doRollover()
 
@@ -26,12 +39,32 @@ class GZipRotatingFileHandler(RotatingFileHandler):
             gz_filename: str = f"{filename}.gz"
 
             if os.path.exists(filename) and not os.path.exists(gz_filename):
-                with (
-                    open(filename, "rb") as f_in,
-                    gzip.open(gz_filename, "wb") as f_out,
-                ):
-                    shutil.copyfileobj(f_in, f_out)
-                os.remove(filename)
+                try:
+                    with (
+                        open(filename, "rb") as f_in,
+                        gzip.open(gz_filename, "wb") as f_out,
+                    ):
+                        shutil.copyfileobj(f_in, f_out)
+                    os.remove(filename)
+                except Exception as error:
+                    callback = getattr(self, "compression_error_callback", None)
+                    if callback is not None:
+                        callback(error)
+                    continue
+
+
+class _RotatingFileHandlerWithCallback(RotatingFileHandler):
+    """CE015 コールバック付き RotatingFileHandler (圧縮無効時使用)"""
+
+    io_error_callback: Callable[[Exception], None] | None
+
+    def handleError(self, record: logging.LogRecord) -> None:  # noqa: N802
+        super().handleError(record)
+        callback = getattr(self, "io_error_callback", None)
+        if callback is not None:
+            exc = sys.exc_info()[1]
+            if isinstance(exc, Exception):
+                callback(exc)
 
 
 class AppLogger:
@@ -53,6 +86,8 @@ class AppLogger:
         self.name: Final[str] = name
         self._logger: logging.Logger = logging.getLogger(name)
         self._logger.handlers.clear()
+        self._io_error_callback: Callable[[Exception], None] | None = None
+        self._compression_error_callback: Callable[[Exception], None] | None = None
 
         self.update(
             formatter=formatter,
@@ -68,6 +103,26 @@ class AppLogger:
 
     def is_enabled_for(self, level: int) -> bool:
         return self._logger.isEnabledFor(level)
+
+    def set_io_error_callback(
+        self, callback: Callable[[Exception], None] | None
+    ) -> None:
+        """CE015 ログファイルI/Oエラー検知用コールバックを登録する。"""
+        self._io_error_callback = callback
+        for handler in self._logger.handlers:
+            if isinstance(
+                handler, (GZipRotatingFileHandler, _RotatingFileHandlerWithCallback)
+            ):
+                handler.io_error_callback = callback
+
+    def set_compression_error_callback(
+        self, callback: Callable[[Exception], None] | None
+    ) -> None:
+        """ログ圧縮失敗検知用コールバックを登録する。"""
+        self._compression_error_callback = callback
+        for handler in self._logger.handlers:
+            if isinstance(handler, GZipRotatingFileHandler):
+                handler.compression_error_callback = callback
 
     def update(
         self,
@@ -140,13 +195,20 @@ class AppLogger:
                 encoding="utf-8",
             )
         else:
-            fh = RotatingFileHandler(
+            fh = _RotatingFileHandlerWithCallback(
                 file_path,
                 maxBytes=rotate_size,
                 backupCount=backup_count,
                 encoding="utf-8",
             )
         fh.setFormatter(formatter)
+        if self._io_error_callback is not None:
+            fh.io_error_callback = self._io_error_callback
+        if (
+            isinstance(fh, GZipRotatingFileHandler)
+            and self._compression_error_callback is not None
+        ):
+            fh.compression_error_callback = self._compression_error_callback
         return fh
 
     def _create_console_handler(
@@ -180,6 +242,8 @@ class AppLoggerFactory:
         compress: bool | None = None,
     ) -> None:
         self._loggers: list[AppLogger] = []
+        self._io_error_callback: Callable[[Exception], None] | None = None
+        self._compression_error_callback: Callable[[Exception], None] | None = None
 
         self._to_console: bool = (
             self.__DEFAULT_TO_CONSOLE if to_console is None else to_console
@@ -199,6 +263,22 @@ class AppLoggerFactory:
         )
         self._compress: bool = self.__DEFAULT_COMPRESS if compress is None else compress
 
+    def set_io_error_callback(
+        self, callback: Callable[[Exception], None] | None
+    ) -> None:
+        """CE015 コールバックを全ロガーに伝播する。"""
+        self._io_error_callback = callback
+        for logger in self._loggers:
+            logger.set_io_error_callback(callback)
+
+    def set_compression_error_callback(
+        self, callback: Callable[[Exception], None] | None
+    ) -> None:
+        """ログ圧縮失敗コールバックを全ロガーに伝播する。"""
+        self._compression_error_callback = callback
+        for logger in self._loggers:
+            logger.set_compression_error_callback(callback)
+
     def update(self) -> None:
         """
         管理下にある全てのAppLoggerをデフォルト値で更新する
@@ -216,9 +296,19 @@ class AppLoggerFactory:
                 backup_count=self._backup_count,
                 compress=self._compress,
             )
+            if self._io_error_callback is not None:
+                logger.set_io_error_callback(self._io_error_callback)
+            if self._compression_error_callback is not None:
+                logger.set_compression_error_callback(
+                    self._compression_error_callback
+                )
 
     def append_logger(self, logger: AppLogger) -> None:
         self._loggers.append(logger)
+        if self._io_error_callback is not None:
+            logger.set_io_error_callback(self._io_error_callback)
+        if self._compression_error_callback is not None:
+            logger.set_compression_error_callback(self._compression_error_callback)
 
     def register_from_name(
         self,
@@ -256,6 +346,10 @@ class AppLoggerFactory:
             compress=_compress,
         )
         self._loggers.append(logger)
+        if self._io_error_callback is not None:
+            logger.set_io_error_callback(self._io_error_callback)
+        if self._compression_error_callback is not None:
+            logger.set_compression_error_callback(self._compression_error_callback)
 
         return logger
 
