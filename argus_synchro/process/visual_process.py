@@ -688,6 +688,17 @@ class VisualProcess(ProcessBase):
             self._logger.info("KeyboardInterrupt を検知して終了")
 
         finally:
+            self._logger.warning(
+                "VisualProcess loop ended: process_activator=%s restart_required=%s "
+                "flow_activators=%s",
+                self._process_activator.value,
+                self._process_activator.is_restart_required,
+                [
+                    self._accum_points_input.activator.value,
+                    self._cliff_inputs.activator.value,
+                    self._bouding_box_data.activator.value,
+                ],
+            )
             self.sec.Scruti_ex.IsFinished.value = True
             self._logger.info("終了条件に到達.")
 

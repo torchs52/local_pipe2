@@ -4,6 +4,7 @@ import multiprocessing as mp
 import time
 from multiprocessing.sharedctypes import Synchronized
 from multiprocessing.synchronize import Barrier
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -61,6 +62,20 @@ class DummyProcess(ProcessBase):
         pass
 
 
+class UnsubscribeProcess(ProcessBase):
+    def _loop(self) -> None:
+        pass
+
+    def create_producer_and_consumer(self) -> None:
+        pass
+
+    def restart_completed(self) -> None:
+        pass
+
+    def _start_restart(self) -> None:
+        pass
+
+
 def _make_manager() -> tuple[ProcessManager, ProcessActivator]:
     activator = ProcessActivator()
     activator.enable()
@@ -81,6 +96,34 @@ def _wait_loop_started(loop_started_count: Synchronized[int], expected: int) -> 
             return
         time.sleep(0.02)
     pytest.fail(f"loop did not start: got {loop_started_count.value}, expected {expected}")
+
+
+def test_process_unsubscribe_logs_without_changing_flow_stop() -> None:
+    process = UnsubscribeProcess(MagicMock(), ProcessActivator(), "TestProcess")
+    process._logger = MagicMock()
+    flow = MagicMock()
+    synchronizer = MagicMock()
+    flow.synchronizer = synchronizer
+    process._subscribe(flow)
+
+    process._unsubscribe()
+
+    process._logger.warning.assert_called_once_with(
+        "%s unsubscribing message flows", "TestProcess"
+    )
+    synchronizer.stop.assert_called_once_with()
+
+
+def test_process_unsubscribe_stops_flow_before_logger_initialization() -> None:
+    process = UnsubscribeProcess(MagicMock(), ProcessActivator(), "TestProcess")
+    flow = MagicMock()
+    synchronizer = MagicMock()
+    flow.synchronizer = synchronizer
+    process._subscribe(flow)
+
+    process._unsubscribe()
+
+    synchronizer.stop.assert_called_once_with()
 
 
 def test_process_manager_start_runs_startup_concurrently(

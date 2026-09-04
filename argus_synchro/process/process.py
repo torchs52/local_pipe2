@@ -237,6 +237,9 @@ class ProcessBase(IClosable, ABC):
         return flow
 
     def _unsubscribe(self) -> None:
+        logger = getattr(self, "_logger", None)
+        if logger is not None:
+            logger.warning("%s unsubscribing message flows", self.name)
         self._startup_wait.set()
         self._loop_wait.set()
         for flow in self.__flows:

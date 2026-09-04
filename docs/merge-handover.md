@@ -1,6 +1,6 @@
 # Vendor/SHI 統合作業 引継ぎ
 
-最終更新: 2026-09-03
+最終更新: 2026-09-04
 
 この文書は、別PCまたは別のCopilotチャットで統合作業を再開するための入口である。
 作業を始める前に本書を読み、判断・実装・検証が進んだら同じ作業内で更新すること。
@@ -289,7 +289,7 @@ SHI側だけで確認されたテスト:
 | M-002 | 汎用Dレベル `FILE_IO_ERROR` | SHI `a487f5f` ほか | manual-port | verified | `state_d_errors.py`, `shared_errors.py`, tests | index末尾へ追加、専用テスト6件pass |
 | M-003 | 周辺監視LiDARファイル入力I/O | SHI `points_process.py` | manual-port | verified | vendor `points_process.py`, tests | ファイル入力時だけ診断、元例外を再送出、専用テスト2件pass |
 | M-004 | CE015ログファイルI/O | SHI logger/action diagnosis | manual-port | pending | `common/app_logger.py` ほか | 再帰と重複計上を専用試験 |
-| M-005 | 校正サブシステムのI/O境界 | SHI `9432a4f` | manual-port | pending | calibration modules | アルゴリズム変更と分離、後段 |
+| M-005 | 校正サブシステムのI/O境界 | SHI `9432a4f` | decision-needed | deferred | calibration modules | 校正全体を後段で扱い、ユーザー側アルゴリズム変更の採用方針と合わせて判断する |
 | M-006 | 負荷低減モード | SHI `2283a0a` | decision-needed | pending | diagnosis/process/accumulation | 性能と復帰条件を別レビュー |
 | M-007 | ファイル入力ループ | SHI `e2362ec` ほか | decision-needed | pending | process/provider | モード制御と分離してレビュー |
 | M-008 | 周辺監視カメラ動画入力I/O | SHI `image_process.py` | manual-port | verified | vendor `image_process.py`, tests | 動画open/initだけを診断、専用テスト2件pass |
@@ -302,7 +302,9 @@ SHI側だけで確認されたテスト:
 | M-012c | 蓄積継続モジュール例外の時間間引き | SHI `_ModuleError` | manual-port | verified | storage error config/accumulation module error/tests | processを変更せず、vendorのlog_output契約内で時間間引き |
 | M-012d | 既存設定6種のmodule error時間間引き | SHI `_ModuleError` | manual-port | verified | CAN/2D-3D/3D検知/人検知/衝突/校正 | vendor直接継承を維持し、D基底の既定間引き判断を利用 |
 | M-012e | vendor追加7種のmodule error時間間引き | M-012共通契約 | manual-port | verified | IMU/AppManager/Main/PointsRefine/Visual/LiDAR Shift/GetData | vendor直接継承を維持し、省略可能な設定型を追加 |
-| M-013 | process終了時の診断情報 | SHI process `finally` | manual-port | pending | visual/calib/get_dataほか | vendorの終了処理を残し、観測ログだけを候補ごとにレビューする |
+| M-013 | process終了時の診断情報 | SHI process `finally` | manual-port | verified | visual/process base | 校正を対象外とし、vendorの終了処理を残して観測ログだけを追加 |
+| M-013a | Visual終了時のactivator状態ログ | SHI `VisualProcess._loop()` | manual-port | verified | vendor `visual_process.py`, tests | vendorの終了フラグ・既存終了ログを維持して観測ログだけを追加 |
+| M-013b | message flow停止開始processログ | SHI `ProcessBase._unsubscribe()` | manual-port | verified | vendor `process.py`, tests | logger初期化前を許容し、既存flow停止処理を維持 |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -410,16 +412,44 @@ SHI側だけで確認されたテスト:
 
 - ユーザー判断により、残りmodule errorは同型のものをまとめて移植した。
 - 共通基底への再編はvendorの見た目と責任分界を大きく変えるため不採用とし、全16クラスはvendorどおり `StateErrorDiagnosisD` を直接継承する。
-- コミット済みのCamera/LiDARは、各クラス内の `_last_signature`、`_last_log_mono`、`_ongoing_log_interval_sec`、`_should_log(e, now_mono)` を変更せず維持する。
+- 当初Camera/LiDAR/Accumulationへ個別実装した状態保持と `_should_log()` は、全moduleで同じ要件であることを確認後、重複を残さず `StateErrorDiagnosisD` の既定実装へ統一した。
 - 全16種は、vendorクラス内の差分を抑えるため `StateErrorDiagnosisD` の既定状態フィールドと `_should_log()` を利用する。共通基底の追加や継承関係の変更は行わない。
 - 各vendorクラス内に `update()`、`excepts_diagnosis()`、`_error_log_output()`、引数検証、ログ文面、`self._logger.warning()` を残した。`ModuleErrorIndex` とprocess側call siteも維持した。
 - M-012dでは既存設定型があるCAN、2D-3D紐づけ、3D物体検知、カメラ人検知、衝突判定、校正の6種へ `ongoing_log_interval_sec` を追加した。
 - M-012eではvendor追加のIMU、AppManager、Main、PointsRefine、Visual、LiDAR Shift Monitor、GetDataの7種に明示的なparameter型と `ErrorConfig` 属性を追加した。
 - 新設定はすべて既定値60秒で、既存 `error_config.json` では省略可能。既存JSONを使うshared error configテストで後方互換を確認した。
 - 全16 module errorが `StateErrorDiagnosisD` を直接継承し、D基底の同じ既定実装により、初回・signature変更時はtraceback、同一signatureの時間経過後は要約を記録する。各module errorクラスには設定反映、抑止時の早期return、既存ログの `exc_info` 切替だけを追加する。
+- この統一はSHIのクラス構造や書き方を採用するためではない。vendorの `log_output()`、各module errorの引数検証・ログ文面・`self._logger.warning()` を維持し、追加要件に必須な共通状態と判定だけを既存D基底へ置く最小差分方針である。
 - module loggingとshared error configは21件pass。全16クラスの直接継承も構造契約としてテストした。
 - module error変更範囲と設定・テストファイルに新規VS Code/Pylance診断はない。`state_d_errors.py` 前半には今回と無関係の既存型指摘が残る。
 - 既知の長時間TensorRT実モデルテストを含む `test_detect2d.py` を除く全体回帰は88 passed、7 xfailed、通常失敗0件。7 xfailedと7 warningsは既知のvendor由来。
+
+### 2026-09-04 M-013a実施記録
+
+- M-012の最終変更はコミット `6339422`（全モジュール共通でmodule error見直し。変更の最小化。）として確定した。
+- M-013候補としてVisual、GetData、校正の終了処理だけをvendorとSHIで比較した。
+- GetDataの `finally` は両者とも `stack.close()` のみで移植対象となる差分はなかった。
+- 校正はSHI側で終了条件と後処理の制御変更を含むため、観測ログだけの最小移植対象にはせず継続レビューとした。
+- VisualはSHIにprocess activator、restart要求、入力flow activatorを記録する終了ログがあり、vendorの制御を変えず追加できると判断した。
+- vendor既存の `self.sec.Scruti_ex.IsFinished.value = True` と `終了条件に到達.` は順序も含めて維持し、その直前に観測ログだけを追加した。
+- `tests/test_visual_process_exit_logging.py` で無効化済みactivatorから即終了させ、詳細ログ、終了フラグ、既存終了ログを確認した。1 passed。
+
+### 2026-09-04 校正領域の統合方針
+
+- 校正関連はファイル間差分が大きく、ユーザー側でアルゴリズム変更が行われているため、通常領域と同じvendor最小差分方針だけでは採否を決めない。
+- 校正領域は後回しとし、I/O、終了処理、アルゴリズムを細かく切り離して先行移植しない。校正全体の設計と動作を確認できる段階でまとめて扱う。
+- 後段の校正統合では、起動・停止・process管理など全体アーキテクチャはvendorとの整合を確認しつつ、校正処理の内容はユーザー側実装を採用する項目が多くなる前提で比較する。
+- M-013の終了時診断情報から校正processを外す。校正の終了処理はM-005を再開した際に、アルゴリズム変更と一緒に判断する。
+
+### 2026-09-04 M-013b実施記録
+
+- 校正を除く残り候補としてAppManagerと共通 `ProcessBase` の終了処理をvendor/SHIで比較した。
+- AppManagerの `finally` は両者で同一であり、追加する終了観測ログはなかった。
+- SHIの `ProcessBase._unsubscribe()` には、message flowの停止を開始したprocess名を記録するwarningがある。vendorのstartup/loop wait解除と各synchronizer停止は変更せず、その直前に同じログを追加した。
+- `stop()` など親process側からlogger初期化前に呼ばれる経路があるため、SHIどおり `getattr(self, "_logger", None)` でログだけを省略可能にした。flow停止は常に実行する。
+- `tests/test_process_manager.py` にlogger初期化後と初期化前の2経路を追加し、ログ出力とsynchronizer停止を確認した。2 passed。
+- Visual、GetData、AppManager、共通ProcessBaseの比較を完了したため、校正を除くM-013をverifiedとした。
+- `test_detect2d.py` を除くM-013完了時の全体回帰は91 passed、7 xfailed、通常失敗0件。変更箇所のVS Code診断なし、`py_compile` と `git diff --check` 成功。
 
 ## 10. 次のCopilotへの開始指示
 
