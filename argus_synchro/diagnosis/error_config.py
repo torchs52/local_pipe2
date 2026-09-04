@@ -613,30 +613,91 @@ class StorageModuleErrorParameters(ErrorParameterBase):
 class CanModuleErrorParameters(ErrorParameterBase):
     """CANモジュールエラー用パラメータ"""
 
+    ongoing_log_interval_sec: float = 60.0
+
 
 @dataclass(frozen=False, slots=True)
 class Linkage2D3DModuleErrorParameters(ErrorParameterBase):
     """2D-3D紐づけモジュールエラー用パラメータ"""
+
+    ongoing_log_interval_sec: float = 60.0
 
 
 @dataclass(frozen=False, slots=True)
 class Object3DDetectionModuleErrorParameters(ErrorParameterBase):
     """3D物体検知モジュールエラー用パラメータ"""
 
+    ongoing_log_interval_sec: float = 60.0
+
 
 @dataclass(frozen=False, slots=True)
 class CameraHumanDetectionModuleErrorParameters(ErrorParameterBase):
     """カメラ人検知モジュールエラー用パラメータ"""
+
+    ongoing_log_interval_sec: float = 60.0
 
 
 @dataclass(frozen=False, slots=True)
 class CollisionJudgmentModuleErrorParameters(ErrorParameterBase):
     """衝突判定モジュールエラー用パラメータ"""
 
+    ongoing_log_interval_sec: float = 60.0
+
 
 @dataclass(frozen=False, slots=True)
 class CalibrationModuleErrorParameters(ErrorParameterBase):
     """校正モジュールエラー用パラメータ"""
+
+    ongoing_log_interval_sec: float = 60.0
+
+
+@dataclass(frozen=False, slots=True)
+class ImuModuleErrorParameters(ErrorParameterBase):
+    """IMUモジュールエラー用パラメータ"""
+
+    ongoing_log_interval_sec: float = 60.0
+
+
+@dataclass(frozen=False, slots=True)
+class AppManagerModuleErrorParameters(ErrorParameterBase):
+    """アプリケーションマネージャーモジュールエラー用パラメータ"""
+
+    ongoing_log_interval_sec: float = 60.0
+
+
+@dataclass(frozen=False, slots=True)
+class MainModuleErrorParameters(ErrorParameterBase):
+    """Mainモジュールエラー用パラメータ"""
+
+    ongoing_log_interval_sec: float = 60.0
+
+
+@dataclass(frozen=False, slots=True)
+class PointsRefineModuleErrorParameters(ErrorParameterBase):
+    """PointsRefineモジュールエラー用パラメータ"""
+
+    ongoing_log_interval_sec: float = 60.0
+
+
+@dataclass(frozen=False, slots=True)
+class VisualModuleErrorParameters(ErrorParameterBase):
+    """VisualProcessモジュールエラー用パラメータ"""
+
+    ongoing_log_interval_sec: float = 60.0
+
+
+@dataclass(frozen=False, slots=True)
+class LidarShiftMonitorModuleErrorParameters(ErrorParameterBase):
+    """LiDARシフトモニタモジュールエラー用パラメータ"""
+
+    ongoing_log_interval_sec: float = 60.0
+
+
+@dataclass(frozen=False, slots=True)
+class GetDataModuleErrorParameters(ErrorParameterBase):
+    """データ取得モジュールエラー用パラメータ"""
+
+    ongoing_log_interval_sec: float = 60.0
 
 
 class ErrorConfig:
@@ -792,6 +853,22 @@ class ErrorConfig:
         """衝突判定モジュールエラー用パラメータ"""
         self.calibration_module_error = CalibrationModuleErrorParameters()
         """校正モジュールエラー用パラメータ"""
+        self.imu_module_error = ImuModuleErrorParameters()
+        """IMUモジュールエラー用パラメータ"""
+        self.app_manager_module_error = AppManagerModuleErrorParameters()
+        """アプリケーションマネージャーモジュールエラー用パラメータ"""
+        self.main_module_error = MainModuleErrorParameters()
+        """Mainモジュールエラー用パラメータ"""
+        self.points_refine_module_error = PointsRefineModuleErrorParameters()
+        """PointsRefineモジュールエラー用パラメータ"""
+        self.visual_module_error = VisualModuleErrorParameters()
+        """VisualProcessモジュールエラー用パラメータ"""
+        self.lidar_shift_monitor_module_error = (
+            LidarShiftMonitorModuleErrorParameters()
+        )
+        """LiDARシフトモニタモジュールエラー用パラメータ"""
+        self.get_data_module_error = GetDataModuleErrorParameters()
+        """データ取得モジュールエラー用パラメータ"""
 
     def load_from_dict(self, data: TopParamDict) -> Self:
         """

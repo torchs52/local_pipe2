@@ -475,12 +475,6 @@ class FileIoError(StateErrorDiagnosisD):
 class LidarModuleError(StateErrorDiagnosisD):
     """LIDAR_MODULE_ERROR: LiDARモジュールエラー"""
 
-    def __init__(self) -> None:
-        super().__init__()
-        self._last_signature: tuple[str, str] | None = None
-        self._last_log_mono: float | None = None
-        self._ongoing_log_interval_sec: float = 60.0
-
     def update(self, err_conf: err_conf.ErrorConfig) -> None:
         self.param = err_conf.lidar_module_error
         self.is_enabled = self.param.is_enabled
@@ -488,21 +482,6 @@ class LidarModuleError(StateErrorDiagnosisD):
 
     def excepts_diagnosis(self, e: Exception) -> bool:
         return not isinstance(e, KeyboardInterrupt)
-
-    def _should_log(self, e: Exception, now_mono: float) -> tuple[bool, bool]:
-        signature = (type(e).__name__, str(e).splitlines()[0] if str(e) else "")
-        include_traceback = self._last_signature != signature
-        if include_traceback:
-            self._last_signature = signature
-            self._last_log_mono = now_mono
-            return True, True
-        if (
-            self._last_log_mono is None
-            or now_mono - self._last_log_mono >= self._ongoing_log_interval_sec
-        ):
-            self._last_log_mono = now_mono
-            return True, False
-        return False, False
 
     def _error_log_output(self, err_idx: int, *args: object) -> None:
         if len(args) != 2:
@@ -513,21 +492,16 @@ class LidarModuleError(StateErrorDiagnosisD):
         else:
             raise ValueError("args[0] must be Exception and args[1] must be int")
         should_log, include_traceback = self._should_log(e, time.monotonic())
-        if should_log:
-            self._logger.warning(
-                f"LiDAR{index}モジュールエラー: {type(e).__name__}: {e}",
-                exc_info=include_traceback,
-            )
+        if not should_log:
+            return
+        self._logger.warning(
+            f"LiDAR{index}モジュールエラー: {type(e).__name__}: {e}",
+            exc_info=include_traceback,
+        )
 
 
 class CameraModuleError(StateErrorDiagnosisD):
     """CAMERA_MODULE_ERROR: カメラモジュールエラー"""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._last_signature: tuple[str, str] | None = None
-        self._last_log_mono: float | None = None
-        self._ongoing_log_interval_sec: float = 60.0
 
     def update(self, err_conf: err_conf.ErrorConfig) -> None:
         self.param = err_conf.camera_module_error
@@ -537,21 +511,6 @@ class CameraModuleError(StateErrorDiagnosisD):
     def excepts_diagnosis(self, e: Exception) -> bool:
         return not isinstance(e, KeyboardInterrupt)
 
-    def _should_log(self, e: Exception, now_mono: float) -> tuple[bool, bool]:
-        signature = (type(e).__name__, str(e).splitlines()[0] if str(e) else "")
-        include_traceback = self._last_signature != signature
-        if include_traceback:
-            self._last_signature = signature
-            self._last_log_mono = now_mono
-            return True, True
-        if (
-            self._last_log_mono is None
-            or now_mono - self._last_log_mono >= self._ongoing_log_interval_sec
-        ):
-            self._last_log_mono = now_mono
-            return True, False
-        return False, False
-
     def _error_log_output(self, err_idx: int, *args: object) -> None:
         if len(args) != 2:
             raise ValueError("args must be Exception, index")
@@ -561,21 +520,16 @@ class CameraModuleError(StateErrorDiagnosisD):
         else:
             raise ValueError("args[0] must be Exception and args[1] must be int")
         should_log, include_traceback = self._should_log(e, time.monotonic())
-        if should_log:
-            self._logger.warning(
-                f"カメラ{index}モジュールエラー: {type(e).__name__}: {e}",
-                exc_info=include_traceback,
-            )
+        if not should_log:
+            return
+        self._logger.warning(
+            f"カメラ{index}モジュールエラー: {type(e).__name__}: {e}",
+            exc_info=include_traceback,
+        )
 
 
 class AccumulationModuleError(StateErrorDiagnosisD):
     """ACCUMULATION_MODULE_ERROR: 蓄積モジュールエラー"""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._last_signature: tuple[str, str] | None = None
-        self._last_log_mono: float | None = None
-        self._ongoing_log_interval_sec: float = 60.0
 
     def update(self, err_conf: err_conf.ErrorConfig) -> None:
         self.param = err_conf.storage_module_error
@@ -585,20 +539,32 @@ class AccumulationModuleError(StateErrorDiagnosisD):
     def excepts_diagnosis(self, e: Exception) -> bool:
         return not isinstance(e, KeyboardInterrupt)
 
-    def _should_log(self, e: Exception, now_mono: float) -> tuple[bool, bool]:
-        signature = (type(e).__name__, str(e).splitlines()[0] if str(e) else "")
-        include_traceback = self._last_signature != signature
-        if include_traceback:
-            self._last_signature = signature
-            self._last_log_mono = now_mono
-            return True, True
-        if (
-            self._last_log_mono is None
-            or now_mono - self._last_log_mono >= self._ongoing_log_interval_sec
-        ):
-            self._last_log_mono = now_mono
-            return True, False
-        return False, False
+    def _error_log_output(self, err_idx: int, *args: object) -> None:
+        if len(args) != 1:
+            raise ValueError("args must be Exception")
+        if isinstance(args[0], Exception):
+            e: Exception = args[0]
+        else:
+            raise ValueError("args[0] must be Exception")
+        should_log, include_traceback = self._should_log(e, time.monotonic())
+        if not should_log:
+            return
+        self._logger.warning(
+            f"蓄積モジュールエラー: {type(e).__name__}: {e}",
+            exc_info=include_traceback,
+        )
+
+
+class CanModuleError(StateErrorDiagnosisD):
+    """CAN_MODULE_ERROR: CANモジュールエラー"""
+
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.can_module_error
+        self.is_enabled = self.param.is_enabled
+        self._ongoing_log_interval_sec = self.param.ongoing_log_interval_sec
+
+    def excepts_diagnosis(self, e: Exception) -> bool:
+        return not isinstance(e, KeyboardInterrupt)
 
     def _error_log_output(self, err_idx: int, *args: object) -> None:
         if len(args) != 1:
@@ -608,35 +574,22 @@ class AccumulationModuleError(StateErrorDiagnosisD):
         else:
             raise ValueError("args[0] must be Exception")
         should_log, include_traceback = self._should_log(e, time.monotonic())
-        if should_log:
-            self._logger.warning(
-                f"蓄積モジュールエラー: {type(e).__name__}: {e}",
-                exc_info=include_traceback,
-            )
-
-
-class CanModuleError(StateErrorDiagnosisD):
-    """CAN_MODULE_ERROR: CANモジュールエラー"""
-
-    def excepts_diagnosis(self, e: Exception) -> bool:
-        return not isinstance(e, KeyboardInterrupt)
-
-    def _error_log_output(self, err_idx: int, *args: object) -> None:
-        if len(args) != 1:
-            raise ValueError("args must be Exception")
-        if isinstance(args[0], Exception):
-            e: Exception = args[0]
-        else:
-            raise ValueError("args[0] must be Exception")
+        if not should_log:
+            return
         self._logger.warning(
             f"CANモジュールエラー: {type(e).__name__}: {e}",
-            exc_info=True,
+            exc_info=include_traceback,
         )
 
 
 class Integrate2d3dModuleError(StateErrorDiagnosisD):
     """INTEGRATE_2D3D_MODULE_ERROR: 2D-3D紐づけモジュールエラー"""
 
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.linkage_2d3d_module_error
+        self.is_enabled = self.param.is_enabled
+        self._ongoing_log_interval_sec = self.param.ongoing_log_interval_sec
+
     def excepts_diagnosis(self, e: Exception) -> bool:
         return not isinstance(e, KeyboardInterrupt)
 
@@ -647,15 +600,23 @@ class Integrate2d3dModuleError(StateErrorDiagnosisD):
             e: Exception = args[0]
         else:
             raise ValueError("args[0] must be Exception")
+        should_log, include_traceback = self._should_log(e, time.monotonic())
+        if not should_log:
+            return
         self._logger.warning(
             f"2D-3D紐づけモジュールエラー: {type(e).__name__}: {e}",
-            exc_info=True,
+            exc_info=include_traceback,
         )
 
 
 class Object3DDetectionModuleError(StateErrorDiagnosisD):
     """OBJECT_3D_DETECTION_MODULE_ERROR: 3D物体検知モジュールエラー"""
 
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.object3_d_detection_module_error
+        self.is_enabled = self.param.is_enabled
+        self._ongoing_log_interval_sec = self.param.ongoing_log_interval_sec
+
     def excepts_diagnosis(self, e: Exception) -> bool:
         return not isinstance(e, KeyboardInterrupt)
 
@@ -666,15 +627,23 @@ class Object3DDetectionModuleError(StateErrorDiagnosisD):
             e: Exception = args[0]
         else:
             raise ValueError("args[0] must be Exception")
+        should_log, include_traceback = self._should_log(e, time.monotonic())
+        if not should_log:
+            return
         self._logger.warning(
             f"3D物体検知モジュールエラー: {type(e).__name__}: {e}",
-            exc_info=True,
+            exc_info=include_traceback,
         )
 
 
 class CameraHumanDetectionModuleError(StateErrorDiagnosisD):
     """CAMERA_HUMAN_DETECTION_MODULE_ERROR: カメラ人検知モジュールエラー"""
 
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.camera_human_detection_module_error
+        self.is_enabled = self.param.is_enabled
+        self._ongoing_log_interval_sec = self.param.ongoing_log_interval_sec
+
     def excepts_diagnosis(self, e: Exception) -> bool:
         return not isinstance(e, KeyboardInterrupt)
 
@@ -685,15 +654,23 @@ class CameraHumanDetectionModuleError(StateErrorDiagnosisD):
             e: Exception = args[0]
         else:
             raise ValueError("args[0] must be Exception")
+        should_log, include_traceback = self._should_log(e, time.monotonic())
+        if not should_log:
+            return
         self._logger.warning(
             f"カメラ人検知モジュールエラー: {type(e).__name__}: {e}",
-            exc_info=True,
+            exc_info=include_traceback,
         )
 
 
 class CollisionJudgmentModuleError(StateErrorDiagnosisD):
     """COLLISION_JUDGMENT_MODULE_ERROR: 衝突判定モジュールエラー"""
 
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.collision_judgment_module_error
+        self.is_enabled = self.param.is_enabled
+        self._ongoing_log_interval_sec = self.param.ongoing_log_interval_sec
+
     def excepts_diagnosis(self, e: Exception) -> bool:
         return not isinstance(e, KeyboardInterrupt)
 
@@ -704,15 +681,23 @@ class CollisionJudgmentModuleError(StateErrorDiagnosisD):
             e: Exception = args[0]
         else:
             raise ValueError("args[0] must be Exception")
+        should_log, include_traceback = self._should_log(e, time.monotonic())
+        if not should_log:
+            return
         self._logger.warning(
             f"衝突判定モジュールエラー: {type(e).__name__}: {e}",
-            exc_info=True,
+            exc_info=include_traceback,
         )
 
 
 class CalibrationModuleError(StateErrorDiagnosisD):
     """CALIBRATION_MODULE_ERROR: 校正モジュールエラー"""
 
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.calibration_module_error
+        self.is_enabled = self.param.is_enabled
+        self._ongoing_log_interval_sec = self.param.ongoing_log_interval_sec
+
     def excepts_diagnosis(self, e: Exception) -> bool:
         return not isinstance(e, KeyboardInterrupt)
 
@@ -723,15 +708,23 @@ class CalibrationModuleError(StateErrorDiagnosisD):
             e: Exception = args[0]
         else:
             raise ValueError("args[0] must be Exception")
+        should_log, include_traceback = self._should_log(e, time.monotonic())
+        if not should_log:
+            return
         self._logger.warning(
             f"校正モジュールエラー: {type(e).__name__}: {e}",
-            exc_info=True,
+            exc_info=include_traceback,
         )
 
 
 class VisualModuleError(StateErrorDiagnosisD):
     """VISUAL_MODULE_ERROR: VisualProcessモジュールエラー"""
 
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.visual_module_error
+        self.is_enabled = self.param.is_enabled
+        self._ongoing_log_interval_sec = self.param.ongoing_log_interval_sec
+
     def excepts_diagnosis(self, e: Exception) -> bool:
         return not isinstance(e, KeyboardInterrupt)
 
@@ -742,15 +735,23 @@ class VisualModuleError(StateErrorDiagnosisD):
             e: Exception = args[0]
         else:
             raise ValueError("args[0] must be Exception")
+        should_log, include_traceback = self._should_log(e, time.monotonic())
+        if not should_log:
+            return
         self._logger.warning(
             f"VisualProcessモジュールエラー: {type(e).__name__}: {e}",
-            exc_info=True,
+            exc_info=include_traceback,
         )
 
 
 class PointsRefineModuleError(StateErrorDiagnosisD):
     """POINTS_REFINE_MODULE_ERROR: PointsRefineモジュールエラー"""
 
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.points_refine_module_error
+        self.is_enabled = self.param.is_enabled
+        self._ongoing_log_interval_sec = self.param.ongoing_log_interval_sec
+
     def excepts_diagnosis(self, e: Exception) -> bool:
         return not isinstance(e, KeyboardInterrupt)
 
@@ -761,15 +762,23 @@ class PointsRefineModuleError(StateErrorDiagnosisD):
             e: Exception = args[0]
         else:
             raise ValueError("args[0] must be Exception")
+        should_log, include_traceback = self._should_log(e, time.monotonic())
+        if not should_log:
+            return
         self._logger.warning(
             f"PointsRefineモジュールエラー: {type(e).__name__}: {e}",
-            exc_info=True,
+            exc_info=include_traceback,
         )
 
 
 class MainModuleError(StateErrorDiagnosisD):
     """MAIN_MODULE_ERROR: MainProcessモジュールエラー"""
 
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.main_module_error
+        self.is_enabled = self.param.is_enabled
+        self._ongoing_log_interval_sec = self.param.ongoing_log_interval_sec
+
     def excepts_diagnosis(self, e: Exception) -> bool:
         return not isinstance(e, KeyboardInterrupt)
 
@@ -780,15 +789,23 @@ class MainModuleError(StateErrorDiagnosisD):
             e: Exception = args[0]
         else:
             raise ValueError("args[0] must be Exception")
+        should_log, include_traceback = self._should_log(e, time.monotonic())
+        if not should_log:
+            return
         self._logger.warning(
             f"MainProcessモジュールエラー: {type(e).__name__}: {e}",
-            exc_info=True,
+            exc_info=include_traceback,
         )
 
 
 class AppManagerModuleError(StateErrorDiagnosisD):
     """APP_MANAGER_MODULE_ERROR: アプリケーションマネージャーモジュールエラー"""
 
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.app_manager_module_error
+        self.is_enabled = self.param.is_enabled
+        self._ongoing_log_interval_sec = self.param.ongoing_log_interval_sec
+
     def excepts_diagnosis(self, e: Exception) -> bool:
         return not isinstance(e, KeyboardInterrupt)
 
@@ -799,14 +816,22 @@ class AppManagerModuleError(StateErrorDiagnosisD):
             e: Exception = args[0]
         else:
             raise ValueError("args[0] must be Exception")
+        should_log, include_traceback = self._should_log(e, time.monotonic())
+        if not should_log:
+            return
         self._logger.warning(
             f"アプリケーションマネージャーモジュールエラー: {type(e).__name__}: {e}",
-            exc_info=True,
+            exc_info=include_traceback,
         )
 
 
 class ImuModuleError(StateErrorDiagnosisD):
     """IMU_MODULE_ERROR: IMUモジュールエラー"""
+
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.imu_module_error
+        self.is_enabled = self.param.is_enabled
+        self._ongoing_log_interval_sec = self.param.ongoing_log_interval_sec
 
     def excepts_diagnosis(self, e: Exception) -> bool:
         return not isinstance(e, KeyboardInterrupt)
@@ -819,15 +844,23 @@ class ImuModuleError(StateErrorDiagnosisD):
             index: int = args[1]
         else:
             raise ValueError("args[0] must be Exception and args[1] must be int")
+        should_log, include_traceback = self._should_log(e, time.monotonic())
+        if not should_log:
+            return
         self._logger.warning(
             f"IMU{index}モジュールエラー: {type(e).__name__}: {e}",
-            exc_info=True,
+            exc_info=include_traceback,
         )
 
 
 class LidarShiftMonitorModuleError(StateErrorDiagnosisD):
     """LIDAR_SHIFT_MONITOR_MODULE_ERROR: LiDARシフトモニタモジュールエラー"""
 
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.lidar_shift_monitor_module_error
+        self.is_enabled = self.param.is_enabled
+        self._ongoing_log_interval_sec = self.param.ongoing_log_interval_sec
+
     def excepts_diagnosis(self, e: Exception) -> bool:
         return not isinstance(e, KeyboardInterrupt)
 
@@ -838,15 +871,23 @@ class LidarShiftMonitorModuleError(StateErrorDiagnosisD):
             e: Exception = args[0]
         else:
             raise ValueError("args[0] must be Exception")
+        should_log, include_traceback = self._should_log(e, time.monotonic())
+        if not should_log:
+            return
         self._logger.warning(
             f"LiDARシフトモニタモジュールエラー: {type(e).__name__}: {e}",
-            exc_info=True,
+            exc_info=include_traceback,
         )
 
 
 class GetDataModuleError(StateErrorDiagnosisD):
     """GET_DATA_MODULE_ERROR: データ取得モジュールエラー"""
 
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.get_data_module_error
+        self.is_enabled = self.param.is_enabled
+        self._ongoing_log_interval_sec = self.param.ongoing_log_interval_sec
+
     def excepts_diagnosis(self, e: Exception) -> bool:
         return not isinstance(e, KeyboardInterrupt)
 
@@ -857,7 +898,10 @@ class GetDataModuleError(StateErrorDiagnosisD):
             e: Exception = args[0]
         else:
             raise ValueError("args[0] must be Exception")
+        should_log, include_traceback = self._should_log(e, time.monotonic())
+        if not should_log:
+            return
         self._logger.warning(
             f"データ取得モジュールエラー: {type(e).__name__}: {e}",
-            exc_info=True,
+            exc_info=include_traceback,
         )

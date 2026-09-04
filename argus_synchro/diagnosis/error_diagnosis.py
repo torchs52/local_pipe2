@@ -308,6 +308,24 @@ class StateErrorDiagnosisD(StateErrorDiagnosisBase):
     def __init__(self) -> None:
         super().__init__()
         self._was_detected: bool = False
+        self._last_signature: tuple[str, str] | None = None
+        self._last_log_mono: float | None = None
+        self._ongoing_log_interval_sec: float = 60.0
+
+    def _should_log(self, e: Exception, now_mono: float) -> tuple[bool, bool]:
+        signature = (type(e).__name__, str(e).splitlines()[0] if str(e) else "")
+        include_traceback = self._last_signature != signature
+        if include_traceback:
+            self._last_signature = signature
+            self._last_log_mono = now_mono
+            return True, True
+        if (
+            self._last_log_mono is None
+            or now_mono - self._last_log_mono >= self._ongoing_log_interval_sec
+        ):
+            self._last_log_mono = now_mono
+            return True, False
+        return False, False
 
     def reset_error(self) -> None:
         self._was_detected = False
