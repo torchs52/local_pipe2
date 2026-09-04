@@ -20,7 +20,7 @@ def _write_error_config_json(
     required_length: int,
 ) -> None:
     test_data = {
-        "camera0_connection_error": {
+        "camera_n_connection_error": {
             "is_enabled": False,
             "error_threshold_sec": error_threshold_sec,
             "error_recovery_confirm_duration_sec": 2.0,
@@ -54,9 +54,9 @@ def test_shared_error_config_reads_initial_json(
     shared_error_config = SharedErrorConfig(json_path)
     try:
         loaded = shared_error_config.read()
-        assert loaded.camera0_connection_error.is_enabled is False
+        assert loaded.camera_n_connection_error.is_enabled is False
         assert (
-            loaded.camera0_connection_error.error_threshold_sec
+            loaded.camera_n_connection_error.error_threshold_sec
             == INITIAL_ERROR_THRESHOLD_SEC
         )
         assert (
@@ -90,7 +90,7 @@ def test_shared_error_config_write_reflects_updated_json(
         loaded = shared_error_config.read()
 
         assert (
-            loaded.camera0_connection_error.error_threshold_sec
+            loaded.camera_n_connection_error.error_threshold_sec
             == UPDATED_ERROR_THRESHOLD_SEC
         )
         assert (

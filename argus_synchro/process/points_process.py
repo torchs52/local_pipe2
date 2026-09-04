@@ -40,7 +40,11 @@ from argus_synchro.provider.clock import (
 )
 from argus_synchro.provider.point_cloud import CalibMid360FilePointCloudProvider
 from argus_synchro.shared_app_config import SharedAppConfig, SharedAppConfigCalibration
-from argus_synchro.shared_errors import ModuleErrorIndex, SharedErrors
+from argus_synchro.shared_errors import (
+    ModuleErrorIndex,
+    SharedErrors,
+    StateErrorDIndex,
+)
 from argus_synchro.shared_excepts import INVALID_TIMESTAMP, SharedLIDExcept
 
 if TYPE_CHECKING:
@@ -121,6 +125,9 @@ class PointsProviderProcess(InputProcess[PointCloudData]):
     def _err_config_load(self) -> None:
         self._err_config = self._ser.shared_err_conf.read()
         self._ser.module_errors[ModuleErrorIndex.LIDAR_MODULE_ERROR].update(
+            self._err_config
+        )
+        self._ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR].update(
             self._err_config
         )
 
@@ -207,7 +214,34 @@ class PointsProviderProcess(InputProcess[PointCloudData]):
 
     @log_target("Lidar入力I/F", ProfCategory.Process)
     def _update(self) -> PointCloudData | None:
-        pcd = self._provider.get_accum_points()
+        try:
+            pcd = self._provider.get_accum_points()
+        except (OSError, ValueError, TypeError) as error:
+            if self._file_input:
+                lidar_file_paths = (
+                    self._app_config.Lidar.lidar0_file,
+                    self._app_config.Lidar.lidar1_file,
+                    self._app_config.Lidar.lidar2_file,
+                    self._app_config.Lidar.lidar3_file,
+                    self._app_config.Lidar.lidar4_file,
+                    self._app_config.Lidar.lidar5_file,
+                )
+                file_io_error = self._ser.state_errors_D[
+                    StateErrorDIndex.FILE_IO_ERROR
+                ]
+                result = file_io_error.errors_diagnosis(True)
+                file_io_error.log_output(
+                    *result,
+                    StateErrorDIndex.FILE_IO_ERROR,
+                    lidar_file_paths[self._index],
+                    "read file-input LiDAR point cloud",
+                    f"{type(error).__name__}: {error}",
+                )
+            raise
+        if self._file_input:
+            self._ser.state_errors_D[
+                StateErrorDIndex.FILE_IO_ERROR
+            ].errors_diagnosis(False)
         self._ser.set_lidar_connected(self._index, pcd is not None)
 
         if pcd is None:

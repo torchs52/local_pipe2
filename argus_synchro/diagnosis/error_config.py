@@ -597,6 +597,8 @@ class LidarModuleErrorParameters(ErrorParameterBase):
 class CameraModuleErrorParameters(ErrorParameterBase):
     """カメラモジュールエラー用パラメータ"""
 
+    ongoing_log_interval_sec: float = 60.0
+
 
 @dataclass(frozen=False, slots=True)
 class StorageModuleErrorParameters(ErrorParameterBase):

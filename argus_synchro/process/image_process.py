@@ -138,6 +138,9 @@ class CameraProviderProcess(InputProcess[CameraData]):
         self._ser.state_errors_D[StateErrorDIndex.CAMERA_DATA_MISSING].update(
             self._err_config
         )
+        self._ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR].update(
+            self._err_config
+        )
         self._ser.module_errors[ModuleErrorIndex.CAMERA_MODULE_ERROR].update(
             self._err_config
         )
@@ -223,14 +226,31 @@ class CameraProviderProcess(InputProcess[CameraData]):
                     self._scrutinizer_conf.v1_file,
                     self._scrutinizer_conf.v2_file,
                 ][self._index]
-            device = Mcde7000File(
-                self._index,
-                camera_file_path,
-                self._frame,
-                self._app_logger_factory,
-            )
-            # _startupはプロセス起動時に実行されるため、デバイスの初期化はここで行う
-            device.init_capture()
+            try:
+                device = Mcde7000File(
+                    self._index,
+                    camera_file_path,
+                    self._frame,
+                    self._app_logger_factory,
+                )
+                # _startupはプロセス起動時に実行されるため、デバイスの初期化はここで行う
+                device.init_capture()
+            except (OSError, RuntimeError, ValueError, TypeError) as error:
+                file_io_error = self._ser.state_errors_D[
+                    StateErrorDIndex.FILE_IO_ERROR
+                ]
+                result = file_io_error.errors_diagnosis(True)
+                file_io_error.log_output(
+                    *result,
+                    StateErrorDIndex.FILE_IO_ERROR,
+                    camera_file_path,
+                    "read file-input camera video",
+                    f"{type(error).__name__}: {error}",
+                )
+                raise
+            self._ser.state_errors_D[
+                StateErrorDIndex.FILE_IO_ERROR
+            ].errors_diagnosis(False)
 
             if calib_mode:
                 from argus_synchro.provider.image import CalibMcde7000FileImageProvider
@@ -430,6 +450,7 @@ class CameraProviderProcess(InputProcess[CameraData]):
                             ResultDiagnosis.DETECTION,
                             ModuleErrorIndex.CAMERA_MODULE_ERROR,
                             e,
+                            self._index,
                         )
                     else:
                         raise e

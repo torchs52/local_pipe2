@@ -11,6 +11,7 @@ $(VENV_PYTHON):
 	python3.12 -m venv $(VENV_DIR)
 
 install: $(VENV_PYTHON)
+	@CACHE_FILE="$$(find argus_synchro_lib/build -path '*/octotree/CMakeCache.txt' -print -quit 2>/dev/null)"; EXPECTED_HOME="CMAKE_HOME_DIRECTORY:INTERNAL=$(abspath argus_synchro_lib)"; if [[ -n "$${CACHE_FILE}" ]] && ! grep -Fqx "$${EXPECTED_HOME}" "$${CACHE_FILE}"; then echo "Removing CMake cache created in a different source directory"; rm -rf argus_synchro_lib/build; fi
 	@EXTRA="$$(./scripts/select_jetson_extra.sh)"; \
 	echo "Installing with extras: [$${EXTRA},dev]"; \
 	source $(VENV_BIN)/activate && python -m pip install -U pip; \

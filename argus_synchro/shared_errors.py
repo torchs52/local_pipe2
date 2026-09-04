@@ -40,6 +40,7 @@ from argus_synchro.diagnosis.state_d_errors import (
     CameraModuleError,
     CanModuleError,
     CollisionJudgmentModuleError,
+    FileIoError,
     GetDataModuleError,
     ImuModuleError,
     Integrate2d3dModuleError,
@@ -299,6 +300,7 @@ class StateErrorDIndex(IntEnum):
     NUMERIC_ANOMALY_EXCEPTION = auto()  # NaN・0除算
     ARRAY_SHAPE_ERROR = auto()  # 配列形状エラー
     PROCESS_FORCED_TERMINATION = auto()  # プロセスの強制終了を実施
+    FILE_IO_ERROR = auto()  # ファイルI/Oエラー
 
 
 class ModuleErrorIndex(IntEnum):
@@ -423,6 +425,7 @@ class SharedErrors:
             NumericAnomalyException(),
             ArrayShapeError(),
             ProcessForcedTermination(),
+            FileIoError(),
         )
         """
         重要度D検出クラスリスト

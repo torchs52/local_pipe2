@@ -307,9 +307,10 @@ class StateErrorDiagnosisC(StateErrorDiagnosisBase):
 class StateErrorDiagnosisD(StateErrorDiagnosisBase):
     def __init__(self) -> None:
         super().__init__()
+        self._was_detected: bool = False
 
     def reset_error(self) -> None:
-        pass
+        self._was_detected = False
 
     def errors_diagnosis(
         self, *args: object
@@ -325,8 +326,14 @@ class StateErrorDiagnosisD(StateErrorDiagnosisBase):
             # 診断無効
             return no_error
 
-        r: bool = self.detect_error(*args)
-        return (ResultDiagnosis.DETECTION, ResultDiagnosis.NORMAL) if r else no_error
+        is_detected: bool = self.detect_error(*args)
+        result = ResultDiagnosis.get_result(
+            self._was_detected,
+            is_detected,
+            not is_detected,
+        )
+        self._was_detected = is_detected
+        return result, ResultDiagnosis.NORMAL
 
     def excepts_diagnosis(self, e: Exception) -> bool:
         raise NotImplementedError("必要なら実装")

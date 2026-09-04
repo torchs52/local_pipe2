@@ -54,41 +54,41 @@ def test_detect_error_sets_first_window_min_as_baseline_and_returns_false() -> N
     diagnosis = _create_diagnosis(window_sec=3.0, min_samples=3, leak_ratio_threshold=1.5)
 
     # 1st window: 最小値は9.0
-    assert diagnosis.detect_error(10.0, 0.0) is False
-    assert diagnosis.detect_error(9.0, 1.0) is False
-    assert diagnosis.detect_error(11.0, 2.0) is False
+    assert diagnosis.detect_error(10, 0.0) is False
+    assert diagnosis.detect_error(9, 1.0) is False
+    assert diagnosis.detect_error(11, 2.0) is False
 
     # window_sec到達時に評価されるが、初回は基準値設定のみでFalse
-    assert diagnosis.detect_error(10.0, 3.0) is False
+    assert diagnosis.detect_error(10, 3.0) is False
 
 
 def test_detect_error_returns_true_when_window_min_reaches_threshold_multiple() -> None:
     diagnosis = _create_diagnosis(window_sec=3.0, min_samples=3, leak_ratio_threshold=1.5)
 
     # 基準ウィンドウ最小値: 9.0
-    assert diagnosis.detect_error(10.0, 0.0) is False
-    assert diagnosis.detect_error(9.0, 1.0) is False
-    assert diagnosis.detect_error(11.0, 2.0) is False
-    assert diagnosis.detect_error(10.0, 3.0) is False
+    assert diagnosis.detect_error(10, 0.0) is False
+    assert diagnosis.detect_error(9, 1.0) is False
+    assert diagnosis.detect_error(11, 2.0) is False
+    assert diagnosis.detect_error(10, 3.0) is False
 
     # 2nd window最小値: 14.0 (9.0 * 1.5 = 13.5 以上) -> True
-    assert diagnosis.detect_error(14.0, 3.1) is False
-    assert diagnosis.detect_error(15.0, 4.0) is False
-    assert diagnosis.detect_error(16.0, 5.0) is False
-    assert diagnosis.detect_error(14.0, 6.0) is True
+    assert diagnosis.detect_error(14, 3.1) is False
+    assert diagnosis.detect_error(15, 4.0) is False
+    assert diagnosis.detect_error(16, 5.0) is False
+    assert diagnosis.detect_error(14, 6.0) is True
 
 
 def test_detect_error_returns_false_when_sample_count_is_insufficient() -> None:
     diagnosis = _create_diagnosis(window_sec=3.0, min_samples=5, leak_ratio_threshold=1.5)
 
     # 基準ウィンドウ最小値: 9.0
-    assert diagnosis.detect_error(10.0, 0.0) is False
-    assert diagnosis.detect_error(9.0, 1.0) is False
-    assert diagnosis.detect_error(11.0, 2.0) is False
-    assert diagnosis.detect_error(10.0, 3.0) is False
+    assert diagnosis.detect_error(10, 0.0) is False
+    assert diagnosis.detect_error(9, 1.0) is False
+    assert diagnosis.detect_error(11, 2.0) is False
+    assert diagnosis.detect_error(10, 3.0) is False
 
     # 閾値は満たすが、サンプル数4 < min_samples=5 のため False
-    assert diagnosis.detect_error(14.0, 3.1) is False
-    assert diagnosis.detect_error(15.0, 4.0) is False
-    assert diagnosis.detect_error(16.0, 5.0) is False
-    assert diagnosis.detect_error(14.0, 6.0) is False
+    assert diagnosis.detect_error(14, 3.1) is False
+    assert diagnosis.detect_error(15, 4.0) is False
+    assert diagnosis.detect_error(16, 5.0) is False
+    assert diagnosis.detect_error(14, 6.0) is False
