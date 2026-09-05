@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from argus_synchro.diagnosis.error_config import ErrorConfig
 from argus_synchro.diagnosis.error_diagnosis import ResultDiagnosis
 from argus_synchro.diagnosis.state_errors import (
     ApplicationManagerNotRespondingDiagnosis,
@@ -18,6 +19,18 @@ def _make_diagnosis() -> ApplicationManagerNotRespondingDiagnosis:
     diagnosis.is_enabled = True
     diagnosis.param = SimpleNamespace(error_threshold_sec=5.0)
     return diagnosis
+
+
+def test_application_manager_not_responding_uses_error_config_parameters() -> None:
+    diagnosis = ApplicationManagerNotRespondingDiagnosis()
+    diagnosis.update(ErrorConfig())
+
+    assert diagnosis.param.error_threshold_sec == 5.0
+    diagnosis.errors_diagnosis(10.0, 10.0)
+    assert diagnosis.errors_diagnosis(16.0, 10.0) == (
+        ResultDiagnosis.NORMAL,
+        ResultDiagnosis.NORMAL,
+    )
 
 
 def test_application_manager_not_responding_detects_stalled_heartbeat() -> None:

@@ -363,6 +363,7 @@ SHI側だけで確認されたテスト:
 | M-040 | File watch設定再読込の一時失敗リトライ | 現行SHI `file_watch.py` / ユーザー要件 | manual-port | verified | file watch/CE005/tests | atomic save中の一時欠損・書込み途中を3回、0.2秒間隔で再試行し、全失敗時だけCE005へ渡す。起動時の無限再試行は維持する |
 | M-041 | 自動校正ファイル入力の軽量終了制御 | 現行SHI `__main__.py` / ユーザー要件 | manual-port | verified | main/ProcessActivator/closables/tests | CALIBかつFile Inputの反復評価だけActivator停止と通信資源解放を行い、実機CALIBとSCRUTは量産向け停止・強制終了診断を維持する |
 | M-042 | 起動時ログ診断parameter初期化 | 実機起動ログ / vendor起動順 | vendor-fix | verified | main/log diagnosis/tests | logger callback登録前にログ圧縮・時刻逆転診断を初期化し、起動直後のAttributeErrorを防ぐ |
+| M-046 | エラーMMAP更新停止 | 実機起動ログ / SHI parameter定義 | manual-port | verified | error config/SE039/SE042/tests | 欠落していた診断閾値を復元し、ErrorMonitorのAttributeError終了とAppManagerの反復例外を防ぐ |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -850,6 +851,13 @@ SHI側だけで確認されたテスト:
 - `os.replace()`失敗時は作成済み一時ファイルを削除し、掃除対象の有無にかかわらず元例外を再送出する。正常時の同一ディレクトリ一時ファイルと`os.replace()`による原子的更新は維持した。
 - `tests/test_monitor_argus_heartbeat.py`で一時ファイル作成前失敗、正常置換、置換失敗時の一時ファイル削除を確認し3 passed。M-044、M-045、既存StatusMMAPの集中回帰は12 passed。
 - `test_detect2d.py`を除く全体回帰は304 passed、7 xfailed、通常失敗0件。変更箇所のPylance診断なし、`compileall`とCRLFを考慮したdiff checkも成功した。
+
+### 2026-09-06 M-046実施記録
+
+- 実機ログと`/dev/shm`のMMAP内時刻を照合した。周辺監視`map0.dat`/`map1.dat`は05:16:41まで更新された一方、エラー処理`err0.dat`/`err1.dat`は05:15:21で停止しており、UIの60秒未更新検出はエラー処理MMAP側と判断した。
+- 同時刻に`ApplicationManagerNotRespondingParameters.error_threshold_sec`欠落によりErrorMonitorが`AttributeError`で終了した。AppManager側でも`LogOutputStoppedParameters.error_threshold_sec`欠落が反復発生していた。
+- SHI側に存在するSE039の`error_threshold_sec=5.0`と、SE042の検出5秒・error/failsafe復帰確認5秒・復帰受信間隔1秒を`ErrorConfig`のparameter dataclassへ復元した。vendor既存のMMAP writer、process制御、一覧外の例外処理は変更していない。
+- 実際の`ErrorConfig()`および`error_config.json`読込経路でparameterが利用できる回帰テストを追加した。SE039・SE042・MMAP診断の集中テストは30 passed。
 
 ## 10. 次のCopilotへの開始指示
 

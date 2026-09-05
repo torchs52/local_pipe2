@@ -375,6 +375,8 @@ class LidarPositionMisalignmentNotRespondingParameters(ErrorParameterBase):
 class ApplicationManagerNotRespondingParameters(ErrorParameterBase):
     """アプリケーションマネージャ 未応答用パラメータ"""
 
+    error_threshold_sec: float = 5.0
+
 
 @dataclass(frozen=False, slots=True)
 class ImuNConnectionErrorParameters(ErrorParameterBase):
@@ -389,6 +391,11 @@ class ImuNConnectionErrorParameters(ErrorParameterBase):
 @dataclass(frozen=False, slots=True)
 class LogOutputStoppedParameters(ErrorParameterBase):
     """ログ出力停止用パラメータ"""
+
+    error_threshold_sec: float = 5.0
+    error_recovery_confirm_duration_sec: float = 5.0
+    failsafe_recovery_confirm_duration_sec: float = 5.0
+    recovery_receive_interval_sec: float = 1.0
 
 
 @dataclass(frozen=False, slots=True)

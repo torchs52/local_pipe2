@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from argus_synchro.diagnosis.error_config import ErrorConfig
 from argus_synchro.diagnosis.error_diagnosis import ResultDiagnosis
 from argus_synchro.diagnosis.state_errors import LogOutputStoppedDiagnosis
 from argus_synchro.process.app_manager_process import AppManagerProcess
@@ -19,6 +20,20 @@ def _make_diagnosis() -> LogOutputStoppedDiagnosis:
         failsafe_recovery_confirm_duration_sec=5.0,
     )
     return diagnosis
+
+
+def test_log_output_stopped_uses_error_config_parameters() -> None:
+    diagnosis = LogOutputStoppedDiagnosis()
+    diagnosis.update(ErrorConfig())
+
+    assert diagnosis.param.error_threshold_sec == 5.0
+    assert diagnosis.param.error_recovery_confirm_duration_sec == 5.0
+    assert diagnosis.param.failsafe_recovery_confirm_duration_sec == 5.0
+    assert diagnosis.param.recovery_receive_interval_sec == 1.0
+    assert diagnosis.errors_diagnosis(10.0, 15.0) == (
+        ResultDiagnosis.DETECTION,
+        ResultDiagnosis.DETECTION,
+    )
 
 
 def test_log_output_stopped_detects_threshold_and_keeps_state() -> None:
