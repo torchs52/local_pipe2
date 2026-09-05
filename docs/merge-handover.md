@@ -791,6 +791,7 @@ SHI側だけで確認されたテスト:
 - 自動校正評価では`ProcessActivator.disable()`と`CompositeClosable.close()`だけを行い、新しい無効状態のActivatorと空のclosablesを返す。呼出し直後の既存`ProcessManager.join()`は維持し、子プロセスの終了を待ってから次へ進む。
 - この軽量経路では量産向け`graceful_stop_all()`のterminate/killと`PROCESS_FORCED_TERMINATION`診断を実行しない。実機入力のCALIBとSCRUTでは従来の`stop_calib_pipeline()`または`stop_scrut_pipeline()`を維持する。
 - 適用箇所は自動校正パイプラインの起動失敗、SCRUTからファイル入力CALIBへの遷移、ファイル入力CALIBからSCRUTへの遷移である。また、CALIB処理完了時は共有`CalMatGen_ex.IsFinished`を確認してsystem loopを抜け、既存の`ProcessManager.join()`へ進む。その他の終了・再起動制御は変更していない。
+- `__main__.py`には、校正条件を変えながら外部スクリプトで無人反復する用途、量産向け`graceful_stop_all()`を避ける理由、軽量停止と`join()`の責務分担、`IsFinished`が実機CALIBと共通の完了通知であることを設計コメントとして残した。終了処理を変更する際は、この用途説明と量産経路の分離を維持する。
 - `tests/test_automated_calibration_shutdown.py`でFile Inputとモードの全4組合せ、および軽量停止がActivator停止・通信資源解放だけを行うことを確認し5 passed。量産向け停止基盤を含む集中回帰は10 passed、`test_detect2d.py`を除く全体回帰は294 passed、7 xfailed、通常失敗0件。`compileall`とCRLFを考慮したdiff checkも成功した。
 
 ### 2026-09-04 M-042実施記録
@@ -830,5 +831,6 @@ SHI側だけで確認されたテスト:
 5. 最小の単体テストまたは基盤移植を行う
 6. 狭いテストを直ちに実行する
 7. 本書の台帳と確認結果を更新する
+8. CANと校正の統合後、両リポジトリの残差分を機能単位で再監査する。過去のレビュー台帳で対応済みとされた項目も、現行vendorコードへの実装有無を検索またはテストで再確認し、未移植、vendor維持、意図的な不採用のいずれかを記録する
 
 新しい判断が既存記録と矛盾した場合は、古い記録を黙って残さず、理由と日付を添えて本書を更新する。

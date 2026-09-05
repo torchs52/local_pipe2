@@ -857,10 +857,14 @@ def stop_calib_pipeline(
 
 
 def is_automated_calibration_run(app_config: AppConfig, mode: str) -> bool:
-    """外部スクリプトから反復するファイル入力の校正評価かを判定する。
+    """ファイル入力による校正シミュレーションの自動反復かを判定する。
 
-    実機入力またはSCRUTモードでは、量産向けの確実な停止と強制終了診断を
-    維持するため、この条件を有効にしない。
+    校正パラメータや入力ファイルを少しずつ変更しながら、本アプリを外部
+    スクリプトから繰り返し起動し、校正結果を無人で比較する用途を想定する。
+
+    この用途は実センサを停止する必要がないファイル入力のCALIBに限定する。
+    実機入力またはSCRUTでは、量産運転に必要な確実なプロセス停止と
+    強制終了診断を維持するため、自動反復用の軽量終了を選択しない。
     """
     return app_config.DEFAULT.File_Input and mode == "CALIB"
 
@@ -869,10 +873,18 @@ def stop_automated_calibration_pipeline(
     closables: CompositeClosable,
     process_activator: ProcessActivator,
 ) -> tuple[CompositeClosable, ProcessActivator]:
-    """自動校正評価の1試行を軽量に終了し、外部スクリプトへ制御を返す。
+    """校正シミュレーションの1試行を終了し、外部スクリプトへ制御を返す。
 
-    Activator停止と通信資源の解放だけを行い、terminate/killと強制終了診断は
-    行わない。子プロセスの終了待ちは呼出し側の既存join処理へ委ねる。
+    ``graceful_stop_all()`` は量産時に子プロセスを確実に停止し、必要なら
+    terminate/killを実行して、その発生を強制終了診断へ通知するためにある。
+    一方、自動反復では、あるパラメータや入力ファイルで共有例外状態が残った
+    試行も評価結果の一つとして終了し、次の条件でアプリを再実行する必要がある。
+    この経路で量産向けの強制終了診断や待機を行うと、実害のない試行結果でも
+    エラー処理へ入り、無人バッチが次の実行へ進めなくなることがある。
+
+    そのため、この関数はActivatorを停止して通信資源を解放するだけとし、
+    terminate/killと強制終了診断は行わない。子プロセスの終了待ちは呼出し側の
+    既存``ProcessManager.join()``へ委ねる。実機CALIBとSCRUTでは使用しない。
     """
     process_activator.disable()
     closables.close()
@@ -1502,7 +1514,11 @@ def main() -> None:
                 if current_mode == "SCRUT" and sec.check_scrut_mode_is_finished():
                     system_activator.disable()
                 if current_mode == "CALIB" and sec.CalMatGen_ex.IsFinished.value:
-                    # 校正評価の1試行完了後はjoinへ進み、外部スクリプトへ制御を返す。
+                    # CalibProcessが共有完了フラグを立てたらmain loopを抜ける。
+                    # ファイル入力の自動反復では、この後のjoinとfinallyを経て
+                    # プロセス・共有資源を閉じ、外部スクリプトへ制御を返す。
+                    # 実機CALIBでも完了通知として同じフラグを使うため、ここでは
+                    # File_Inputだけに限定せず、終了方法の選択を停止関数側に委ねる。
                     system_activator.disable()
                 time.sleep(0.2)
 
