@@ -41,7 +41,6 @@ from argus_synchro.shared_errors import (
 )
 from argus_synchro.shared_excepts import SharedExcepts
 from argus_synchro.SystemMonitor import MonitorArgus
-from argus_synchro.SystemMonitor.info_mmap import ArgusInfoMMAP
 from argus_synchro.SystemMonitor.status_mmap import (
     StatusCode,
     StatusMMAP,
@@ -1289,18 +1288,6 @@ def main() -> None:
             # 最終更新との比較が適切にできていないので、暫定的に下記をコメントアウト.
             last_updated = sac.last_updated
             _logger.info(f"config reloaded (last_updated={last_updated})")
-
-            # mmap 初期化（存在しなければ作成）
-            log_dir: Path = paths.get_mmap_dir(directory_config)
-            argus_info_mmap_path = str(
-                paths.normalize_path("./argus_info.mmap", log_dir)
-            )
-            ArgusInfoMMAP.initialize(
-                argus_info_mmap_path,
-                cam_count=app_config.camera.count,
-                lidar_count=app_config.Lidar.count,
-                create=True,
-            )
 
             # 同期タイプを設定(ファイル読み込み時は同期、実機は非同期)
             datasource_sync_type: SyncType = (

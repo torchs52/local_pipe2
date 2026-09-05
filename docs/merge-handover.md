@@ -1,6 +1,6 @@
 # Vendor/SHI 統合作業 引継ぎ
 
-最終更新: 2026-09-04
+最終更新: 2026-09-06
 
 この文書は、別PCまたは別のCopilotチャットで統合作業を再開するための入口である。
 作業を始める前に本書を読み、判断・実装・検証が進んだら同じ作業内で更新すること。
@@ -74,7 +74,7 @@ SHI側は参照専用とし、vendor版へ機能単位で再移植する。
 - `argus_synchro/__main__.py` のメインループとモード遷移
 - `argus_synchro/SystemMonitor/`
 - `ProcessManager` / `ProcessActivator`
-- `StatusMMAP` / `ArgusInfoMMAP`
+- `StatusMMAP`
 - CPU affinity、プロセス起動順、停止順、再起動条件
 - `operation_mode` の切替方式
 - C++/Python境界と共有メモリABI
@@ -801,9 +801,10 @@ SHI側だけで確認されたテスト:
 
 ### 2026-09-06 M-043実施記録
 
-- M-038で有効化したCE006のLiDAR間行列検査を、移植元SHIの実効設定に合わせて無効化した。`SensorCalibDataInvalidParameters.check_lidar2lidar`と`config/error_config.json`を`false`、`check_lidar2crane`を`true`のままとした。
-- 移植元には`CalibrationConf.BothLidars`を検査可能なコードがあるが、parameter既定値は`false`で、`error_config.json`にも有効化設定がない。このため、欠損している`lidar2lidar_trans_mat_MID360.csv`は移植元の通常起動ではCE006検査対象ではなかった。
-- LiDAR間検査自体の単体テストは明示的に有効化して維持し、既定値が無効である回帰テストを追加した。CE006専用テストは6 passed。実際の`settings.ini`と`error_config.json`を読み込んだvalidatorでは`check_lidar2lidar=False`、`check_lidar2crane=True`、issue 0件を確認した。
+- 現行SHIで削除済みの補助情報MMAPと参照用CLIをvendorからも削除した。SHIでは`info_mmap.py`が`9432a4f`、`argus_synchro_query.py`が`a487f5f`で削除され、現行ツリーに関連参照がないことを確認した。
+- `argus_synchro/SystemMonitor/info_mmap.py`と`argus_synchro/SystemMonitor/argus_synchro_query.py`を削除し、`__main__.py`から`ArgusInfoMMAP`のimportと`argus_info.mmap`初期化を除去した。
+- プロセス状態通知に使用する`StatusMMAP`、エラー共有MMAP、Godot UI向けMMAPは別機能であり変更していない。
+- main周辺の集中回帰は16 passed、`test_detect2d.py`を除く全体回帰は296 passed、7 xfailed、通常失敗0件。変更箇所の`compileall`とCRLFを考慮したdiff checkも成功した。
 
 ## 10. 次のCopilotへの開始指示
 
