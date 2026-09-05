@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from argus_synchro import __main__ as app_main
 from argus_synchro.common.app_logger import AppLoggerFactory
 from argus_synchro.diagnosis.error_config import ErrorConfig
 from argus_synchro.diagnosis.error_diagnosis import ResultDiagnosis
@@ -111,5 +112,18 @@ def test_log_time_reversal_index_maps_to_registered_diagnosis() -> None:
             shared_errors.state_errors_D[StateErrorDIndex.LOG_TIME_REVERSAL],
             LogTimeReversal,
         )
+    finally:
+        shared_errors.shared_err_conf.close()
+
+
+def test_load_err_config_initializes_time_reversal_before_logger_callback() -> None:
+    shared_errors = SharedErrors(Path("config/error_config.json"))
+    try:
+        app_main.load_err_config(shared_errors)
+        diagnosis = shared_errors.state_errors_D[StateErrorDIndex.LOG_TIME_REVERSAL]
+
+        diagnosis.report_record_time(10.0, 9.0)
+
+        assert diagnosis.param is not None
     finally:
         shared_errors.shared_err_conf.close()

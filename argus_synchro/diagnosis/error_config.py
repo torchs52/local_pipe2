@@ -458,7 +458,7 @@ class ConfigFileMissingParameters(ErrorParameterBase):
 class SensorCalibDataInvalidParameters(ErrorParameterBase):
     """センサ校正データ不正用パラメータ"""
 
-    check_lidar2lidar: bool = True
+    check_lidar2lidar: bool = False
     check_lidar2crane: bool = True
     enforce_shape_4x4: bool = True
     finite_value_only: bool = True

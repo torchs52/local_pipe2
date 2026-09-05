@@ -362,6 +362,7 @@ SHI側だけで確認されたテスト:
 | M-039 | メンテナンスモード中の指定エラー抑制 | 現行SHI `in_factory` / ユーザー要件 | manual-port | verified | runtime policy/対象診断/AppManager・起動経路/tests | SHI指定のCE001/002/012、SE001/002/007/026/035/037/039だけを抑制し、重要度A全体へは適用しない |
 | M-040 | File watch設定再読込の一時失敗リトライ | 現行SHI `file_watch.py` / ユーザー要件 | manual-port | verified | file watch/CE005/tests | atomic save中の一時欠損・書込み途中を3回、0.2秒間隔で再試行し、全失敗時だけCE005へ渡す。起動時の無限再試行は維持する |
 | M-041 | 自動校正ファイル入力の軽量終了制御 | 現行SHI `__main__.py` / ユーザー要件 | manual-port | verified | main/ProcessActivator/closables/tests | CALIBかつFile Inputの反復評価だけActivator停止と通信資源解放を行い、実機CALIBとSCRUTは量産向け停止・強制終了診断を維持する |
+| M-042 | 起動時ログ診断parameter初期化 | 実機起動ログ / vendor起動順 | vendor-fix | verified | main/log diagnosis/tests | logger callback登録前にログ圧縮・時刻逆転診断を初期化し、起動直後のAttributeErrorを防ぐ |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -791,6 +792,18 @@ SHI側だけで確認されたテスト:
 - この軽量経路では量産向け`graceful_stop_all()`のterminate/killと`PROCESS_FORCED_TERMINATION`診断を実行しない。実機入力のCALIBとSCRUTでは従来の`stop_calib_pipeline()`または`stop_scrut_pipeline()`を維持する。
 - 適用箇所は自動校正パイプラインの起動失敗、SCRUTからファイル入力CALIBへの遷移、ファイル入力CALIBからSCRUTへの遷移である。また、CALIB処理完了時は共有`CalMatGen_ex.IsFinished`を確認してsystem loopを抜け、既存の`ProcessManager.join()`へ進む。その他の終了・再起動制御は変更していない。
 - `tests/test_automated_calibration_shutdown.py`でFile Inputとモードの全4組合せ、および軽量停止がActivator停止・通信資源解放だけを行うことを確認し5 passed。量産向け停止基盤を含む集中回帰は10 passed、`test_detect2d.py`を除く全体回帰は294 passed、7 xfailed、通常失敗0件。`compileall`とCRLFを考慮したdiff checkも成功した。
+
+### 2026-09-04 M-042実施記録
+
+- `argus_bootfig_jetson.sh`実行時、Mainが最初の`REBOOT_CODE`ログ出力で`LogTimeReversal.param`未初期化の`AttributeError`により終了する事象を確認した。CE006の校正CSV欠損ログは同時に出ていたが、起動終了の直接原因ではない。
+- `LogTimeReversal`と`LogCompressionFailure`はAppManagerの設定読込でupdateされる一方、logger callbackはAppManager起動前に登録される。既存handlerが前回ログ時刻を保持していると最初のログからcallbackが発火するため、`load_err_config()`で両診断を先に初期化するよう起動順を修正した。
+- `tests/test_log_time_reversal.py`へcallback発火前の初期化を確認する回帰テストを追加し、ログ診断の集中テストは12 passed。修正後に`argus_bootfig_jetson.sh`を実行し、`INIT`、`REBOOT`、`BOOTING`、`RUNNING`への遷移と13個の処理プロセスおよびUIの起動を確認した。`test_detect2d.py`を除く全体回帰は295 passed、7 xfailed、通常失敗0件。CRLFを考慮したdiff checkも成功した。
+
+### 2026-09-06 M-043実施記録
+
+- M-038で有効化したCE006のLiDAR間行列検査を、移植元SHIの実効設定に合わせて無効化した。`SensorCalibDataInvalidParameters.check_lidar2lidar`と`config/error_config.json`を`false`、`check_lidar2crane`を`true`のままとした。
+- 移植元には`CalibrationConf.BothLidars`を検査可能なコードがあるが、parameter既定値は`false`で、`error_config.json`にも有効化設定がない。このため、欠損している`lidar2lidar_trans_mat_MID360.csv`は移植元の通常起動ではCE006検査対象ではなかった。
+- LiDAR間検査自体の単体テストは明示的に有効化して維持し、既定値が無効である回帰テストを追加した。CE006専用テストは6 passed。実際の`settings.ini`と`error_config.json`を読み込んだvalidatorでは`check_lidar2lidar=False`、`check_lidar2crane=True`、issue 0件を確認した。
 
 ## 10. 次のCopilotへの開始指示
 

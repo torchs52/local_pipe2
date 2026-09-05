@@ -1100,6 +1100,9 @@ def load_err_config(ser: SharedErrors) -> None:
     err_config: ErrorConfig = ser.shared_err_conf.read()
     ser.state_errors_D[StateErrorDIndex.PROCESS_FORCED_TERMINATION].update(err_config)
     ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR].update(err_config)
+    # AppManager起動前にlogger callbackが発火するため、先に初期化する。
+    ser.state_errors_D[StateErrorDIndex.LOG_COMPRESSION_FAILURE].update(err_config)
+    ser.state_errors_D[StateErrorDIndex.LOG_TIME_REVERSAL].update(err_config)
     ser.action_errors_A_C[ActionErrorIndex.OPERATION_MODE_TRANSITION_ERROR].update(
         err_config
     )

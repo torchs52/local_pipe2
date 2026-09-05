@@ -19,8 +19,20 @@ def _calibration_conf(both_lidars: Path, lidar_files: list[Path]) -> SimpleNames
 def _diagnosis() -> SensorCalibDataInvalidDiagnosis:
     diagnosis = SensorCalibDataInvalidDiagnosis()
     diagnosis.param = SensorCalibDataInvalidParameters()
+    diagnosis.param.check_lidar2lidar = True
     diagnosis.is_enabled = True
     return diagnosis
+
+
+def test_lidar2lidar_check_is_disabled_by_default(tmp_path: Path) -> None:
+    diagnosis = SensorCalibDataInvalidDiagnosis()
+    diagnosis.is_enabled = True
+
+    issues = diagnosis.validate_calibration_matrices(
+        _calibration_conf(tmp_path / "missing.csv", [])  # type: ignore[arg-type]
+    )
+
+    assert issues == ()
 
 
 def test_valid_lidar_calibration_matrices_have_no_issue(tmp_path: Path) -> None:
