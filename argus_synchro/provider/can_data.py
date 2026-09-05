@@ -1,21 +1,23 @@
 from abc import ABC, abstractmethod
-from typing import Final, final
+from typing import final
 
 import numpy as np
 from numpy.typing import NDArray
 import time
 
 from argus_synchro.common.error import NotStartedError
-from argus_synchro.device.can.can_receiver import Can, CanFile
+from argus_synchro.device.can.can_receiver import (
+    LEVER_PRESSURE_SIGNAL,
+    YAW_ANGLE_SIGNAL,
+    Can,
+    CanFile,
+    DecodedCanMessage,
+)
 from argus_synchro.device.can.shi_lib_can_receiver import ShiLibCan
 from argus_synchro.shared_errors import SharedErrors, StateErrorIndex
 
 
 class CanDataProvider(ABC):
-    CANID_ANGLE_OLD: Final[str] = "18FCE402"
-    CANID_ANGLE: Final[str] = "18FFD1D1"
-    CANID_LEVER: Final[str] = "18FC4401"
-
     def __init__(self) -> None:
         super().__init__()
         self._yaw_angle_deg: float = 0.0
@@ -38,6 +40,19 @@ class CanDataProvider(ABC):
         """lever_pressure(レバー圧)を取得する"""
         return self._lever_pressure
 
+    def _apply_decoded_message(self, message: DecodedCanMessage | None) -> bool:
+        if message is None:
+            return False
+        if message.signal_type == YAW_ANGLE_SIGNAL and len(message.values) == 1:
+            self._yaw_angle_deg = message.values[0]
+            return True
+        if (
+            message.signal_type == LEVER_PRESSURE_SIGNAL
+            and len(message.values) == 4
+        ):
+            self._lever_pressure = np.array(message.values)
+        return False
+
 
 @final
 class NotStartedCanDataProvider(CanDataProvider):
@@ -57,19 +72,7 @@ class CanFileProvider(CanDataProvider):
         pass
 
     def receive_can_data(self) -> tuple[float, NDArray[np.float64]]:
-        can_id: str
-        can_data: tuple[float, ...]
-        can_id, can_data = self._device.receive_can_data(self._ref_t)
-
-        if (
-            can_id in (self.CANID_ANGLE_OLD, self.CANID_ANGLE)
-            and type(can_data[0]) is float
-        ):
-            # 角度データ更新
-            self._yaw_angle_deg = can_data[0]
-        elif can_id == self.CANID_LEVER and type(can_data) is tuple[float, ...]:
-            # レバーデータ更新
-            self._lever_pressure = np.array(can_data)
+        self._apply_decoded_message(self._device.receive_can_data(self._ref_t))
 
         self._ref_t += 1
 
@@ -97,23 +100,10 @@ class CanReceiverProvider(CanDataProvider):
             ].update(self._err_config)
 
     def receive_can_data(self) -> tuple[float, NDArray[np.float64]]:
-        can_id: str
-        can_data: tuple[float, ...] | None
-        can_id, can_data = self._device.receive_can_data()
-        now =time.perf_counter()
-        if can_data is None:
-            # 処理なし
-            pass
-        elif (
-            can_id in (self.CANID_ANGLE_OLD, self.CANID_ANGLE)
-            and type(can_data[0]) is float
-        ):
-            # 角度データ更新
-            self._yaw_angle_deg = can_data[0]
+        message = self._device.receive_can_data()
+        now = time.perf_counter()
+        if self._apply_decoded_message(message):
             self._timestamp = now
-        elif can_id == self.CANID_LEVER and type(can_data) is tuple[float, ...]:
-            # レバーデータ更新
-            self._lever_pressure = np.array(can_data)
 
         yaw_angle_info_error = self._ser.state_errors_A_C[
             StateErrorIndex.YAW_ANGLE_INFO_ERROR
@@ -135,20 +125,6 @@ class ShiLibCanProvider(CanDataProvider):
         self._device: ShiLibCan = device
 
     def receive_can_data(self) -> tuple[float, NDArray[np.float64]]:
-        can_id: str
-        can_data: tuple[float, ...] | None
-        can_id, can_data = self._device.receive_can_data()
-        if can_data is None:
-            # 処理なし
-            pass
-        elif (
-            can_id in (self.CANID_ANGLE_OLD, self.CANID_ANGLE)
-            and type(can_data[0]) is float
-        ):
-            # 角度データ更新
-            self._yaw_angle_deg = can_data[0]
-        elif can_id == self.CANID_LEVER and type(can_data) is tuple[float, ...]:
-            # レバーデータ更新
-            self._lever_pressure = np.array(can_data)
+        self._apply_decoded_message(self._device.receive_can_data())
 
         return self._yaw_angle_deg, self._lever_pressure

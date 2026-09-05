@@ -3,14 +3,12 @@ from __future__ import annotations
 import socket
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING, Final
-
-import numpy as np
-from numpy.typing import NDArray
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from argus_synchro.common.app_logger import AppLogger, AppLoggerFactory
 from argus_synchro.config.app_config import CANConf
+from argus_synchro.device.can.can_decoders import DECODER_REGISTRY, DecoderFn
 from argus_synchro.diagnosis.error_diagnosis import ResultDiagnosis
 from argus_synchro.shared_errors import SharedErrors, StateErrorIndex
 from argus_synchro.shared_excepts import SharedCANExcept
@@ -21,6 +19,35 @@ if TYPE_CHECKING:
 CONVERTER_IP = "192.168.1.100"
 CONVERTER_PORT = 2000
 MASK_PGN = 0x1F
+YAW_ANGLE_SIGNAL = "yaw_angle"
+LEVER_PRESSURE_SIGNAL = "lever_pressure"
+SUPPORTED_SIGNAL_TYPES = {YAW_ANGLE_SIGNAL, LEVER_PRESSURE_SIGNAL}
+
+
+@dataclass(frozen=True, slots=True)
+class DecodedCanMessage:
+    can_id: str
+    signal_type: str
+    values: tuple[float, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class CanMapEntry:
+    signal_type: str
+    decoder: DecoderFn
+
+
+class CanIdMapError(ValueError):
+    def __init__(self, file_path: str, error: Exception) -> None:
+        self.file_path = file_path
+        super().__init__(
+            f"CAN ID map error: path={file_path}, "
+            f"detail={type(error).__name__}: {error}"
+        )
+
+
+def normalize_can_id(can_id: str) -> str:
+    return can_id.strip().upper().removeprefix("0X")
 
 
 def handle_on_new_receive_return_canstr(
@@ -82,23 +109,20 @@ class Can:
         self,
         index: int,
         can: CANConf,
+        crane_model: str,
         app_logger_factory: AppLoggerFactory,
         ser: SharedErrors,
         sec_can: SharedCANExcept,
-        canid_angle: str,  # TODO(NSW): AppConfigから取得するように変更する
-        canid_lever: str,  # TODO(NSW): AppConfigから取得するように変更する
     ) -> None:
         self._logger: AppLogger = app_logger_factory.register_from_type(self.__class__)
         self._index: int = index
-        self._handler: CanHandler = CanHandler(can, app_logger_factory)
+        self._handler: CanHandler = CanHandler(can, crane_model, app_logger_factory)
         self.failedcount = 0
         self.udp_socket: socket.socket = self._create_udp_socket()
         self._ser: SharedErrors = ser
         self._sec_can: SharedCANExcept = sec_can
         self._last_received_time: float = 0.0
         self._timestamp: float | None = None
-        self._canid_angle: str = canid_angle
-        self._canid_lever: str = canid_lever
         self._err_config_load()
 
     def _err_config_load(self) -> None:
@@ -127,7 +151,7 @@ class Can:
         sock.settimeout(0.1)
         return sock
 
-    def receive_can_data(self) -> tuple[str, tuple[float, ...] | None]:
+    def receive_can_data(self) -> DecodedCanMessage | None:
         """
         Returns
         -------
@@ -137,8 +161,7 @@ class Can:
             受信したデータを物理値にした値のタプル(1メッセージから複数の値を取得する場合のためタプル)
         """
         # self._logger.info("receive_start_without_lib start")
-        can_id_str = "00000000"
-        recv_data = None
+        decoded_message = None
         data: bytes = b""
         (ip_address, port) = ("", 0)
 
@@ -205,13 +228,13 @@ class Can:
                 ResultDiagnosis.RECOVERY,
             ):
                 # resultdatから対応するアドレスのhandlerを呼び出してdecodeする
-                can_id_str, recv_data = self._handler.dispatch(canid, candata)
+                decoded_message = self._handler.dispatch(canid, candata)
             else:
                 pass
                 # rts = "udp_socket - handle_on_new_receive error"
                 # self._logger.info("setRecordState error. status:%d", rts)
 
-        return can_id_str, recv_data
+        return decoded_message
 
     def get_yaw_angle_deg(self) -> int:
         err_msg = f"class: {self.__class__.__name__}, method: get_yaw_angle_deg()"
@@ -226,114 +249,128 @@ class CanHandler:
     def __init__(
         self,
         can_conf: CANConf,
+        crane_model: str,
         app_logger_factory: AppLoggerFactory,
     ) -> None:
         self._logger: AppLogger = app_logger_factory.register_from_type(self.__class__)
+        self._crane_model = crane_model
         self.update(can_conf)
-        self.__RESULT_INDEX_CANID: Final[int] = 0
-        self.__RESULT_INDEX_CANDATA: Final[int] = 1
 
     def update(self, can_conf: CANConf) -> None:
+        try:
+            self._load_map(can_conf)
+        except CanIdMapError:
+            raise
+        except (OSError, UnicodeError, ValueError, TypeError, KeyError) as error:
+            raise CanIdMapError(can_conf.can_id_map_file, error) from error
+
+    def _load_map(self, can_conf: CANConf) -> None:
         import pandas as pd
 
         self._logger.info("CanHandler start")
 
-        # CAN ID→ハンドラ関数のマッピングを構築
         can_id_map: pd.DataFrame = pd.read_csv(  # type: ignore
             can_conf.can_id_map_file,
-            header=None,
+            dtype=str,
+            comment="#",
         )
         self._yaw_offset_deg: float = can_conf.yaw_offset_deg
 
         self._logger.info(f"CanHandler - can_id_map: {can_id_map}")
 
-        # can_id_mapの列1をkeyとして列2をkeyに対応するメソッドとする辞書を作成
-        # { "18FC4003": self.handle_angle_oldcan, ... }
-        self._handler_map: dict[str, Callable[[Sequence[str]], tuple[float, ...]]] = {}
+        required_columns = {"crane_model", "can_id", "signal_type", "decoder"}
+        missing_columns = required_columns.difference(can_id_map.columns)
+        if missing_columns:
+            missing = ", ".join(sorted(missing_columns))
+            raise ValueError(f"Missing CAN ID map columns: {missing}")
 
-        for key, funcname in [
-            (k[0], k[1])
-            for k in can_id_map.to_dict(orient="records")  # type: ignore
-        ]:
-            self._logger.info(f"CanHandler - (key,funcname): ({key}, {funcname})")
-            method: Callable[[Sequence[str]], tuple[float, ...]] = getattr(
-                self,
+        model_column = can_id_map["crane_model"].astype(str).str.strip()
+        common_map = can_id_map[model_column == "*"]
+        model_map = can_id_map[model_column == self._crane_model]
+        if common_map.empty and model_map.empty:
+            raise ValueError(
+                f"CAN ID map has no entries for crane_model: {self._crane_model}"
+            )
+
+        self._handler_map: dict[str, CanMapEntry] = {}
+        for selected_map in (common_map, model_map):
+            normalized_ids = selected_map["can_id"].map(
+                lambda value: normalize_can_id(str(value))
+            )
+            duplicate_ids = normalized_ids[normalized_ids.duplicated()].unique()
+            if len(duplicate_ids) > 0:
+                duplicate = str(duplicate_ids[0])
+                raise ValueError(f"Duplicate CAN ID in csv: {duplicate}")
+
+        model_can_ids = {
+            normalize_can_id(str(can_id)) for can_id in model_map["can_id"]
+        }
+        model_signal_types = {
+            str(signal_type).strip() for signal_type in model_map["signal_type"]
+        }
+        common_map = common_map[
+            ~common_map["can_id"].map(
+                lambda value: normalize_can_id(str(value)) in model_can_ids
+            )
+            & ~common_map["signal_type"].astype(str).str.strip().isin(
+                model_signal_types
+            )
+        ]
+        selected_map = pd.concat([common_map, model_map], ignore_index=True)
+        for _, key, signal_type, funcname in selected_map.itertuples(index=False):
+            signal_type = str(signal_type).strip()
+            self._logger.info(
+                "CanHandler - (key,signal_type,funcname): (%s, %s, %s)",
+                key,
+                signal_type,
                 funcname,
             )
-            self._logger.info(f"CanHandler - setup: ({key}, {funcname})")
-            self._handler_map[key.upper().lstrip("0X")] = method
+            method = DECODER_REGISTRY.get(str(funcname).strip())
+            if method is None:
+                err_msg = f"Unknown CAN decoder function in csv: {funcname}"
+                raise ValueError(err_msg)
+            can_id = normalize_can_id(str(key))
+            if not signal_type:
+                raise ValueError(f"Empty CAN signal type in csv: {can_id}")
+            if signal_type not in SUPPORTED_SIGNAL_TYPES:
+                raise ValueError(f"Unknown CAN signal type in csv: {signal_type}")
+            self._handler_map[can_id] = CanMapEntry(signal_type, method)
+
+        yaw_angle_count = sum(
+            entry.signal_type == YAW_ANGLE_SIGNAL
+            for entry in self._handler_map.values()
+        )
+        if yaw_angle_count != 1:
+            raise ValueError("CAN ID map must contain exactly one yaw_angle signal")
 
         self._logger.info(f"CanHandler - self._handler_map: {self._handler_map}")
 
-    def dispatch(self, can_id: str, data: str) -> tuple[str, tuple[float, ...] | None]:
+    def can_id_for(self, signal_type: str) -> str:
+        matching_ids = [
+            can_id
+            for can_id, entry in self._handler_map.items()
+            if entry.signal_type == signal_type
+        ]
+        if len(matching_ids) != 1:
+            raise ValueError(
+                f"CAN ID map must contain exactly one {signal_type} signal"
+            )
+        return matching_ids[0]
+
+    def dispatch(self, can_id: str, data: str) -> DecodedCanMessage | None:
         """受信フレームを適切なハンドラへ振り分け"""
-        can_id_str: str = can_id.upper().lstrip("0X")
-        received_data: tuple[float, ...] | None
+        can_id_str = normalize_can_id(can_id)
 
         # 登録済みハンドラーに存在すれば呼び出し
-        handler = self._handler_map.get(can_id_str)
-        received_data = handler((can_id, data)) if handler else None
+        entry = self._handler_map.get(can_id_str)
+        if entry is None:
+            return None
 
-        return can_id_str, received_data
-
-    def handle_angle_oldcan(self, resultdat: Sequence[str]) -> tuple[float]:
-        """
-        旋回角度取得(old_can)
-        """
-        raw_data: str = resultdat[self.__RESULT_INDEX_CANDATA]
-        current_degree: float = 360.0 - (int(raw_data[4:8], 16) / 10.0)
-
-        yaw_angle_deg = current_degree - self._yaw_offset_deg
-        self._logger.info(
-            "handle_angle_oldcan, can deg(old, handler): %f",
-            yaw_angle_deg,
+        return DecodedCanMessage(
+            can_id=can_id_str,
+            signal_type=entry.signal_type,
+            values=entry.decoder(data, self._yaw_offset_deg, self._logger),
         )
-
-        return (yaw_angle_deg,)
-
-    def handle_angle_newcan(self, resultdat: Sequence[str]) -> tuple[float]:
-        """
-        旋回角度取得(new_can)
-        """
-        tmp_string: str = resultdat[self.__RESULT_INDEX_CANDATA]
-        current_degree: float = (
-            int(tmp_string[:2], 16) + int(tmp_string[2:4], 16) * 255
-        ) / (13400.0 / 360.0)
-
-        yaw_angle_deg = current_degree - self._yaw_offset_deg
-        self._logger.info(
-            "handle_angle_newcan, can deg(new, handler): %f",
-            yaw_angle_deg,
-        )
-
-        return (yaw_angle_deg,)
-
-    def handle_lever(self, resultdat: Sequence[str]) -> tuple[float, ...]:
-        """
-        レバー圧力取得
-        """
-        msg_data: str = resultdat[self.__RESULT_INDEX_CANDATA]
-        self._logger.info(
-            "handle_lever, lever handler data: %s, %s",
-            resultdat[self.__RESULT_INDEX_CANID],
-            resultdat[self.__RESULT_INDEX_CANDATA],
-        )
-
-        payload: str = msg_data[:-2]  # 末尾2桁は DLC
-        b: bytes = bytes.fromhex(payload)
-        lever_pressure: tuple[float, ...] = tuple(
-            int.from_bytes(b[i : i + 2], "big") * 0.001  # 無符号 16 bit ×0.001
-            for i in (0, 2, 4, 6)
-        )
-
-        self._logger.info(
-            "handle_lever, lever handler data: %f, %f, %f, %f",
-            *lever_pressure[0:4],
-        )
-
-        return lever_pressure
-
-    # ...同様に必要があれば他のIDごとにメソッドを追加...
 
 
 class LoadTableDataInterface(ABC):
@@ -405,14 +442,16 @@ class CanFile:
     def __init__(
         self,
         can_conf: CANConf,
+        crane_model: str,
         app_logger_factory: AppLoggerFactory,
     ) -> None:
         """
         argus_synchro
         Scrutinizerクラスの__init__を参考に
         """
-        self.update(can_conf)
         self._logger: AppLogger = app_logger_factory.register_from_type(self.__class__)
+        self.update(can_conf)
+        self._handler = CanHandler(can_conf, crane_model, app_logger_factory)
         # ファイル読み込みの時は、最初にテーブルデータ読み込み.
         self.load_table_data: LoadTableDataInterface = LoadFileTableData()
 
@@ -430,21 +469,25 @@ class CanFile:
 
         self.is_old = can_conf.IsOld
         self.c_filepath = can_conf.c_file
-
-    def _can_msg_to_data(self, can_msg: str) -> NDArray[np.uint8]:
-        """16 進文字列 → 8 byte NDArray[uint8] へ変換"""
-        # str = "100234addf45893408"
-        msg = can_msg
-        data: NDArray[np.uint8] = np.zeros(8).astype(np.uint8)
-        for i in range(8):
-            data[i] = int(msg[i * 2 : (i + 1) * 2], 16)
-            # AppLogger.info("{:02X}".format(data[i]))
-        return data
+        if hasattr(self, "_handler"):
+            self._handler.update(can_conf)
 
     def pick_row(self, df: pd.Series, row_num: int) -> str:
         return df[row_num]
 
-    def receive_can_data(self, ref_t: int) -> tuple[str, tuple[float, ...]]:
+    @staticmethod
+    def _normalize_raw_msg(raw_msg: object) -> str | None:
+        if raw_msg is None:
+            return None
+
+        msg = str(raw_msg).strip().upper().removeprefix("0X")
+        if not msg or msg == "NAN" or len(msg) % 2 != 0:
+            return None
+        if any(character not in "0123456789ABCDEF" for character in msg):
+            return None
+        return msg
+
+    def receive_can_data(self, ref_t: int) -> DecodedCanMessage | None:
         """
         ファイルからyaw_angle_dataを呼んで角度を返す
 
@@ -470,48 +513,26 @@ class CanFile:
         LShared_can
             更新済み構造体
         """
-        can_id = "00000000"
         # 1) ログが空ならオフセットだけ設定して終了
         if self.angle_data.empty:
-            return can_id, (self._yaw_offset_deg,)
+            return None
 
         # 3) 対象行を抽出しmsg文字列を取り出す (列名はサブクラス依存)
         raw_msg: str = self.pick_row(self.angle_data, ref_t)
         # raw_msg: str = row_dict[self.msg_col]
-
-        # 4) 文字列 → 8byte配列
-        msg_bytes: NDArray[np.uint8] = self._can_msg_to_data(raw_msg)
-
-        if self.is_old:
-            """
-                旋回角度取得(old_can)
-                """
-            can_id = "18FCE402"
-            # 0-16
-            # AppLogger.info(f'CAN-ID:{self.msg.id:x}, TIMESTAMP:{self.msg.timestamp_ms}, SIZE:{self.msg.size}, DATA:{msg_data[0:8]}',file=self.fresult)
-            # scに旋回角度を格納(0,1:右側旋回ポテンショ[10*V]、2,3:左側旋回ポテンショ[10*V]、4,5:旋回位置[10*deg]、6,7:現在旋回速度[10*rad/sec])
-            tmp_string: str = f"{msg_bytes[2]:02X}{msg_bytes[3]:02X}"
-            current_degree = 360 - int(tmp_string, 16) / 10.0
-            can_data = ((current_degree + self._yaw_offset_deg),)
-            self._logger.info(
-                "handle_angle_oldcan, can deg(old, handler): %f",
-                can_data[0],
+        normalized_msg = self._normalize_raw_msg(raw_msg)
+        if normalized_msg is None:
+            self._logger.warning(
+                "CanFile - invalid msg row. ref_t=%s raw_msg=%r",
+                ref_t,
+                raw_msg,
             )
-        else:
-            """
-                旋回角度取得(new_can)
-                """
-            can_id = "18FFD1D1"
-            tmp_string: str = f"{msg_bytes[0]:02X}{msg_bytes[1]:02X}{msg_bytes[2]:02X}{msg_bytes[3]:02X}"
-            current_degree = (
-                int(tmp_string[:2], 16) + int(tmp_string[2:4], 16) * 255
-            ) / (13400.0 / 360.0)
-            can_data = ((current_degree - self._yaw_offset_deg),)
-            self._logger.info(
-                "handle_angle_newcan, can deg(new, handler): %f",
-                can_data[0],
-            )
-        return can_id, can_data
+            return None
+
+        return self._handler.dispatch(
+            self._handler.can_id_for(YAW_ANGLE_SIGNAL),
+            normalized_msg,
+        )
 
     def change_file_name_index(self, file_name: str) -> None:
         self.c_filepath = file_name

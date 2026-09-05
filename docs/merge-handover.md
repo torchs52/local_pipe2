@@ -336,7 +336,7 @@ SHI側だけで確認されたテスト:
 | M-013b | message flow停止開始processログ | SHI `ProcessBase._unsubscribe()` | manual-port | verified | vendor `process.py`, tests | logger初期化前を許容し、既存flow停止処理を維持 |
 | M-014 | ログローテーション後のgzip圧縮失敗診断 | SHI `LogCompressionFailure` / logger callback | manual-port | verified | logger/D診断/AppManager/tests | 未圧縮backupを保持し、CE015へ重複計上しない |
 | M-015 | ログレコード時刻逆行診断 | SHI `LogTimeReversal` / logger callback | manual-port | verified | logger/D診断/AppManager/tests | 許容秒を超える逆行を共有イベントとして診断 |
-| M-016 | CANサブシステムの混合統合 | SHI `47ada36` ほか | decision-needed | deferred | CAN sensor/file/config/diagnosis/tests | vendorとSHI双方に必要な実装があり、全体diffと実機仕様を確認して一括判断する |
+| M-016 | CANサブシステムの混合統合 | SHI `47ada36`, `9febde3`, `079b822`, `a487f5f` ほか | manual-port | verified | CAN sensor/file/config/diagnosis/tests | vendorの入力I/OとNSW所掌診断を維持し、共通decoder、機種別map、SHI所掌FILE_IO_ERRORを移植。候補設定はmap内コメントで保持 |
 | M-017 | DレベルLidarデータ欠落 | SHI `a487f5f` / `docs/error_list.txt` | manual-port | verified | D診断/Points/shared errors/config/tests | 接続エラー中を除外し、0より多く閾値未満の点群をエッジ診断する |
 | M-018 | DレベルAI推論結果異常 | SHI `a487f5f` / `docs/error_list.txt` | manual-port | verified | D診断/ObjectDetect/shared errors/config/tests | 推論結果内容を検査し、推論例外時はDログ後に空検出へフォールバックする |
 | M-019 | Dレベルモニタ接続エラー | `docs/error_list.txt` | decision-needed | deferred | なし | SHI側も未実装のためスキップ |
@@ -572,6 +572,37 @@ SHI側だけで確認されたテスト:
 - SHIコミット `47ada36` にはセンサ入力とファイル入力のデコーダ共通化、PGN設定、CSV値正規化が混在し、その後もSCX2000、新CAN反転デコーダ、CAN ID正規化、通信診断の変更が追加されている。
 - 現行vendorでは旧CANのoffsetがセンサ入力で減算、ファイル入力で加算になっている。どちらを正とするかは実機仕様を含めて確認する必要がある。
 - 一度作成したデコーダ分離の未コミット変更と専用テストは取り下げ、vendorの `CanHandler` 実装へ戻した。再開時はsensor/file/config/diagnosisと対応テストを一つの比較単位として扱う。
+
+### 2026-09-06 M-016再開調査
+
+- vendorはCAN全体を一つの入力実装へ統合しているわけではない。`Can`はUDP実機入力、`CanFile`はCSV入力、`ShiLibCan`はSHIライブラリ入力として分離し、`CanDataProviderProcess`が設定に応じて選択する。`Can`と`CanFile`が同じ`can_receiver.py`に置かれているのはファイル配置上の集約であり、I/O責務まで共通化した設計ではない。
+- SHI `47ada36`は上記の入力経路分離を維持し、CAN payloadから物理値への変換だけを`can_decoders.py`へ分離した。実機入力は受信CAN ID、ファイル入力は設定した`PGN_Old`/`PGN_New`を使って同じ`CanHandler`とdecoder registryを呼ぶ。この層だけの共通化は、ファイル入力と実機入力の差を無理に隠さないため採用候補とする。
+- CAN IDとdecoder選択は`can_id_map.csv`、使用するmapは`CAN.can_id_map_file`で既に設定化されている。機種別settingsは`MachineProfileHandler`により基本`settings.ini`の既存キーを上書きできるため、機種固有のmapファイルを用意し、各機種の`[CAN] can_id_map_file`で選ぶ構成が可能である。CAN IDをproviderやprocessへ追加で埋め込む方式は避ける。
+- ただし現行の機種別settingsには`[CAN]`上書きがなく、vendor/SHIとも全機種が共通`can_id_map.csv`を参照している。SHIの200t用CAN ID `18F0E211`と`handle_angle_can_scx2000`はコードに存在するが、現行mapでは`notused)`付きで無効化されている。200t用変換は開始bit 48の16bit値を0.1度単位として読み、符号反転・0～360度正規化を行うが、実フレームと期待角度による確認が必要である。
+- 旧CANのoffsetは、現行vendorで実機入力が`current_degree - yaw_offset_deg`、ファイル入力が`current_degree + yaw_offset_deg`である。SHIの共通decoderは両経路を減算へ統一するため、移植すると既存ファイル入力結果が変わる。正しい符号規約を実機仕様または既知データで確定するまで、この部分は共通化しない。
+- 最初の実装単位は、入力クラスを統合せず、既存旧CAN・新CAN・レバーのdecoder registry、CAN ID正規化、map検証と単体テストに限定する案とする。200t decoderは数式をテスト可能な独立関数として保持できるが、機種別mapでの有効化は仕様確認後に別単位で行う。
+
+### 2026-09-06 M-016 decoder共通化
+
+- ユーザー確認により、旧CANのoffset規約は実機・ファイル入力とも`current_degree + yaw_offset_deg`へ統一した。新CANは既存どおり減算とする。
+- `device/can/can_decoders.py`へ旧CAN、新CAN、レバー、200t/SCX2000の変換関数と`DECODER_REGISTRY`を追加した。`CanHandler`はCSVに書かれた関数名を`getattr()`で解決せず、registryに登録済みの関数だけを受理する。CAN IDは前後空白、大文字小文字、先頭`0x`を正規化する。
+- `CanFile`は独自の変換式を廃止し、mapで選択された`yaw_angle`のCAN IDと正規化済みpayloadを`CanHandler.dispatch()`へ渡す。UDP実機、CSV、SHI-libという入力クラスの分離と、vendorのprocess/provider切替は変更していない。
+- 検討途中で追加した`PGN_Old`/`PGN_New`は最終設計では不要と判断し、`CANConf`と基本settings群から削除した。角度CAN IDを別設定へ重複保持せず、単一の`can_id_map.csv`を正とする。
+- 200t/SCX2000 decoderはSHI候補式を独立実装し、byte 6–7のlittle endian 16bit値を0.1度単位として変換後、方向反転して0～360度へ正規化する単体テストを追加した。ただし現行`can_id_map.csv`には追加せず、製品経路では無効のままとした。実フレームと期待角度、offset適用順を確認してから機種別mapで有効化する。
+- `can_id_map.csv`はヘッダー付き`crane_model,can_id,signal_type,decoder`の4列形式とした。`*`は全機種共通、機種固有行は同じCAN IDまたは同じsignal typeの共通行を置換する。これにより同じCAN IDでも機種ごとに通常・反転decoderを選択でき、別CAN IDへの角度信号切替も可能である。
+- `CanHandler`生成時に既存`AppConfig.UI_IF.crane_model`を明示的に渡す。Providerは固定CAN IDではなく`DecodedCanMessage.signal_type`で値を更新する。UDP、CSV、SHI-libの全入力経路が同じmapとdecoder registryを使用する。
+- 起動時に必須列、対象機種行、CAN ID重複、decoder名、signal type、`yaw_angle`がちょうど1件であることを検証する。現在対応するsignal typeは`yaw_angle`と`lever_pressure`であり、新しいCAN情報を追加するときはmap、decoder、Provider/Messageの型と利用先を同時に拡張する。
+- 現行mapはSHI側のコメントアウトされていない設定を正として、`SCX900-3`にnew CAN角度`18FFD1D1`とlever`18FC4401`を明示している。旧CAN、反転new CAN、200t decoderは先頭`#`の候補行として残し、CSV readerの`comment="#"`で実行対象外にする。候補を有効化するときは`#`を外して対象機種を指定し、同じ機種の`yaw_angle`有効行を1件だけにする。
+- 専用テスト`tests/test_can_decoders.py`は18件成功。全体回帰は`322 passed, 7 xfailed`（`tests/test_detect2d.py`除外）だった。
+- `docs/error_list.txt`の分担表では、CAN heartbeat/通信品質/不正データ/yaw angle診断（SE007、SE026～SE029）はNSW所掌である。これらはSHI差分の移植対象とせず、vendor実装を正として維持する。200tは有効化待ちの残件ではなく、map内のコメント候補設定として保持する。
+
+### 2026-09-06 M-016 File I/O診断
+
+- `docs/error_list.txt`でSHI所掌となっているDレベル`FILE_IO_ERROR`だけをCANへ追加した。SHI `a487f5f`のCAN差分を確認し、`_err_config_load()`で診断設定を更新する。
+- file-input CAN CSVの起動時読込、通常ループのファイル切替、校正時のファイル切替を`CanDataProviderProcess`の共通診断境界へ揃えた。読込・デコードに関係する`OSError`、`UnicodeError`、`ValueError`、`TypeError`、`KeyError`ではpath/operation/detailを記録して元例外を再送出し、成功時は復帰判定を更新する。
+- `can_id_map_file`はファイル入力データではなく必須設定ファイルとして扱う。mapの読込・列構造・機種行・CAN ID重複・decoder・signal type検証の失敗は、実際のmap pathと元例外を保持する`CanIdMapError`へ変換し、CSV/UDP/SHI-libの全入力方式でCE005へ記録して再送出する。file-input CAN CSVの`FILE_IO_ERROR`へ誤って入力CSV path付きで計上しない。
+- CAN module error、heartbeat、通信品質、不正データ、yaw angle診断はNSW所掌のvendor実装を変更していない。SHI `a487f5f`のmodule例外ログ変更も、vendor側に既存の診断・ログ処理があるため追加移植しない。
+- 専用テスト`tests/test_can_file_io_error.py`で起動時と再読込時の検知、元例外再送出、成功時復帰、map errorのCE005分類と`FILE_IO_ERROR`非計上を確認する。`tests/test_can_decoders.py`ではmap pathと元例外の保持を確認する。
 
 ### 2026-09-04 M-017実施記録
 

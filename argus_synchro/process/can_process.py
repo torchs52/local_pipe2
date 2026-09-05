@@ -27,7 +27,12 @@ from argus_synchro.provider.clock import (
     TimeClockProvider,
 )
 from argus_synchro.shared_app_config import SharedAppConfig, SharedAppConfigCalibration
-from argus_synchro.shared_errors import ModuleErrorIndex, SharedErrors
+from argus_synchro.shared_errors import (
+    ActionErrorIndex,
+    ModuleErrorIndex,
+    SharedErrors,
+    StateErrorDIndex,
+)
 from argus_synchro.shared_excepts import INVALID_TIMESTAMP, SharedCANExcept
 
 if TYPE_CHECKING:
@@ -36,10 +41,6 @@ if TYPE_CHECKING:
 
 @final
 class CanDataProviderProcess(InputProcess[CanData]):
-    # TODO(NSW): _app_configから取得するようになったら差し替える
-    CANID_ANGLE: str = "18FFD1D1"
-    CANID_LEVER: str = "18FC4401"
-
     __slots__ = (
         "_app_config",
         "_end_frame",
@@ -101,8 +102,7 @@ class CanDataProviderProcess(InputProcess[CanData]):
             return
 
         self._frame = self._app_config.Scrutinizer.s_frame
-        assert isinstance(self._provider, CanFileProvider)
-        self._provider.change_file_name_index(self._app_config.CAN.c_file, self._frame)
+        self._change_file_input_file(self._app_config.CAN.c_file, self._frame)
 
     def _config_load(self) -> None:
         self._app_config: AppConfig = self._sac.read()
@@ -122,6 +122,9 @@ class CanDataProviderProcess(InputProcess[CanData]):
         self._ser.module_errors[ModuleErrorIndex.CAN_MODULE_ERROR].update(
             self._err_config
         )
+        self._ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR].update(
+            self._err_config
+        )
 
     def _change_file_name_index(self) -> None:
         """
@@ -130,8 +133,41 @@ class CanDataProviderProcess(InputProcess[CanData]):
         calib_mode: bool = bool(self._app_config.General.operation_mode == OPM.CALIB)
         if calib_mode and self._app_config_calib.default.File_Input:
             can_file_path: str = self._app_config.CAN.c_file
-            assert isinstance(self._provider, CanFileProvider)
-            self._provider.change_file_name_index(can_file_path, self._frame)
+            self._change_file_input_file(can_file_path, self._frame)
+
+    def _report_file_io_error(self, file_path: str, error: Exception) -> None:
+        file_io_error = self._ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR]
+        result = file_io_error.errors_diagnosis(True)
+        file_io_error.log_output(
+            *result,
+            StateErrorDIndex.FILE_IO_ERROR,
+            file_path,
+            "read file-input CAN CSV",
+            f"{type(error).__name__}: {error}",
+        )
+
+    def _report_can_id_map_error(self, error: Exception) -> None:
+        diagnosis = self._ser.action_errors_A_C[
+            ActionErrorIndex.CONFIG_FILE_MISSING
+        ]
+        if diagnosis.excepts_diagnosis(error):
+            diagnosis.log_output(
+                True,
+                False,
+                ActionErrorIndex.CONFIG_FILE_MISSING,
+                error,
+            )
+
+    def _change_file_input_file(self, file_path: str, index: int) -> None:
+        assert isinstance(self._provider, CanFileProvider)
+        try:
+            self._provider.change_file_name_index(file_path, index)
+        except (OSError, UnicodeError, ValueError, TypeError, KeyError) as error:
+            self._report_file_io_error(file_path, error)
+            raise
+        self._ser.state_errors_D[
+            StateErrorDIndex.FILE_IO_ERROR
+        ].errors_diagnosis(False)
 
     def _log_register(self) -> None:
         super()._log_register()
@@ -252,39 +288,59 @@ class CanDataProviderProcess(InputProcess[CanData]):
         use_shi_lib: bool = self._app_config.DEFAULT.use_shi_lib
 
         if file_input:
-            from argus_synchro.device.can.can_receiver import CanFile
+            from argus_synchro.device.can.can_receiver import CanFile, CanIdMapError
             from argus_synchro.provider.can_data import CanFileProvider
 
-            device = CanFile(
-                self._app_config.CAN,
-                self._app_logger_factory,
-            )
+            try:
+                device = CanFile(
+                    self._app_config.CAN,
+                    self._app_config.UI_IF.crane_model,
+                    self._app_logger_factory,
+                )
+            except CanIdMapError as error:
+                self._report_can_id_map_error(error)
+                raise
+            except (OSError, UnicodeError, ValueError, TypeError, KeyError) as error:
+                self._report_file_io_error(self._app_config.CAN.c_file, error)
+                raise
+            self._ser.state_errors_D[
+                StateErrorDIndex.FILE_IO_ERROR
+            ].errors_diagnosis(False)
             self._provider = CanFileProvider(
                 device,
                 self._app_config.Scrutinizer.s_frame,
             )
         elif use_shi_lib:
+            from argus_synchro.device.can.can_receiver import CanIdMapError
             from argus_synchro.device.can.shi_lib_can_receiver import ShiLibCan
             from argus_synchro.provider.can_data import ShiLibCanProvider
 
-            device = ShiLibCan(
-                self._index,
-                self._app_config.CAN,
-                self._app_logger_factory,
-            )
+            try:
+                device = ShiLibCan(
+                    self._index,
+                    self._app_config.CAN,
+                    self._app_config.UI_IF.crane_model,
+                    self._app_logger_factory,
+                )
+            except CanIdMapError as error:
+                self._report_can_id_map_error(error)
+                raise
             self._provider = ShiLibCanProvider(device)
         else:
             # 実機
-            from argus_synchro.device.can.can_receiver import Can
+            from argus_synchro.device.can.can_receiver import Can, CanIdMapError
             from argus_synchro.provider.can_data import CanReceiverProvider
 
-            device = Can(
-                self._index,
-                self._app_config.CAN,
-                self._app_logger_factory,
-                self._ser,
-                self._sec_can,
-                self.CANID_ANGLE,
-                self.CANID_LEVER,
-            )
+            try:
+                device = Can(
+                    self._index,
+                    self._app_config.CAN,
+                    self._app_config.UI_IF.crane_model,
+                    self._app_logger_factory,
+                    self._ser,
+                    self._sec_can,
+                )
+            except CanIdMapError as error:
+                self._report_can_id_map_error(error)
+                raise
             self._provider = CanReceiverProvider(device, self._ser)

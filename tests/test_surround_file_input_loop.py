@@ -9,6 +9,7 @@ from argus_synchro.process.points_process import PointsProviderProcess
 from argus_synchro.provider.can_data import CanFileProvider
 from argus_synchro.provider.image import Mcde7000FileImageProvider
 from argus_synchro.provider.point_cloud import Mid360FilePointCloudProvider
+from argus_synchro.shared_errors import StateErrorDIndex
 
 
 class _FileDevice:
@@ -75,6 +76,14 @@ def test_surround_file_inputs_restart_at_s_frame_after_e_frame() -> None:
     can._frame = 6
     can._end_frame = 5
     can._provider = CanFileProvider(can_device, 6)
+    can_diagnosis_calls: list[tuple[bool]] = []
+    can._ser = SimpleNamespace(
+        state_errors_D={
+            StateErrorDIndex.FILE_IO_ERROR: SimpleNamespace(
+                errors_diagnosis=lambda *args: can_diagnosis_calls.append(args)
+            )
+        }
+    )
 
     camera._restart_surround_file_input_if_needed()
     points._restart_surround_file_input_if_needed()
@@ -88,6 +97,7 @@ def test_surround_file_inputs_restart_at_s_frame_after_e_frame() -> None:
     assert can._frame == 3
     assert can._provider._ref_t == 3
     assert can_device.calls == [("can.csv",)]
+    assert can_diagnosis_calls == [(False,)]
 
 
 def test_file_input_loop_does_not_change_calibration_or_disabled_loop() -> None:
