@@ -10,6 +10,9 @@ from pathlib import Path
 
 from argus_synchro.common import paths
 from argus_synchro.common.app_logger import AppLogger, AppLoggerFactory
+from argus_synchro.diagnosis.error_config import ErrorConfig
+from argus_synchro.diagnosis.state_d_errors import FileIoError
+from argus_synchro.shared_errors import StateErrorDIndex
 from argus_synchro.SystemMonitor.status_mmap import StatusCode, StatusMMAP
 
 CONFIG_NAME = "MonitorArgus.json"
@@ -54,24 +57,62 @@ def setup_signal_handlers(
         pass
 
 
-def load_monitor_config(config_path: Path) -> dict[str, object]:
+def _create_file_io_error_diagnosis(
+    directory_config: paths.DirectoryConfig,
+) -> FileIoError:
+    diagnosis = FileIoError()
+    error_config_path = paths.get_config_dir(directory_config, "error_config.json")
+    error_config = ErrorConfig()
+    try:
+        error_config.load_from_json(error_config_path)
+    except (OSError, ValueError, TypeError) as error:
+        _logger.warning(
+            "FILE_IO_ERROR settings could not be loaded; using default settings: "
+            f"{type(error).__name__}: {error}"
+        )
+    diagnosis.update(error_config)
+    return diagnosis
+
+
+def _report_file_io_error(
+    diagnosis: FileIoError,
+    config_path: Path,
+    error: Exception,
+) -> None:
+    result = diagnosis.errors_diagnosis(True)
+    diagnosis.log_output(
+        *result,
+        StateErrorDIndex.FILE_IO_ERROR,
+        str(config_path),
+        "read MonitorArgus.json",
+        f"{type(error).__name__}: {error}",
+    )
+
+
+def load_monitor_config(
+    config_path: Path,
+    file_io_error: FileIoError | None = None,
+) -> dict[str, object]:
     if not config_path.exists():
-        _logger.error(f"設定ファイルが存在しません: {config_path}")
+        error = FileNotFoundError(f"設定ファイルが存在しません: {config_path}")
+        if file_io_error is not None:
+            _report_file_io_error(file_io_error, config_path, error)
+        _logger.error(str(error))
         sys.exit(1)
 
     try:
         with config_path.open(encoding="utf-8") as f:
             config = json.load(f)
-    except json.JSONDecodeError as e:
+        if not isinstance(config, dict):
+            raise TypeError("MonitorArgus.json root must be an object")
+        if "engine" not in config:
+            raise KeyError("MonitorArgus.json missing required key: engine")
+        if "appimage" not in config:
+            raise KeyError("MonitorArgus.json missing required key: appimage")
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, KeyError) as e:
+        if file_io_error is not None:
+            _report_file_io_error(file_io_error, config_path, e)
         _logger.error(f"設定ファイルの読み込みに失敗: {e}")
-        sys.exit(1)
-
-    if "engine" not in config:
-        _logger.error("設定ファイルに engine セクションがありません")
-        sys.exit(1)
-
-    if "appimage" not in config:
-        _logger.error("設定ファイルに appimage セクションがありません")
         sys.exit(1)
 
     return config
@@ -171,6 +212,21 @@ def ensure_status_mmap_exists(status_mmap_path: Path) -> None:
     status_mmap_path.write_bytes(b"\x00" * StatusMMAP.size)
 
 
+def _write_heartbeat(heartbeat_file: Path) -> None:
+    temp_name: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", dir=heartbeat_file.parent, delete=False
+        ) as temp_file:
+            temp_file.write(f"{time.perf_counter()}")
+            temp_name = temp_file.name
+        os.replace(temp_name, heartbeat_file)
+    except Exception:
+        if temp_name is not None and os.path.exists(temp_name):
+            os.remove(temp_name)
+        raise
+
+
 def monitor_and_manage_godot() -> None:
     directory_config: paths.DirectoryConfig = paths.parse_directory_config()
 
@@ -191,7 +247,8 @@ def monitor_and_manage_godot() -> None:
     name = "StatusMonitor"
 
     config_path: Path = paths.get_config_dir(directory_config, CONFIG_NAME)
-    config = load_monitor_config(config_path)
+    file_io_error = _create_file_io_error_diagnosis(directory_config)
+    config = load_monitor_config(config_path, file_io_error)
 
     ui_cmd, ui_cwd = build_ui_command(config)
 
@@ -237,17 +294,7 @@ def monitor_and_manage_godot() -> None:
                 break
 
 
-        try:
-            with tempfile.NamedTemporaryFile(
-                "w", dir=heartbeat_file.parent, delete=False
-            ) as tf:
-                tf.write(f"{time.perf_counter()}")
-                temp_name = tf.name
-            os.replace(temp_name, heartbeat_file)
-        except Exception:
-            if os.path.exists(temp_name):
-                os.remove(temp_name)
-                raise
+        _write_heartbeat(heartbeat_file)
 
         time.sleep(1)
 

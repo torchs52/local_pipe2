@@ -806,6 +806,19 @@ SHI側だけで確認されたテスト:
 - プロセス状態通知に使用する`StatusMMAP`、エラー共有MMAP、Godot UI向けMMAPは別機能であり変更していない。
 - main周辺の集中回帰は16 passed、`test_detect2d.py`を除く全体回帰は296 passed、7 xfailed、通常失敗0件。変更箇所の`compileall`とCRLFを考慮したdiff checkも成功した。
 
+### 2026-09-06 M-044実施記録
+
+- SHI `a487f5f`の`MonitorArgus.json`読込エラー診断を、vendorの独立MonitorArgusプロセスへ移植した。MonitorArgus内でローカル`FileIoError`を生成し、`error_config.json`から設定を読み込む。診断設定自体を読めない場合は既定設定を使用する。
+- `MonitorArgus.json`の欠損、I/O・文字コード・JSON解析エラー、ルート型不正、`engine`または`appimage`必須キー欠損をDレベル`FILE_IO_ERROR`へパス、操作、例外詳細付きで渡す。従来どおりログ出力後に終了コード1で終了し、起動制御は変更しない。
+- `tests/test_monitor_argus_file_io_error.py`で欠損、JSON破損、ルート型不正、必須キー欠損、正常読込を確認し5 passed。
+
+### 2026-09-06 M-045実施記録
+
+- MonitorArgus heartbeatのatomic writeを`_write_heartbeat()`へ分離し、一時ファイル名を作成前に`None`で初期化した。`NamedTemporaryFile()`が作成前に失敗しても未束縛変数を参照せず、元の例外を維持する。
+- `os.replace()`失敗時は作成済み一時ファイルを削除し、掃除対象の有無にかかわらず元例外を再送出する。正常時の同一ディレクトリ一時ファイルと`os.replace()`による原子的更新は維持した。
+- `tests/test_monitor_argus_heartbeat.py`で一時ファイル作成前失敗、正常置換、置換失敗時の一時ファイル削除を確認し3 passed。M-044、M-045、既存StatusMMAPの集中回帰は12 passed。
+- `test_detect2d.py`を除く全体回帰は304 passed、7 xfailed、通常失敗0件。変更箇所のPylance診断なし、`compileall`とCRLFを考慮したdiff checkも成功した。
+
 ## 10. 次のCopilotへの開始指示
 
 次回は、いきなり全体差分を再探索しない。次の順で開始する。
