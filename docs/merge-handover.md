@@ -10,6 +10,7 @@
 - [error_list.txt](error_list.txt): NSW/vendor と SHI のエラー実装分担
 - [error-handling-review-ledger.md](error-handling-review-ledger.md): 過去のエラー処理レビュー記録
 - [non-calibration-merge-candidates.md](non-calibration-merge-candidates.md): 校正関連以外の未統合候補と優先順位
+- [calibration-merge-plan.md](calibration-merge-plan.md): 校正サブシステムの責務分界、統合順、検証ゲート
 - [動作確認・性能測定手順.md](動作確認・性能測定手順.md): 実機確認と性能測定
 
 ## 1. 統合の前提
@@ -319,7 +320,7 @@ SHI側だけで確認されたテスト:
 | M-002 | 汎用Dレベル `FILE_IO_ERROR` | SHI `a487f5f` ほか | manual-port | verified | `state_d_errors.py`, `shared_errors.py`, tests | index末尾へ追加、専用テスト6件pass |
 | M-003 | 周辺監視LiDARファイル入力I/O | SHI `points_process.py` | manual-port | verified | vendor `points_process.py`, tests | ファイル入力時だけ診断、元例外を再送出、専用テスト2件pass |
 | M-004 | CE015ログファイルI/O | SHI logger/action diagnosis | manual-port | verified | `common/app_logger.py`, action diagnosis, `__main__.py`, tests | handler callbackで検知し、同一signatureの連続計上を抑止 |
-| M-005 | 校正サブシステムのI/O境界・設定検証 | SHI `9432a4f` ほか | decision-needed | deferred | calibration modules/config validation | SHIのcalib settings validatorを含む校正全体を後段で扱い、ユーザー側アルゴリズム変更の採用方針と合わせて判断する |
+| M-005 | 校正サブシステム統合方針 | 現行SHI / vendor / ユーザー要件 | manual-port | in-review | `docs/calibration-merge-plan.md` | vendor lifecycleを維持し、SHIアルゴリズムを責務単位で移植する。実装はM-058～M-067へ分割 |
 | M-006 | 負荷低減モード | SHI `2283a0a` | manual-port | verified | vendor reduced-load制御/accumulation/tests | vendor閾値を維持し、モード別deque実効上限だけを追加 |
 | M-007 | ファイル入力ループ | SHI `e2362ec` ほか | manual-port | verified | app config/process/provider/tests | 周辺監視のcamera/LiDAR/CAN/GetDataを終了frame後に開始frameへ同期して戻す。校正・実機入力は対象外 |
 | M-008 | 周辺監視カメラ動画入力I/O | SHI `image_process.py` | manual-port | verified | vendor `image_process.py`, tests | 動画open/initだけを診断、専用テスト2件pass |
@@ -376,6 +377,16 @@ SHI側だけで確認されたテスト:
 | M-055 | UI MMAP octotree点数の確定書込み | SHI `d9ba78b` | manual-port | pending | lib `ui_interface.cpp`, tests | 全entity空時も0を書けるよう、合計点数の書込みをloop外へ移す |
 | M-056 | UI MMAP詳細ログのdebug化 | SHI `d9ba78b` | manual-port | pending | lib `ui_interface.cpp`, performance tests | フレーム単位の座標・画像・点群ログをinfoからdebugへ下げる。M-055とは分離する |
 | M-057 | legacy setupのpackage/extension名整合 | SHI `7f34907` | manual-port | pending | lib `setup.py`, package tests | `octotree`とCMake出力`argus_synchro_lib`の不整合。現行make経路への影響確認後に修正 |
+| M-058 | 校正settings/MMAP/FIFO契約固定 | vendor現行 / Godot UI契約 | vendor-keep | pending | config schema, facade, FIFO, contract tests | キー、型、値、field順、byte幅、同期済みFIFO形式を先にテストで固定する |
+| M-059 | 2D-3D校正診断UI結果・設定schema | SHI `7f58643`, `fc7f75e` | manual-port | pending | diagnosis, app config, facade, tests | reason code変換と書込可能値を先行移植。debug設定とONNXモデル変更は分離する |
+| M-060 | 2D-3D校正診断アルゴリズム | SHI `d60c83d` ほか / 現行SHI | manual-port | pending | `calibcheck2d3d`, `SceneDesc`, `YOLOadapter`, tracking, tests | SHIのscene/tracking/score判定と同義箇所の書き方を維持し、vendorのpre/app/post lifecycleへ段階接続する |
+| M-061 | 通常2D-3D校正アルゴリズム | 現行SHI | manual-port | pending | calibration2d3d, progress/correspondence/tracking, tests | SHIの処理表現を優先する。共有部品の診断側影響を先に固定し、終了時計算とprocess終了制御を分離する |
+| M-062 | 3D-3D校正アルゴリズム・エラー完了 | SHI `b64f6f9` / 現行SHI | manual-port | pending | calibration3d3d, lidar calibration, tests | SHIの処理表現を優先し、行列生成とUIエラー完了を分離してvendor例外境界へ接続する |
+| M-063 | 校正capture・厳密同期 | vendor / 現行SHI | vendor-keep | pending | calib FIFO/data capture, tests | 周辺監視の入力sourceを共有し、同期成立frameだけを既存FIFO形式で渡す |
+| M-064 | 校正wait・facade・MMAP接続 | vendor / SHI `fc7f75e`, `d9edbc0` | manual-port | pending | wait app, facade, mmap contract tests | lifecycleとABIはvendorを維持し、必要なenum化・診断結果出力だけを採用する |
+| M-065 | 校正エラー処理接続 | `docs/error_list.txt` / 現行SHI | manual-port | pending | calibration process/modules/diagnosis/tests | UI専用状態と製品エラーを分離し、固有CE、FILE_IO、module errorを所有境界で接続する |
+| M-066 | 校正設定validation | SHI現行 calibration validator | manual-port | pending | calibration config validation/tests | 製品用schemaだけを対象にし、ローカルpath・評価値・debug設定の既定化を避ける |
+| M-067 | 校正三者差分ビューア導入 | `local_pipe` `origin/vendor-20260817-integration:scripts/three_way_review.py` | manual-port | verified | `scripts/three_way_review.py`, tests | vendor/SHIのrepoとrefを個別指定し、統合working treeと比較する。別repo・片側限定ファイルの専用テスト2件pass |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -871,6 +882,23 @@ SHI側だけで確認されたテスト:
 - SHI側に存在するSE039の`error_threshold_sec=5.0`と、SE042の検出5秒・error/failsafe復帰確認5秒・復帰受信間隔1秒を`ErrorConfig`のparameter dataclassへ復元した。vendor既存のMMAP writer、process制御、一覧外の例外処理は変更していない。
 - 実際の`ErrorConfig()`および`error_config.json`読込経路でparameterが利用できる回帰テストを追加した。SE039・SE042・MMAP診断の集中テストは30 passed。
 
+### 2026-09-06 M-005検討記録
+
+- 校正をprocess lifecycle、同期入力、通常2D-3D、3D-3D、2D-3D診断、wait、MMAP/UI、エラー、設定schemaへ分解した。起動・終了・再起動・モード遷移はvendor、数理と判定ロジックはSHIを基準にする。
+- 2D-3D診断はSHI約3,009行、vendor約703行で、SHI側だけに`SceneDesc.py`、`YOLOadapter.py`、校正要否結果診断がある。単一ファイル置換ではなくM-059、M-060として契約、設定、scene、tracking、score、状態遷移を段階移植する。
+- `ctrl/`配下は、処理の意味と外部契約が同じならSHIのクラス分割、処理順、命名、データ表現を優先する。vendor境界への接続、明確な冗長性、correctness・型・性能上の理由がある箇所だけ変更し、その理由とテストを記録する。
+- `operation_mode`と`CalibMode`、同期済み`FIFOData`、校正MMAPのfield順・幅・数値を共有契約として先に固定する。SHIのUI向け校正status/errorは重要度A～Dの製品エラーと分離する。
+- CE006の基本健全性は既存実装を維持する。参照差分と生成直後検証は3D-3D単位、CE007～CE010は完成仕様確認後、CE014はvendor所有として扱う。最外周でI/O例外を一律分類せず、対象を知る所有境界で固有CEを優先する。
+- 詳細を`docs/calibration-merge-plan.md`へ記録し、実装項目をM-058～M-067へ分割した。最初のアルゴリズム実装は行わず、settings/MMAP/FIFO契約テストから開始する。
+- M-060～M-062の完了時はvendorとSHIの基準commit、および統合版のHEADとdirty状態を固定する。`scripts/three_way_review.py`へvendor/SHIのrepoとrefを個別指定して変更ファイルの三者差分を確認する。三者レビュー完了前に`verified`へしない。
+
+### 2026-09-06 M-067実施記録
+
+- `local_pipe`をfetchし、remote branch `origin/vendor-20260817-integration`の`scripts/three_way_review.py`を統合先へ移植した。元版の行整列、差分色分け、同期スクロール、差分移動、文字サイズ、折返しを維持した。
+- 今回の配置に合わせ、vendorとSHIのrepo path・Git refを個別指定し、統合版はworking treeを直接読むCLIへ変更した。列名は`Vendor`、`SHI`、`Integration`とし、HTMLへ各repo、ref、解決commit hash、統合側のdirty状態を表示する。
+- SHI側だけに存在し、統合側へ未移植のファイルもレビューできるよう、統合側の欠損を空列として表示する。出力先は既存運用と同じ`.merge_review/three-way/`を既定とする。
+- `tests/test_three_way_review.py`で3つの独立Git repo、全列で異なる内容、HTML escape、commit表示、統合dirty表示、統合側欠損ファイルを確認し2 passed。実SHIの`SceneDesc.py`でもHTML生成を確認し、Ruffは成功した。
+
 ## 10. 次のCopilotへの開始指示
 
 次回は、いきなり全体差分を再探索しない。次の順で開始する。
@@ -878,7 +906,7 @@ SHI側だけで確認されたテスト:
 1. 本書と関連文書を読む
 2. 両リポジトリのHEADと `git status --short` を確認する
 3. 統合台帳から未処理項目を1件選び、そのvendor側定義、SHI側定義、隣接テストだけを読む
-4. M-005校正はユーザー側アルゴリズム変更の採用方針を決めるまで着手しない
+4. 校正へ着手する場合はM-058のsettings/MMAP/FIFO契約テストから開始し、`docs/calibration-merge-plan.md`の順序を守る
 5. 最小の単体テストまたは基盤移植を行う
 6. 狭いテストを直ちに実行する
 7. 本書の台帳と確認結果を更新する
