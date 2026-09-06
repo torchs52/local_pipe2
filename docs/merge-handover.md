@@ -9,6 +9,7 @@
 
 - [error_list.txt](error_list.txt): NSW/vendor と SHI のエラー実装分担
 - [error-handling-review-ledger.md](error-handling-review-ledger.md): 過去のエラー処理レビュー記録
+- [non-calibration-merge-candidates.md](non-calibration-merge-candidates.md): 校正関連以外の未統合候補と優先順位
 - [動作確認・性能測定手順.md](動作確認・性能測定手順.md): 実機確認と性能測定
 
 ## 1. 統合の前提
@@ -364,6 +365,17 @@ SHI側だけで確認されたテスト:
 | M-041 | 自動校正ファイル入力の軽量終了制御 | 現行SHI `__main__.py` / ユーザー要件 | manual-port | verified | main/ProcessActivator/closables/tests | CALIBかつFile Inputの反復評価だけActivator停止と通信資源解放を行い、実機CALIBとSCRUTは量産向け停止・強制終了診断を維持する |
 | M-042 | 起動時ログ診断parameter初期化 | 実機起動ログ / vendor起動順 | vendor-fix | verified | main/log diagnosis/tests | logger callback登録前にログ圧縮・時刻逆転診断を初期化し、起動直後のAttributeErrorを防ぐ |
 | M-046 | エラーMMAP更新停止 | 実機起動ログ / SHI parameter定義 | manual-port | verified | error config/SE039/SE042/tests | 欠落していた診断閾値を復元し、ErrorMonitorのAttributeError終了とAppManagerの反復例外を防ぐ |
+| M-047 | TensorRT cache・入力名・provider選択の堅牢化 | SHI `ecbc79f` / 現行 `detect2d.py` | manual-port | pending | `detect2d.py`, tests | モデル固有入力名、モデル/config別cache、provider fallbackを小単位で移植する。Jetson検証必須 |
+| M-048 | 負荷低減中の蓄積deque上限保証 | SHI現行 `AccumulatePoints.py` | manual-port | pending | `AccumulatePoints.py`, tests | vendorはappend後に設定上限を1フレーム超え得る。M-006の局所補完 |
+| M-049 | 点群メッセージ上限20,000→40,000 | SHI `2283a0a` | decision-needed | pending | Python/C++ PcdData、detect3d、Visual | 現行20,000では40,000基準の点数負荷判定へ到達不能。固定容量契約・メモリ・FPS評価後に判断 |
+| M-050 | MID360点群復号のNumPyベクトル化 | SHI `5265abb` | manual-port | pending | `device/lidar/mid360_points.py`, tests | 復号だけを移植し、M-035の`perf_counter()`と公開property契約を維持する |
+| M-051 | 新YOLOモデルの機種別既定化 | SHI `9d5c72f` | decision-needed | pending | 機種別settings、性能試験 | モデル実体は同一hashで配置済み。精度・速度承認後に設定だけ変更する |
+| M-052 | SCX3500可視化CAD資産 | SHI `6699794` | decision-needed | pending | `config/crane3d/visualize/SCX3500-3/` | vendorにOBJ/MTL 4ファイルなし。表示側の配置契約を確認して採用する |
+| M-053 | 負荷低減閾値・切替ログ | SHI `2283a0a` | decision-needed | pending | reduced load/PointsRefine/tests | 90/80%→40/30%は製品調整値。M-049と実機測定後に判断し、ログは分離可能 |
+| M-054 | MMAP二重バッファ切替時の次バッファ予約 | SHI `d9ba78b`, `655aaaf` | decision-needed | pending | lib `ClsMMap.cpp`、Godot reader、tests | index切替直後に次mapを`IsWriting=1`へする。保護領域のためreaderとの並行試験後に判断 |
+| M-055 | UI MMAP octotree点数の確定書込み | SHI `d9ba78b` | manual-port | pending | lib `ui_interface.cpp`, tests | 全entity空時も0を書けるよう、合計点数の書込みをloop外へ移す |
+| M-056 | UI MMAP詳細ログのdebug化 | SHI `d9ba78b` | manual-port | pending | lib `ui_interface.cpp`, performance tests | フレーム単位の座標・画像・点群ログをinfoからdebugへ下げる。M-055とは分離する |
+| M-057 | legacy setupのpackage/extension名整合 | SHI `7f34907` | manual-port | pending | lib `setup.py`, package tests | `octotree`とCMake出力`argus_synchro_lib`の不整合。現行make経路への影響確認後に修正 |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
