@@ -1,7 +1,11 @@
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
-from argus_synchro.file_watch import DebouncedEventHandler
+from argus_synchro.file_watch import ChangeModelEventHandler, DebouncedEventHandler
+from argus_synchro.machine_profile import MachineProfileHandler
+from argus_synchro.process.app_manager_process import AppManagerProcess
+from argus_synchro.process.operation_mode import OPERATION_MODE as OPM
 from argus_synchro.shared_errors import ActionErrorIndex
 
 
@@ -55,3 +59,75 @@ def test_reload_retry_reports_ce005_after_all_attempts_fail() -> None:
     diagnosis.excepts_diagnosis.assert_called_once()
     logger.error.assert_called_once()
     assert logger.error.call_args.args[0].startswith("file open error:")
+
+
+def test_model_change_handler_applies_calibration_config() -> None:
+    shared_errors = SimpleNamespace(action_errors_A_C={})
+    handler = ChangeModelEventHandler(
+        ser=shared_errors,
+        regexes=(r".*SCX900-3_calib_settings.ini",),
+        debounce_time=0.1,
+        app_logger_factory=MagicMock(),
+        apply_calib=True,
+    )
+    handler.mprof_handler = MagicMock()
+
+    handler.process_event("config/SCX900-3_calib_settings.ini")
+
+    handler.mprof_handler.apply_model_specific_calib_config.assert_called_once_with()
+    handler.mprof_handler.apply_model_specific_config.assert_not_called()
+
+
+def test_calibration_mode_keeps_settings_watch_and_adds_calibration_watch() -> None:
+    manager = SimpleNamespace(
+        _sac=MagicMock(),
+        _sec=MagicMock(),
+        _ser=MagicMock(),
+        _logger=MagicMock(),
+        _directory_config=MagicMock(),
+        _app_logger_factory=MagicMock(),
+        _app_config=SimpleNamespace(
+            General=SimpleNamespace(operation_mode=OPM.CALIB),
+        ),
+    )
+    observer = MagicMock()
+    settings_handler = MagicMock()
+    model_handler = MagicMock()
+    calib_model_handler = MagicMock()
+
+    with (
+        patch("watchdog.observers.Observer", return_value=observer),
+        patch(
+            "argus_synchro.file_watch.DebouncedEventHandler",
+            return_value=settings_handler,
+        ) as settings_handler_class,
+        patch(
+            "argus_synchro.file_watch.ChangeModelEventHandler",
+            side_effect=[model_handler, calib_model_handler],
+        ),
+        patch(
+            "argus_synchro.process.app_manager_process.paths.get_config_dir",
+            return_value="config",
+        ),
+        patch.object(
+            MachineProfileHandler,
+            "get_model_specific_config_file_path",
+            return_value=Path("config/SCX900-3_settings.ini"),
+        ),
+        patch.object(
+            MachineProfileHandler,
+            "get_model_specific_calib_config_file_path",
+            return_value=Path("config/SCX900-3_calib_settings.ini"),
+        ),
+    ):
+        AppManagerProcess._startup_observer(manager)
+
+    assert settings_handler_class.call_args.kwargs["regexes"] == (
+        r".*(\\|/)settings.ini",
+    )
+    assert observer.schedule.call_args_list == [
+        call(settings_handler, "config"),
+        call(model_handler, "config"),
+        call(calib_model_handler, "config"),
+    ]
+    observer.start.assert_called_once_with()

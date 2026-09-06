@@ -98,6 +98,7 @@ class ChangeModelEventHandler(RegexMatchingEventHandler):
         debounce_time: float,
         app_logger_factory: AppLoggerFactory,
         directory_config: paths.DirectoryConfig = paths.DEFAULT_DIRECTORY_CONFIG,
+        apply_calib: bool = False,
     ) -> None:
         super().__init__(regexes=list(regexes))
         self._ser: SharedErrors = ser
@@ -105,6 +106,8 @@ class ChangeModelEventHandler(RegexMatchingEventHandler):
         self.events: dict[bytes | str, Timer] = {}
         MachineProfileHandler.log_register(app_logger_factory)
         self.mprof_handler = MachineProfileHandler(app_logger_factory, directory_config)
+        # 監視対象がsettings.ini用かcalib_settings.ini用かを切り替える
+        self._apply_calib: bool = apply_calib
         self._logger: AppLogger = app_logger_factory.register_from_type(self.__class__)
 
     def _schedule_event(self, path: bytes | str) -> None:
@@ -125,9 +128,12 @@ class ChangeModelEventHandler(RegexMatchingEventHandler):
         self._schedule_event(moved_path)
 
     def process_event(self, path: str) -> None:
-        # ここで機体設定をsetting.iniに反映
+        # ここで機体設定をsettings.ini(またはcalib_settings.ini)に反映
         try:
-            self.mprof_handler.apply_model_specific_config()
+            if self._apply_calib:
+                self.mprof_handler.apply_model_specific_calib_config()
+            else:
+                self.mprof_handler.apply_model_specific_config()
         except Exception as e:
             error: bool = self._ser.action_errors_A_C[
                 ActionErrorIndex.CONFIG_FILE_MISSING

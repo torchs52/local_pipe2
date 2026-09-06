@@ -1056,6 +1056,7 @@ def load_config(
                 app_logger_factory, directory_config
             )
             mprof_handler.apply_model_specific_config()
+            mprof_handler.apply_model_specific_calib_config()
 
             sac = SharedAppConfig(directory_config)
             app_config: AppConfig = sac.read()

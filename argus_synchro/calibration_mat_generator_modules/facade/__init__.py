@@ -9,6 +9,7 @@ from __future__ import annotations
 # import multiprocessing.synchronize
 from abc import ABC, abstractmethod
 from configparser import ConfigParser
+from enum import IntEnum
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,10 @@ from argus_synchro.common.app_logger import AppLogger, AppLoggerFactory
 from argus_synchro.config.app_config_calibration import (
     FacadeConf,
     parse_list,
+)
+from argus_synchro.diagnosis.calibcheck2d3d_result_diagnosis import (
+    CameraCalibCheckStatus,
+    validate_camera_calibcheck_status,
 )
 from argus_synchro.shared_app_config import SharedAppConfig
 from argus_synchro.shared_excepts import SharedExcepts
@@ -67,6 +72,19 @@ class FacadeUIClass_Base(ABC):
     @abstractmethod
     def close(self) -> None:
         raise NotImplementedError("FacadeUIClass_Base - put_data: Not implemented!")
+
+
+CAM_CALIBLATION_STATUS_INIT = 0
+CURRENTCAMERA_INIT = 255  # 未選択状態を示す値
+
+
+class CalibrationCommonStatus(IntEnum):
+    """status_calibcommonへ書き込む各校正モード共通の状態。"""
+
+    INACTIVE = 0
+    RUNNING = 1
+    CALCULATING = 2
+    COMPLETED = 3
 
 
 class CalibrationUIGodot(FacadeUIClass_Base):
@@ -113,16 +131,21 @@ class CalibrationUIGodot(FacadeUIClass_Base):
     def initialize_internal_values(
         self, errorcode_pre: int
     ) -> None:  # A0突入時呼び出し
-        self.reset_internal_values(errorcode_pre=errorcode_pre, status_calibcommon=0)
-        self.camera_calibstatus_values: list[int] = [0 for _ in range(self.camera_num)]
+        self.reset_internal_values(
+            errorcode_pre=errorcode_pre,
+            status_calibcommon=CalibrationCommonStatus.INACTIVE,
+        )
+        self.camera_calibstatus_values: list[int] = [
+            CAM_CALIBLATION_STATUS_INIT for _ in range(self.camera_num)
+        ]
         self.yaw_value = 0
 
     def reset_internal_values(
         self,
         errorcode_pre: int,
-        status_calibcommon: int,
+        status_calibcommon: int | CalibrationCommonStatus,
         currentmode: int = 0,
-        currentcamera: int = 255,
+        currentcamera: int = CURRENTCAMERA_INIT,
     ) -> None:  # B1, C1, D1突入時呼び出し
         if self.output_log:
             self._logger.info("reset_internal_values called")
@@ -133,17 +156,22 @@ class CalibrationUIGodot(FacadeUIClass_Base):
         self.currentcamera: int = currentcamera
         self.errors_calibcommon: int = 0
 
-        self.camera_calibcheck_values: list[int] = [0 for _ in range(self.camera_num)]
+        self.camera_calibcheck_values: list[int] = [
+            int(CameraCalibCheckStatus.UNKNOWN_INSUFFICIENT_DATA)
+            for _ in range(self.camera_num)
+        ]
 
         self.errorcode_pre: int = errorcode_pre  # TODO: センサ異常等のコード
 
-    def clear_internal_values(self, status_calibcommon: int):  # A1突入時呼び出し
+    def clear_internal_values(
+        self, status_calibcommon: int | CalibrationCommonStatus
+    ) -> None:  # A1突入時呼び出し
         if self.output_log:
             self._logger.info("clear_internal_values called")
         # 一時self._logger.info(から受け取って共有メモリに書き込みたいが管理上このような形式が合理的？
 
         self.is_end_calmode: int = 0
-        self.status_calibcommon: int = status_calibcommon
+        self.status_calibcommon: int = int(CalibrationCommonStatus(status_calibcommon))
 
         self.cameradata: list[NDArray[np.uint8]] = [
             np.zeros(0, dtype=np.uint8) for _ in range(self.camera_num)
@@ -367,6 +395,7 @@ class CalibrationUIGodot(FacadeUIClass_Base):
         enable_yawangle: bool = False,
         overwrite_checkresult: bool = False,
         overwrite_calibresult: bool = False,
+        overwrite_caliberror: bool = True,
     ):
         config_dir: Path = paths.get_config_dir(
             self._directory_config, "calibration_mat_generator_modules"
@@ -382,6 +411,7 @@ class CalibrationUIGodot(FacadeUIClass_Base):
                 filenames=dummy_senddata_path,
                 encoding="utf8",
             )
+            applied = False
 
             if enable_errorflag:
                 if confparser_dummy.has_option("DEFAULT", "errors_calibcommon_bin"):
@@ -390,9 +420,21 @@ class CalibrationUIGodot(FacadeUIClass_Base):
                     )
                     try:
                         self.errors_calibcommon = int(errors_calibcommon_str, base=2)
+                        applied = True
                     except ValueError as ev:
                         self._logger.warning(
                             f"Applying [DEFAULT] errors_calibcommon_bin {ev}"
+                        )
+                if confparser_dummy.has_option("DEFAULT", "errors_calibcommon"):
+                    errors_calibcommon = confparser_dummy.get(
+                        "DEFAULT", "errors_calibcommon"
+                    )
+                    try:
+                        self.errors_calibcommon = int(errors_calibcommon)
+                        applied = True
+                    except ValueError as ev:
+                        self._logger.warning(
+                            f"Applying [DEFAULT] errors_calibcommon {ev}"
                         )
 
             if enable_systemerrorflag:
@@ -403,14 +445,17 @@ class CalibrationUIGodot(FacadeUIClass_Base):
                     )
                     try:
                         self.errorcode_pre = int(errors_system_bin_str, base=2)
+                        applied = True
                     except ValueError as ev:
                         self._logger.warning(
                             f"Applying [DEFAULT] errors_system_bin {ev}"
                         )
 
             if enable_yawangle:
-                yaw_str = confparser_dummy.get("DEFAULT", "yaw")
-                self.yaw_value = float(yaw_str)
+                if confparser_dummy.has_option("DEFAULT", "yaw"):
+                    applied = True
+                    yaw_str = confparser_dummy.get("DEFAULT", "yaw")
+                    self.yaw_value = float(yaw_str)
 
             if overwrite_checkresult:
                 if confparser_dummy.has_section(
@@ -421,15 +466,28 @@ class CalibrationUIGodot(FacadeUIClass_Base):
                     )
 
                     for ix, dmy_stat in enumerate(camera_values_str):
-                        # un(→unknown): 0 / ok:3 / ng:1 / na
                         if "na" in dmy_stat:
                             pass
                         elif "ng" in dmy_stat:
-                            self.camera_calibcheck_values[ix] = 1
+                            applied = True
+                            self.camera_calibcheck_values[ix] = int(
+                                CameraCalibCheckStatus.CALIBRATION_REQUIRED
+                            )
                         elif "ok" in dmy_stat:
-                            self.camera_calibcheck_values[ix] = 3
+                            applied = True
+                            self.camera_calibcheck_values[ix] = int(
+                                CameraCalibCheckStatus.CALIBRATION_NOT_REQUIRED
+                            )
                         elif "un" in dmy_stat:
-                            self.camera_calibcheck_values[ix] = 0
+                            applied = True
+                            self.camera_calibcheck_values[ix] = int(
+                                CameraCalibCheckStatus.UNKNOWN_INSUFFICIENT_DATA
+                            )
+                        # 数値ならMMAPへ書き込み可能なstatusとして検証して代入
+                        elif dmy_stat.isdigit():
+                            status = validate_camera_calibcheck_status(int(dmy_stat))
+                            applied = True
+                            self.camera_calibcheck_values[ix] = int(status)
 
             if overwrite_calibresult:
                 if confparser_dummy.has_section(
@@ -447,9 +505,18 @@ class CalibrationUIGodot(FacadeUIClass_Base):
                             try:
                                 val = int(dmy_stat)
                                 self.camera_calibstatus_values[ix] = val
+                                applied = True
                             except Exception as e:
                                 self._logger.warning(f"Exception: {e}")
                     # self._logger.info( f"Applying [CalibCheckOverwrite] values -> {self.camera_calibstatus_values}")
+
+            if applied:
+                self._logger.warning(
+                    f"** set_dummydata() applied **\n{self.errorcode_pre=}\n"
+                    f"{self.yaw_value=},self.camera_calibcheck_values={[x for x in self.camera_calibcheck_values]}, "
+                    f"self.errors_calibcommon={self.errors_calibcommon}, "
+                    f"self.camera_calibstatus_values={[x for x in self.camera_calibstatus_values]}"
+                )
 
         except Exception as ef:
             self._logger.warning(f"Exception: {ef}")
@@ -516,12 +583,14 @@ class CalibrationUIGodot(FacadeUIClass_Base):
         #        with open(f"log/CalibUIIF_rawmemdump{ix}_{ref_t}.bin", mode="wb") as wbf:
         #            wbf.write(dump_rawmem[ix])
 
-    def set_status_calibcommon(self, status_calibcommon_val: int):
+    def set_status_calibcommon(
+        self, status_calibcommon_val: int | CalibrationCommonStatus
+    ) -> None:
         if self.output_log:
             self._logger.info(
                 f"UI value set by status_calibcommon: {status_calibcommon_val}"
             )
-        self.status_calibcommon: int = status_calibcommon_val
+        self.status_calibcommon = int(CalibrationCommonStatus(status_calibcommon_val))
 
     def set_currentmode(self, currentmode: int):
         if self.output_log:
@@ -536,17 +605,13 @@ class CalibrationUIGodot(FacadeUIClass_Base):
     def set_errors_calibcommon(self, errors_calibcommon_val: int):
         if self.output_log:
             self._logger.info("UI value set by errors_calibcommon")
-        self.errors_calibcommon: int = errors_calibcommon_val
+        self.errors_calibcommon = int(errors_calibcommon_val)
 
     def _transmit_calibcheck_status(self, calibcheck_status: list[int]):
         assert len(calibcheck_status) == self.camera_num
-        for x in calibcheck_status:
-            status_bits = 0
-            if x & 0x01 > 0:  # 校正要否判定準備完了
-                status_bits |= 0x01
-            if x & 0x02 > 0:  # 校正要否判定「校正不要」
-                status_bits |= 0x02
-            self.calibGodotInterfaceInst.WriteUInt8(status_bits)
+        for value in calibcheck_status:
+            status = validate_camera_calibcheck_status(value)
+            self.calibGodotInterfaceInst.WriteUInt8(int(status))
 
     def _transmit_calibstatus_list_to_bitlist(self, block_progress_status: list[int]):
         datalist_temp: list[int] = []
@@ -615,13 +680,15 @@ class CalibrationUIGodot(FacadeUIClass_Base):
             self._logger.info(f"UI value set by set_calibration_ready, {value}")
         self.calibration_ready: bool = value > 0
 
-    def set_camera_calibcheck_status(self, camera_id: int, value: int):
+    def set_camera_calibcheck_status(
+        self, camera_id: int, value: int | CameraCalibCheckStatus
+    ) -> None:
+        status = validate_camera_calibcheck_status(value)
         if self.output_log:
             self._logger.info(
-                f"UI value set by set_camera_calibcheck_status, camera {camera_id} : {value}",
+                f"UI value set by set_camera_calibcheck_status, camera {camera_id} : {int(status)}",
             )
-        assert value in (0, 1, 3)
-        self.camera_calibcheck_values[camera_id] = value
+        self.camera_calibcheck_values[camera_id] = int(status)
 
     def set_camera_calibration_status(self, camera_id: int, value: int):
         if self.output_log:

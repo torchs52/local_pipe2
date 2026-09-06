@@ -4,11 +4,13 @@ from pathlib import Path
 
 # iniファイル読み込み時に引数リストを使って項目を置き換えるクラス
 from argus_synchro.common import paths
+from argus_synchro.common.calib_settings_validation import validate_calib_settings
 from argus_synchro.common.paths import (
     get_path_list,
     normalize_path,
     resolve_ini_roots,
 )
+from argus_synchro.config.app_config import parse_float_list
 from argus_synchro.config.ini_read_and_replace import ini_read_and_replace
 
 
@@ -28,6 +30,8 @@ class DefaultConf:
     data_dir: str
     print_disabled: bool
     outputdir_root: str
+    z_height: float
+    z_height_withmargin: float
 
 
 def DefaultConf_read(
@@ -39,6 +43,8 @@ def DefaultConf_read(
         data_dir=str(ini.get("DEFAULT", "data_dir")),
         print_disabled=ini.getboolean("DEFAULT", "print_disabled"),
         outputdir_root=str(ini.get("DEFAULT", "outputdir_root")),
+        z_height=ini.getfloat("DEFAULT", "z_height"),
+        z_height_withmargin=ini.getfloat("DEFAULT", "z_height_withmargin"),
     )
 
 
@@ -109,6 +115,7 @@ class DataCaptureConf:
         path: str
         config_file: str
         accum_time: float
+        dev_str: str
         # lidar_files: list[str]
         lidar_files_for_cam0calib: list[str]
         lidar_files_for_cam1calib: list[str]
@@ -179,6 +186,7 @@ def DataCaptureConf_read(
             path=_path(ini.get("DataCapture_Lidar", "path")),
             config_file=_path(ini.get("DataCapture_Lidar", "config_file")),
             accum_time=ini.getfloat("DataCapture_Lidar", "accum_time"),
+            dev_str=ini.get("DataCapture_Lidar", "dev_str"),
             # dev_str = ini.get("DataCapture_Lidar", "dev_str"),
             # date_str = ini.get("DataCapture_Lidar", "date_str"),
             # lidar_files=parse_list(ini.get("DataCapture_Lidar", "lidar_files")),
@@ -335,6 +343,7 @@ class Calib2d3dConf:
         conf_thresh: float
         nms_thresh: float
         enable_bboxfilter_byimg: bool
+        enable_bbox_shapefilter: bool
         enable_edgebboxfilter: bool
         enable_imgmask: bool
         enable_bbox2D_shapefilter: bool
@@ -352,6 +361,14 @@ class Calib2d3dConf:
         track_activation_threshold: float
         minimum_consecutive_frames: float
         minimum_iou_threshold: float
+        trackresult_use_lastmove_ix: bool
+
+        axis_gridpoints_xrange_min: list[float]
+        axis_gridpoints_xrange_max: list[float]
+        axis_gridpoints_yrange_min: list[float]
+        axis_gridpoints_yrange_max: list[float]
+        axis_gridpoints_interpolate_firstmethod: str
+        axis_gridpoints_interpolate_secondmethod: str
 
         # 座標に対する評価値のパス
         cam_valmat_path: list[str]
@@ -405,6 +422,7 @@ class Calib2d3dConf:
         track_activation_threshold: float
         minimum_consecutive_frames: float
         minimum_iou_threshold: float
+        trackresult_use_lastmove_ix: bool
 
         is_headpoint_overwrite: bool
         calc_headpoint_pointrange_x_min: float
@@ -470,6 +488,11 @@ class Calib2d3dConf:
         corner_rangefilter_y_min: list[float]
         corner_rangefilter_y_max: list[float]
 
+        bbox_center3d_z_ratio_area_xmin: list[float]
+        bbox_center3d_z_ratio_area_xmax: list[float]
+        bbox_center3d_z_ratio_area_ymin: list[float]
+        bbox_center3d_z_ratio_area_ymax: list[float]
+
     CalcCorrespondence: CalcCorrespondenceConf
 
     @dataclass(frozen=True)
@@ -483,7 +506,7 @@ def Calib2d3dConf_read(
     ini: ConfigParser,
 ):  # なるべく上記各クラスと離れさせたくないもののクラスメソッドにも出来ないためやむを得ずここにまとめて実装
     return Calib2d3dConf(
-        placeholder="",
+        placeholder=ini.get("Calib2d3d_General", "placeholder"),
         Proc2d=Calib2d3dConf.Proc2dConf(
             intrinsics_path=_path(ini.get("Calib2d3d_Proc2d", "intrinsics_path")),
             yolo_obj_countlimit=ini.getint("Calib2d3d_Proc2d", "yolo_obj_countlimit"),
@@ -496,6 +519,9 @@ def Calib2d3dConf_read(
             ),
             enable_bboxfilter_byimg=ini.getboolean(
                 "Calib2d3d_Proc2d", "enable_bboxfilter_byimg"
+            ),
+            enable_bbox_shapefilter=ini.getboolean(
+                "Calib2d3d_Proc2d", "enable_bbox_shapefilter"
             ),
             enable_edgebboxfilter=ini.getboolean(
                 "Calib2d3d_Proc2d", "enable_edgebboxfilter"
@@ -565,6 +591,27 @@ def Calib2d3dConf_read(
             minimum_iou_threshold=ini.getfloat(
                 "Calib2d3d_Proc2d", "minimum_iou_threshold"
             ),
+            trackresult_use_lastmove_ix=ini.getboolean(
+                "Calib2d3d_Proc2d", "trackresult_use_lastmove_ix"
+            ),
+            axis_gridpoints_xrange_min=parse_float_list(
+                ini.get("Calib2d3d_Proc2d", "axis_gridpoints_xrange_min")
+            ),
+            axis_gridpoints_xrange_max=parse_float_list(
+                ini.get("Calib2d3d_Proc2d", "axis_gridpoints_xrange_max")
+            ),
+            axis_gridpoints_yrange_min=parse_float_list(
+                ini.get("Calib2d3d_Proc2d", "axis_gridpoints_yrange_min")
+            ),
+            axis_gridpoints_yrange_max=parse_float_list(
+                ini.get("Calib2d3d_Proc2d", "axis_gridpoints_yrange_max")
+            ),
+            axis_gridpoints_interpolate_firstmethod=ini.get(
+                "Calib2d3d_Proc2d", "axis_gridpoints_interpolate_firstmethod"
+            ),
+            axis_gridpoints_interpolate_secondmethod=ini.get(
+                "Calib2d3d_Proc2d", "axis_gridpoints_interpolate_secondmethod"
+            ),
         ),
         Proc3d=Calib2d3dConf.Proc3dConf(
             datarange_x_min=ini.getfloat("Calib2d3d_Proc3d", "datarange_x_min"),
@@ -619,6 +666,9 @@ def Calib2d3dConf_read(
             ),
             minimum_iou_threshold=ini.getfloat(
                 "Calib2d3d_Proc3d", "minimum_iou_threshold"
+            ),
+            trackresult_use_lastmove_ix=ini.getboolean(
+                "Calib2d3d_Proc3d", "trackresult_use_lastmove_ix"
             ),
             is_headpoint_overwrite=ini.getboolean(
                 "Calib2d3d_Proc3d", "is_headpoint_overwrite"
@@ -744,6 +794,26 @@ def Calib2d3dConf_read(
             ),
             corner_rangefilter_y_max=parse_float_list(
                 ini.get("Calib2d3d_CalcCorrespondence", "corner_rangefilter_y_max")
+            ),
+            bbox_center3d_z_ratio_area_xmin=parse_float_list(
+                ini.get(
+                    "Calib2d3d_CalcCorrespondence", "bbox_center3d_z_ratio_area_xmin"
+                )
+            ),
+            bbox_center3d_z_ratio_area_xmax=parse_float_list(
+                ini.get(
+                    "Calib2d3d_CalcCorrespondence", "bbox_center3d_z_ratio_area_xmax"
+                )
+            ),
+            bbox_center3d_z_ratio_area_ymin=parse_float_list(
+                ini.get(
+                    "Calib2d3d_CalcCorrespondence", "bbox_center3d_z_ratio_area_ymin"
+                )
+            ),
+            bbox_center3d_z_ratio_area_ymax=parse_float_list(
+                ini.get(
+                    "Calib2d3d_CalcCorrespondence", "bbox_center3d_z_ratio_area_ymax"
+                )
             ),
         ),
         CalcAccuracy=Calib2d3dConf.CalcAccuracyConf(
@@ -892,11 +962,34 @@ class CalibCheck2d3dConf:
     resultfiles: list[str]
     score_accept_count_threshold: int
     score_value_threshold: float
+    frame_info_maxlen: int
+    thresh_3dbbox_count_per_frame: int
+    thresh_3dbbox_count_mean_ratio: float
+    thresh_2dbbox_count_per_frame: int
+    thresh_2dbbox_count_mean_ratio: float
+    thresh_3dbbox_tracking_idcount: int
+    thresh_2dbbox_tracking_idcount: int
+    eval_frame_stride: int
+    use_legacy_like_metric: bool
+    debug_calibcheck_enabled: bool
+    debug_capture_ui_video_enabled: bool
+    debug_capture_frame_text_enabled: bool
+    debug_video_fps: float
+    debug_video_prefix: str
+    debug_eval_pickle_path: str
+    eval_zvalues: tuple[float, float]
+    debug_eval_trace_enabled: bool
+    debug_eval_trace_all_frames: bool
+    debug_eval_trace_range_start: int
+    debug_eval_trace_range_end: int
 
 
 def CalibCheck2d3dConf_read(
     ini: ConfigParser,
 ) -> CalibCheck2d3dConf:
+    eval_zvalues_str = ini.get("CalibCheck2d3d", "eval_zvalues")
+    eval_zvalues = parse_float_tuple2(eval_zvalues_str)
+
     return CalibCheck2d3dConf(
         onnx_model_path=_path(ini.get("CalibCheck2d3d", "onnx_model_path")),
         camera_intrinsics_path=_path(
@@ -914,6 +1007,56 @@ def CalibCheck2d3dConf_read(
             "CalibCheck2d3d", "score_accept_count_threshold"
         ),
         score_value_threshold=ini.getfloat("CalibCheck2d3d", "score_value_threshold"),
+        frame_info_maxlen=ini.getint("CalibCheck2d3d", "frame_info_maxlen"),
+        thresh_3dbbox_count_per_frame=ini.getint(
+            "CalibCheck2d3d", "thresh_3dbbox_count_per_frame"
+        ),
+        thresh_3dbbox_count_mean_ratio=ini.getfloat(
+            "CalibCheck2d3d", "thresh_3dbbox_count_mean_ratio"
+        ),
+        thresh_2dbbox_count_per_frame=ini.getint(
+            "CalibCheck2d3d", "thresh_2dbbox_count_per_frame"
+        ),
+        thresh_2dbbox_count_mean_ratio=ini.getfloat(
+            "CalibCheck2d3d", "thresh_2dbbox_count_mean_ratio"
+        ),
+        thresh_3dbbox_tracking_idcount=ini.getint(
+            "CalibCheck2d3d", "thresh_3dbbox_tracking_idcount"
+        ),
+        thresh_2dbbox_tracking_idcount=ini.getint(
+            "CalibCheck2d3d", "thresh_2dbbox_tracking_idcount"
+        ),
+        eval_frame_stride=ini.getint("CalibCheck2d3d", "eval_frame_stride"),
+        use_legacy_like_metric=ini.getboolean(
+            "CalibCheck2d3d", "use_legacy_like_metric"
+        ),
+        debug_calibcheck_enabled=ini.getboolean(
+            "CalibCheck2d3d", "debug_calibcheck_enabled"
+        ),
+        debug_capture_ui_video_enabled=ini.getboolean(
+            "CalibCheck2d3d", "debug_capture_ui_video_enabled"
+        ),
+        debug_capture_frame_text_enabled=ini.getboolean(
+            "CalibCheck2d3d", "debug_capture_frame_text_enabled"
+        ),
+        debug_video_fps=ini.getfloat("CalibCheck2d3d", "debug_video_fps"),
+        debug_video_prefix=ini.get("CalibCheck2d3d", "debug_video_prefix"),
+        debug_eval_pickle_path=_path(
+            ini.get("CalibCheck2d3d", "debug_eval_pickle_path")
+        ),
+        eval_zvalues=eval_zvalues,
+        debug_eval_trace_enabled=ini.getboolean(
+            "CalibCheck2d3d", "debug_eval_trace_enabled"
+        ),
+        debug_eval_trace_all_frames=ini.getboolean(
+            "CalibCheck2d3d", "debug_eval_trace_all_frames"
+        ),
+        debug_eval_trace_range_start=ini.getint(
+            "CalibCheck2d3d", "debug_eval_trace_range_start"
+        ),
+        debug_eval_trace_range_end=ini.getint(
+            "CalibCheck2d3d", "debug_eval_trace_range_end"
+        ),
     )
 
 
@@ -938,6 +1081,7 @@ class AppConfigCalibration:
         self.read(ini)
 
     def read(self, ini: ConfigParser) -> None:
+        validate_calib_settings(ini)
         self._directory_config: paths.DirectoryConfig = resolve_ini_roots(
             ini, self._directory_config
         )
@@ -973,10 +1117,6 @@ def parse_list(text: str) -> list[str]:
     t1: str = t0.strip(",")
     t2: list[str] = t1.split(",")
     return t2
-
-
-def parse_float_list(text: str) -> list[float]:
-    return list(map(float, parse_list(text=text)))
 
 
 def parse_int_list(text: str) -> list[int]:

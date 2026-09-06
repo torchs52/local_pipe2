@@ -60,6 +60,11 @@ SHI版から記述を変えるのは、次のいずれかを具体的に説明�
 
 `config/settings.ini`は運転時に更新される契約ファイルであり、SHI版による一括上書きを禁止する。
 
+`settings.ini`の監視は動作モードにかかわらず常時維持する。校正モードでも
+`General.operation_mode`と`CalibMode`の変更を反映する必要があるため、監視対象から
+外してはならない。機種別の校正設定ファイルを監視する場合は、`settings.ini`の監視を
+置き換えず追加で登録する。
+
 ### 3.2 MMAP / Godot UI
 
 `mmap_assign.json`のaddress、field順、幅、および既存の数値はABIとして固定する。内部で`IntEnum`を使う場合もMMAPへは既存の整数値を書き込む。

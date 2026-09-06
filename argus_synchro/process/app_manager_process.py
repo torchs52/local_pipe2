@@ -260,6 +260,26 @@ class AppManagerProcess(ProcessBase):
                 directory_config=self._directory_config,
             )
             self._observer.schedule(change_model_event_handler, path)
+
+        # 校正モード時のみ、機種別の校正設定ファイルを監視対象に含める。
+        if self._app_config.General.operation_mode == OPM.CALIB:
+            monitored_calib_file_path: Path | None = (
+                MachineProfileHandler.get_model_specific_calib_config_file_path(
+                    self._directory_config
+                )
+            )
+            if isinstance(monitored_calib_file_path, Path):
+                monitored_calib_file_name: str = monitored_calib_file_path.name
+                change_model_calib_event_handler = ChangeModelEventHandler(
+                    # 更新の監視対象にする機種ごとの設定ファイル(校正モード用)
+                    ser=self._ser,
+                    regexes=(rf".*(\\|/){monitored_calib_file_name}",),
+                    debounce_time=0.1,
+                    app_logger_factory=self._app_logger_factory,
+                    directory_config=self._directory_config,
+                    apply_calib=True,
+                )
+                self._observer.schedule(change_model_calib_event_handler, path)
         self._observer.start()
 
     def _startup_jetson_monitor(self) -> None:

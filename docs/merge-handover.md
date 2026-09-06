@@ -377,15 +377,15 @@ SHI側だけで確認されたテスト:
 | M-055 | UI MMAP octotree点数の確定書込み | SHI `d9ba78b` | manual-port | pending | lib `ui_interface.cpp`, tests | 全entity空時も0を書けるよう、合計点数の書込みをloop外へ移す |
 | M-056 | UI MMAP詳細ログのdebug化 | SHI `d9ba78b` | manual-port | pending | lib `ui_interface.cpp`, performance tests | フレーム単位の座標・画像・点群ログをinfoからdebugへ下げる。M-055とは分離する |
 | M-057 | legacy setupのpackage/extension名整合 | SHI `7f34907` | manual-port | pending | lib `setup.py`, package tests | `octotree`とCMake出力`argus_synchro_lib`の不整合。現行make経路への影響確認後に修正 |
-| M-058 | 校正settings/MMAP/FIFO契約固定 | vendor現行 / Godot UI契約 | vendor-keep | pending | config schema, facade, FIFO, contract tests | キー、型、値、field順、byte幅、同期済みFIFO形式を先にテストで固定する |
-| M-059 | 2D-3D校正診断UI結果・設定schema | SHI `7f58643`, `fc7f75e` | manual-port | pending | diagnosis, app config, facade, tests | reason code変換と書込可能値を先行移植。debug設定とONNXモデル変更は分離する |
-| M-060 | 2D-3D校正診断アルゴリズム | SHI `d60c83d` ほか / 現行SHI | manual-port | pending | `calibcheck2d3d`, `SceneDesc`, `YOLOadapter`, tracking, tests | SHIのscene/tracking/score判定と同義箇所の書き方を維持し、vendorのpre/app/post lifecycleへ段階接続する |
+| M-058 | 校正settings/MMAP/FIFO契約固定 | vendor現行 / Godot UI契約 | vendor-keep | verified | config schema, facade, FIFO, contract tests | settings 8項目、mode値、FIFO 4要素順、MMAP header、共通field書込順を固定。関連回帰20件pass |
+| M-059 | 2D-3D校正診断UI結果・設定schema | SHI `7f58643`, `fc7f75e` | manual-port | verified | diagnosis, app config, facade, tests | UI enum・reason code変換、設定schema、facade validationを移植し、新producerとの同時切替を確認 |
+| M-060 | 2D-3D校正診断アルゴリズム | SHI `d60c83d` ほか / 現行SHI | manual-port | in-review | `calibcheck2d3d`, `SceneDesc`, `YOLOadapter`, tracking, tests | SHI診断器による新status producerは接続済み。scene/tracking/score判定本体をvendor lifecycleへ段階接続する |
 | M-061 | 通常2D-3D校正アルゴリズム | 現行SHI | manual-port | pending | calibration2d3d, progress/correspondence/tracking, tests | SHIの処理表現を優先する。共有部品の診断側影響を先に固定し、終了時計算とprocess終了制御を分離する |
 | M-062 | 3D-3D校正アルゴリズム・エラー完了 | SHI `b64f6f9` / 現行SHI | manual-port | pending | calibration3d3d, lidar calibration, tests | SHIの処理表現を優先し、行列生成とUIエラー完了を分離してvendor例外境界へ接続する |
 | M-063 | 校正capture・厳密同期 | vendor / 現行SHI | vendor-keep | pending | calib FIFO/data capture, tests | 周辺監視の入力sourceを共有し、同期成立frameだけを既存FIFO形式で渡す |
 | M-064 | 校正wait・facade・MMAP接続 | vendor / SHI `fc7f75e`, `d9edbc0` | manual-port | pending | wait app, facade, mmap contract tests | lifecycleとABIはvendorを維持し、必要なenum化・診断結果出力だけを採用する |
 | M-065 | 校正エラー処理接続 | `docs/error_list.txt` / 現行SHI | manual-port | pending | calibration process/modules/diagnosis/tests | UI専用状態と製品エラーを分離し、固有CE、FILE_IO、module errorを所有境界で接続する |
-| M-066 | 校正設定validation | SHI現行 calibration validator | manual-port | pending | calibration config validation/tests | 製品用schemaだけを対象にし、ローカルpath・評価値・debug設定の既定化を避ける |
+| M-066 | 校正設定validation・機種別設定 | SHI現行 calibration validator / machine profile | manual-port | in-review | calibration config validation/machine profile/file watch/tests | SHI validatorと機種別校正設定を移植。CALIB中も`settings.ini`監視を常時維持し、機種別校正INI監視は追加登録する |
 | M-067 | 校正三者差分ビューア導入 | `local_pipe` `origin/vendor-20260817-integration:scripts/three_way_review.py` | manual-port | verified | `scripts/three_way_review.py`, tests | vendor/SHIのrepoとrefを個別指定し、統合working treeと比較する。別repo・片側限定ファイルの専用テスト2件pass |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
@@ -898,6 +898,49 @@ SHI側だけで確認されたテスト:
 - 今回の配置に合わせ、vendorとSHIのrepo path・Git refを個別指定し、統合版はworking treeを直接読むCLIへ変更した。列名は`Vendor`、`SHI`、`Integration`とし、HTMLへ各repo、ref、解決commit hash、統合側のdirty状態を表示する。
 - SHI側だけに存在し、統合側へ未移植のファイルもレビューできるよう、統合側の欠損を空列として表示する。出力先は既存運用と同じ`.merge_review/three-way/`を既定とする。
 - `tests/test_three_way_review.py`で3つの独立Git repo、全列で異なる内容、HTML escape、commit表示、統合dirty表示、統合側欠損ファイルを確認し2 passed。実SHIの`SceneDesc.py`でもHTML生成を確認し、Ruffは成功した。
+
+### 2026-09-06 M-058実施記録
+
+- SHIアルゴリズム移植前の保護契約として、`tests/test_calibration_contracts.py`を追加した。`settings.ini`の`operation_mode`と`CalibMode` 7項目、`OPERATION_MODE`と`CalibMode`の数値を固定した。
+- 校正同期FIFOは型aliasだけでなく`CalibFIFOProcess._update()`を同期成功stubで実行し、camera、LiDAR、CAN、`ref_t`の4要素順と値を固定した。productionコードは変更していない。
+- 校正MMAPは`mmap_assign.json`の0～14 byte headerと、facadeがその直後へ書く`is_end_calmode`、`status_calibcommon`、`currentmode`、`currentcamera`、`errors_calibcommon`の型・順序をmock writerで固定した。
+- 専用5件、設定validation・app config・自動校正終了を含む関連回帰20件がpassした。Ruff、Python構文、VS Code診断、`git diff --check`も成功した。
+
+### 2026-09-06 M-059部分実施記録
+
+- SHIの`diagnosis/calibcheck2d3d_result_diagnosis.py`を記述変更なしで移植した。UI値は校正不要0、書込禁止1、校正必要2、データ不足3、人未検出4、人検知品質不良5、予約6～7とする。
+- MMAPへ書込可能な0、2、3、4、5のvalidationと、reason code 1～11から判定不能理由への変換、reason 0の校正要否判定を25件で確認した。SHI productionファイルとの`diff -u`は差分なし、three-way HTMLも生成済みである。
+- SHIの`CalibCheck2d3dConf`へ追加された判定、tracking、debug、評価traceの20項目と、その補間元となる`z_height`、`z_height_withmargin`を移植した。debug機能は全て無効を既定とし、ONNXモデルはvendorの`damoyolo_tinynasL45_L_3.onnx`を維持した。
+- 設定schema専用3件、M-058/M-059関連37件がpassした。変更sliceのRuff、Python compile、VS Code診断、`git diff --check`も成功した。legacy app config全体のRuff既存診断はHEADとworking treeの双方70件で、新規診断はない。
+- vendor旧coreは0、1、3を出力し、SHI新契約では1が書込禁止である。M-060の最初のsliceでproducerとfacadeを同時に切り替え、M-059を`verified`とした。
+
+### 2026-09-06 M-060部分実施記録
+
+- vendor旧score判定の意味をSHIの`CameraCalibCheckStatusDiagnosis`入力へ変換した。十分かつOKはreason 0・acceptable、十分かつNGはreason 0・not acceptable、データ不足はreason 1とし、UI出力を0、2、3へ切り替えた。
+- facadeのdebug上書き、setter、MMAP writerもSHI enum・validatorへ同時に切り替えた。`ng`は2、`ok`は0、`un`は3となり、禁止値1はsetterとwriterの双方で拒否する。
+- status接続専用3件、M-058～M-060関連40件がpassした。変更sliceのRuff、Python compile、VS Code診断、`git diff --check`も成功した。legacy coreのRuff既存診断はHEADとworking treeの双方31件、facadeは71件から70件となった。
+- SHIの`SceneDesc.py`と`YOLOadapter.py`を追加した。Sceneは改行正規化後にSHI版と内容差分なしで、projection、人寸法gate、camera slot保持をhardware不要テストで固定した。YOLO adapterはまだactive detectorへ接続せず、vendor承認済みONNXモデル設定を維持している。
+- 2D/3D tracking metadataへ`frame_ix_lastmove`を追加し、停止frameでは更新せず移動frameだけ更新することを確認した。2D workarea LUTの既定値はSHIの修正を反映した。
+- 現行vendor `dataproc()`が生成する3D bboxとYOLO結果をSHI形式の`frame_info`へ記録し、3D/2D bboxログvalidationを接続した。reason 2は全camera、reason 3はcamera別にactiveとなった。
+- SHIのcalibcheck専用2D/3D SORT recorder、tracking選別、validationを移植した。SHI 3D recorderに残っていた開発者環境の絶対パスは採用せず、vendor設定のcamera別workarea LUTへ接続した。保存済み推論結果をpost処理で再走査し、reason 4は全camera、reason 5はcamera別にactiveとなった。ONNXモデル経路は変更していない。
+- post lifecycle stubを含むM-058～M-060関連54件がpassした。追加・更新テストのRuff、production/test compile、VS Code診断、`git diff --check`も成功した。production core全体のRuffはHEAD 31件に対して47件で、増分はSHI互換のclass/method名、SHI閾値のliteral、評価factoryのprivate state設定、import順である。`ctrl/`のSHI表現を優先し、このsliceでは機械的renameを行っていない。
+- SHIの3D bbox camera projection、画角内判定、bbox交差・中心差gate、Scene評価、frame時系列対応、legacy-like/strict hit-rate統計、threshold判定を移植した。reason 9は画角内3D対象なし、reason 10は2D/3D共通frameなし、reason 11は共通frameがあっても有効scoreなしとしてactiveになった。
+- `data_evaluation_process()`をpost lifecycleの正式経路へ接続し、旧score fallbackを外した。camera別の先行reason 3/5は保持し、正常cameraだけ後段評価結果で更新する。result fileも同じreason/resultから`Unknown`、`OK`、`NG`を出力する。
+- reason 6～8はSHI coreでも説明とmappingだけがあり、実際の代入箇所はない。仕様を推測せず予約状態を維持する。M-060は実機入力での評価確認と最終three-way reviewまで`in-review`を維持する。
+- projection、Scene matching、reason 9～11、camera別reason保持、post送信順を含むM-058～M-060関連64件がpassした。追加・更新テストのRuff、production/test compile、Pylance syntax、VS Code診断、`git diff --check`も成功した。production core全体のRuff件数は引き続きHEAD 31件、統合版47件である。
+
+### 2026-09-07 M-060 three-way目視レビュー
+
+- `calibcheck2d3d/SceneDesc.py`: `SHI維持`として確認済み。
+- `calibcheck2d3d/YOLOadapter.py`: `SHI維持`として確認済み。
+- `calibration2d3d/track_main/detect3D/person_tracker_SORT_3d/__init__.py`: `SHI維持`として確認済み。
+- `calibration2d3d/track_main/interface_definition.py`: `冗長性整理（機能はSHI維持）`として確認済み。SHIとの差は`Todo`から`TODO`へのコメント表記変更と、`tracking3d_dataclass.__init__`末尾の不要な`pass`削除のみ。
+- `diagnosis/calibcheck2d3d_result_diagnosis.py`: `SHI維持`として確認済み。
+- `facade/__init__.py`: レビューで判明した未移植箇所を復元した。`CalibrationCommonStatus`、初期値定数、校正要否statusの初期値`UNKNOWN_INSUFFICIENT_DATA`、decimal error・数値status・欠損yaw許容・適用ログを含むSHIのdummy data処理を反映し、現行のMMAP書込み可能値検証を維持した。復元後の再レビュー待ち。
+- `config/app_config_calibration.py`: SHIの`bbox_center3d_z_ratio_area_xmin/xmax/ymin/ymax`、2D/3Dの`trackresult_use_lastmove_ix`、6個の`axis_gridpoints_*`を型定義とreaderへ追加した。さらにINIの未収容実パラメータである`z_height`、`z_height_withmargin`、LiDARの`dev_str`、`enable_bbox_shapefilter`を追加し、`placeholder`もINIから読むようにした。directory rootは`resolve_ini_roots()`、個別pathキーは補間後のlistとして既に収容されるため二重保持せず、`DEBUG_REF`は手動切替用の候補値として扱う。
+- `config/calib_settings.ini`: `mmap_dir`は統合版の`/dev/shm`を維持し、それ以外のSHIと共通する明示キーはSHI値へ統一した。ONNXモデルも`new_bench_full_20260625.onnx`へ同期した。DEFAULT継承を除く構造比較で、SHIとの差が`mmap_dir`だけであることを確認した。
+- 設定回帰は11 passed、Python compile、VS Code診断、`git diff --check`が成功した。Ruff全体実行は同モジュール既存の命名・全角句読点違反を報告したが、今回の追加行に新規違反はない。固定vendor/SHI commitを使って両設定ファイルのthree-way HTMLを再生成済み。再レビュー待ち。
+- 残りのM-060対象ファイルは未確認。確認状況は`.merge_review/three-way-reviewed/review-status.md`で管理する。
 
 ## 10. 次のCopilotへの開始指示
 

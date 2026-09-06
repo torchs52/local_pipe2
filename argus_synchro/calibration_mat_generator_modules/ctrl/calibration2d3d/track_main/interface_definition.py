@@ -49,6 +49,7 @@ class tracking2d_dataclass:  # TODO: 他にも追加する可能性あり
         xymax: tuple[float, float],
         frame_ix_min: int,
         frame_ix_max: int,
+        frame_ix_lastmove: int,
         frame_evval_min: float,
         frame_evval_max: float,
         workarea_count: int,
@@ -62,6 +63,7 @@ class tracking2d_dataclass:  # TODO: 他にも追加する可能性あり
         self.xymax = xymax
         self.frame_ix_min = frame_ix_min
         self.frame_ix_max = frame_ix_max
+        self.frame_ix_lastmove = frame_ix_lastmove
         self.frame_evval_min = frame_evval_min
         self.frame_evval_max = frame_evval_max
         self.workarea_count = workarea_count
@@ -98,6 +100,7 @@ class tracking3d_dataclass:  # TODO: 他にも追加する可能性あり
         dist_from_camera_max: float,
         frame_ix_min: int,
         frame_ix_max: int,
+        frame_ix_lastmove: int,
         frame_evval_min: float,
         frame_evval_max: float,
         workarea_count: float,
@@ -111,6 +114,7 @@ class tracking3d_dataclass:  # TODO: 他にも追加する可能性あり
         self.dist_from_camera_max = dist_from_camera_max
         self.frame_ix_min = frame_ix_min
         self.frame_ix_max = frame_ix_max
+        self.frame_ix_lastmove = frame_ix_lastmove
         self.frame_evval_min = frame_evval_min
         self.frame_evval_max = frame_evval_max
         self.workarea_count = workarea_count

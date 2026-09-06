@@ -1,0 +1,76 @@
+# ruff: noqa: SLF001
+
+from __future__ import annotations
+
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, cast
+
+from argus_synchro.calibration_mat_generator_modules.ctrl.calibcheck2d3d import (
+    calibcheck2d3d,
+)
+from argus_synchro.calibration_mat_generator_modules.facade import CalibrationUIGodot
+from argus_synchro.diagnosis.calibcheck2d3d_result_diagnosis import (
+    CameraCalibCheckStatusDiagnosis,
+)
+from argus_synchro.shared_excepts import SharedExcepts
+
+
+class _MonitorStub:
+    def __init__(self) -> None:
+        self.events: list[tuple[str, object]] = []
+
+    def set_status_calibcommon(self, value: int) -> None:
+        self.events.append(("common", value))
+
+    def set_dummydata(self, **kwargs: bool) -> None:
+        self.events.append(("dummy", kwargs))
+
+    def set_camera_calibcheck_status(self, camera_id: int, value: int) -> None:
+        self.events.append(("camera", (camera_id, int(value))))
+
+    def transmit_setdata(self, **kwargs: object) -> None:
+        self.events.append(("transmit", kwargs))
+
+
+class _LoggerStub:
+    def info(self, message: str) -> None:
+        del message
+
+
+def test_post_uses_tracking_reasons_before_transmit(tmp_path: Path) -> None:
+    controller = cast(calibcheck2d3d, object.__new__(calibcheck2d3d))
+    controller._logger = cast(Any, _LoggerStub())
+    controller._calibcheck_status_diagnosis = CameraCalibCheckStatusDiagnosis()
+    controller._evaluation_camera_count = 3
+    controller.camera_scores_rawdata = [[1.0], [1.0], [1.0]]
+    controller.checked_points3d = []
+    controller.checked_points3d_score = []
+    controller.checked_points2d = []
+    controller.checked_points2d_score = []
+    controller.calibcheck2d3d_conf = SimpleNamespace(
+        score_accept_count_threshold=1,
+        score_value_threshold=0.5,
+        resultfiles=[str(tmp_path / f"camera-{index}.txt") for index in range(3)],
+    )
+    controller.app_config_calib = SimpleNamespace(
+        default=SimpleNamespace(outputdir_root=str(tmp_path))
+    )
+    controller.data_evaluation_process = lambda: ([4, 5, 0], [False, False, True])
+    monitor = _MonitorStub()
+
+    controller.post_app_loopmain(
+        cast(CalibrationUIGodot, monitor),
+        cast(SharedExcepts, object()),
+        cast(Any, object()),
+    )
+
+    camera_events = [event for event in monitor.events if event[0] == "camera"]
+    assert camera_events == [
+        ("camera", (0, 5)),
+        ("camera", (1, 5)),
+        ("camera", (2, 0)),
+    ]
+    assert monitor.events.index(camera_events[-1]) < next(
+        index for index, event in enumerate(monitor.events) if event[0] == "transmit"
+    )

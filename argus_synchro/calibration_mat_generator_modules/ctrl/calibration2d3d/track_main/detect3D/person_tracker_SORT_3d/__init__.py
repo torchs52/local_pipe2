@@ -395,6 +395,7 @@ class proc3d_bboxtracker_recorder:
                         final_xy=(xc, yc),
                         frame_ix_min=frame_ix,
                         frame_ix_max=frame_ix,
+                        frame_ix_lastmove=frame_ix,
                         workarea_count=is_workarea,
                         frame_evval_max=self.evLUT3D.evaluate(xc, yc),
                         frame_evval_min=self.evLUT3D.evaluate(xc, yc),
@@ -419,6 +420,8 @@ class proc3d_bboxtracker_recorder:
                     self.trackingID_data[tracker_id].accum_track_length += frame_movelen
                     self.trackingID_data[tracker_id].final_xy = (xc, yc)
                     self.trackingID_data[tracker_id].frame_ix_max = frame_ix
+                    if frame_movelen > 1e-6:
+                        self.trackingID_data[tracker_id].frame_ix_lastmove = frame_ix
                     self.trackingID_data[tracker_id].workarea_count += is_workarea
                     self.trackingID_bboxlog[tracker_id].append(
                         (frame_ix, (x1, y1, x2, y2))

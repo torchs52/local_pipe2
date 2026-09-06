@@ -365,7 +365,7 @@ class proc2d_bboxtracker_recorder:
             B_ETA=self.app_config_calib.calib2d3d.Proc2d.cam_workareadef_img_coord_B_ETA[
                 camera_index
             ],
-            DEFAULT_VALUE=self.app_config_calib.calib2d3d.Proc2d.cam_valmat_val_DEFAULT[
+            DEFAULT_VALUE=self.app_config_calib.calib2d3d.Proc2d.cam_workareadef_img_val_DEFAULT[
                 camera_index
             ],
         )
@@ -406,6 +406,7 @@ class proc2d_bboxtracker_recorder:
                         final_xy=(xc, yc),
                         frame_ix_min=frame_ix,
                         frame_ix_max=frame_ix,
+                        frame_ix_lastmove=frame_ix,
                         workarea_count=is_workarea,
                         frame_evval_max=self.evLUT2D.evaluate(xc, yc),
                         frame_evval_min=self.evLUT2D.evaluate(xc, yc),
@@ -430,6 +431,8 @@ class proc2d_bboxtracker_recorder:
                     self.trackingID_data[tracker_id].accum_track_length += frame_movelen
                     self.trackingID_data[tracker_id].final_xy = (xc, yc)
                     self.trackingID_data[tracker_id].frame_ix_max = frame_ix
+                    if frame_movelen > 1e-6:
+                        self.trackingID_data[tracker_id].frame_ix_lastmove = frame_ix
                     self.trackingID_data[tracker_id].frame_evval_max = max(
                         self.trackingID_data[tracker_id].frame_evval_max,
                         self.evLUT2D.evaluate(xc, yc),

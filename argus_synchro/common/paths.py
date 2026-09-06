@@ -27,6 +27,26 @@ MACHINE_MODEL_INFO: dict[str, dict[str, str]] = {
     },
 }
 
+# 校正モード(calib_settings.ini)用の機種別パラメータファイル
+MACHINE_MODEL_CALIB_INFO: dict[str, dict[str, str]] = {
+    "SCX700-3": {
+        "description": "not_adapted",
+        "param_file": "./SCX700-3_calib_settings.ini",
+    },
+    "SCX900-3": {
+        "description": "default",
+        "param_file": "./SCX900-3_calib_settings.ini",
+    },
+    "SCX2000-3": {
+        "description": "default",
+        "param_file": "./SCX2000-3_calib_settings.ini",
+    },
+    "SCX3500-3": {
+        "description": "memo",
+        "param_file": "./SCX3500-3_calib_settings.ini",
+    },
+}
+
 
 def normalize_path(
     value: PathLike,
