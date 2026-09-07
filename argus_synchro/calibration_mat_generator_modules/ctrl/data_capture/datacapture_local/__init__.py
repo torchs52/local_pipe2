@@ -29,6 +29,19 @@ from argus_synchro.shared_errors import SharedErrors, StateErrorDIndex
 
 
 class datacapture_class:
+    def _report_file_io_error(
+        self, path: str, operation: str, error: Exception
+    ) -> None:
+        file_io_error = self._ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR]
+        result = file_io_error.errors_diagnosis(True)
+        file_io_error.log_output(
+            *result,
+            StateErrorDIndex.FILE_IO_ERROR,
+            path,
+            operation,
+            f"{type(error).__name__}: {error}",
+        )
+
     def __init__(
         self,
         app_config_calib: AppConfigCalibration,
@@ -74,6 +87,7 @@ class datacapture_class:
             app_config_calib=self.app_config_calib,
             sac=self.sac,
             app_logger_factory=self._app_logger_factory,
+            file_io_error_reporter=self._report_file_io_error,
         )
 
         self.ts = 0

@@ -29,6 +29,7 @@ from argus_synchro.config.fileinput_pathselector import (
     lidar_filepath_loader,
 )
 from argus_synchro.shared_app_config import SharedAppConfig
+from argus_synchro.shared_errors import SharedErrors, StateErrorDIndex
 from argus_synchro.shared_excepts import SharedExcepts
 
 SENTINEL = (np.zeros((0, 0), dtype=np.float32), -1, -1.0)
@@ -42,6 +43,7 @@ class MultiLidarManager(MultiSensorManagerBase):
         sec: SharedExcepts,
         sac: SharedAppConfig,
         app_logger_factory: AppLoggerFactory,
+        shared_errors: SharedErrors | None = None,
     ):
         # タスク管理関係
         self.DefaultConfig: DefaultConf = DefaultConfig
@@ -66,6 +68,7 @@ class MultiLidarManager(MultiSensorManagerBase):
 
         self.sec: SharedExcepts = sec
         self.sac: SharedAppConfig = sac
+        self._ser = shared_errors
 
         self.index_reset_flag: multiprocessing.sharedctypes.SynchronizedArray[bool] = (
             multiprocessing.Array("b", self.LidarConfig.count)
@@ -106,6 +109,7 @@ class MultiLidarManager(MultiSensorManagerBase):
         argsK["index_reset_req"] = self.index_reset_flag
         argsK["sec"] = self.sec
         argsK["sac"] = self.sac
+        argsK["shared_errors"] = self._ser
         return argsK
 
     def check_running(self, task_index):
@@ -214,6 +218,7 @@ class MultiLidarWorker(MultiSensorWorkerBase):
         sac: SharedAppConfig,
         index_reset_req: multiprocessing.sharedctypes.SynchronizedArray[bool],
         app_logger_factory: AppLoggerFactory,
+        shared_errors: SharedErrors | None = None,
     ) -> None:
         self._logger: AppLogger = app_logger_factory.register_from_type(self.__class__)
         self.LidarConfig: DataCaptureConf.LidarConf = DataCaptureConfig.Lidar
@@ -235,6 +240,7 @@ class MultiLidarWorker(MultiSensorWorkerBase):
         )
         self.sec: SharedExcepts = sec
         self.sac: SharedAppConfig = sac
+        self._ser = shared_errors
         super().__init__()
 
     def keep_loop_condition(self, task_index: int) -> bool:
@@ -242,6 +248,21 @@ class MultiLidarWorker(MultiSensorWorkerBase):
             self.loopEnable.value != 0
             and self.working_task_flags[task_index] != 0
             and (not self.sec.CalMatGen_ex.IsFinished.value)
+        )
+
+    def _report_file_io_error(
+        self, path: str, operation: str, error: Exception
+    ) -> None:
+        if self._ser is None:
+            return
+        file_io_error = self._ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR]
+        result = file_io_error.errors_diagnosis(True)
+        file_io_error.log_output(
+            *result,
+            StateErrorDIndex.FILE_IO_ERROR,
+            path,
+            operation,
+            f"{type(error).__name__}: {error}",
         )
 
     def _fileinput_task(
@@ -295,6 +316,7 @@ class MultiLidarWorker(MultiSensorWorkerBase):
                     lidar_filepath_loader(sac=self.sac, lidarConf=self.LidarConfig)[
                         task_index
                     ],  # self.LidarConfig.lidar_files[task_index]
+                    file_io_error_reporter=self._report_file_io_error,
                 )
                 if frame is None:
                     print(f"lidar{task_index} : cannot read")

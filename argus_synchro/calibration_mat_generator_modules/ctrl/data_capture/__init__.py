@@ -19,6 +19,7 @@ from argus_synchro.config.app_config_calibration import (
     DefaultConf,
 )
 from argus_synchro.shared_app_config import SharedAppConfig
+from argus_synchro.shared_errors import SharedErrors
 from argus_synchro.shared_excepts import SharedExcepts
 
 
@@ -33,6 +34,7 @@ class data_capture:
         sac: SharedAppConfig,
         verbose: bool,
         app_logger_factory: AppLoggerFactory,
+        shared_errors: SharedErrors | None = None,
     ):
         self._logger: AppLogger = app_logger_factory.register_from_type(self.__class__)
         print("data_capture __init__")
@@ -49,6 +51,7 @@ class data_capture:
             sec=sec,
             sac=sac,
             app_logger_factory=app_logger_factory,
+            shared_errors=shared_errors,
         )
         self.sensor_sync_filter_inst = sensor_sync_filter(
             synctype_select=DataCaptureConfig.sync_type,

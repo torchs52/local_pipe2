@@ -3,6 +3,7 @@
 # import utils.utils3d as utils
 import json
 import math
+from collections.abc import Callable
 
 import numpy as np
 import open3d as o3d
@@ -65,6 +66,7 @@ class capture3d:
         app_config_calib: AppConfigCalibration,
         sac: SharedAppConfig,
         app_logger_factory: AppLoggerFactory,
+        file_io_error_reporter: Callable[[str, str, Exception], None] | None = None,
     ) -> None:
         self._logger: AppLogger = app_logger_factory.register_from_type(self.__class__)
         # dataConverter2D3DConf: DataConverter2D3DConf, dataCaptureConf: DataCaptureConf, camerasel: int
@@ -75,11 +77,18 @@ class capture3d:
         self.dataConverter2D3DConf = app_config_calib.dataConverter2D3D
         camerasel = sac.read().CalibMode.cameraID
 
-        with open(
-            self.dataConverter2D3DConf.Lidar.calibration_coord_rtvec_jsonpath,
-            encoding="utf-8",
-        ) as rtvec_definition:
-            convvecs = json.load(rtvec_definition)
+        rtvec_path = self.dataConverter2D3DConf.Lidar.calibration_coord_rtvec_jsonpath
+        try:
+            with open(rtvec_path, encoding="utf-8") as rtvec_definition:
+                convvecs = json.load(rtvec_definition)
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            if file_io_error_reporter is not None:
+                file_io_error_reporter(
+                    rtvec_path,
+                    "read LiDAR coordinate conversion JSON",
+                    error,
+                )
+            raise
 
         self.convvec_t = np.array(convvecs[camerasel]["tvec"], dtype=np.float64)
         convvec_r_deg = np.array(convvecs[camerasel]["rvec"], dtype=np.float64)
@@ -108,18 +117,24 @@ class capture3d:
 
         self.trans_mat3D3D = None
         self.trans_mat3D3D_eachlidar = []
+        lidar_calib_paths = lidar_calib_filepath_loader(
+            sac=self.sac,
+            app_config_calib=self.app_config_calib,
+        )
         for ix in range(2):
             # self.trans_mat3D3D_eachlidar.append( np.array(pd.read_csv(self.dataConverter2D3DConf.Lidar.lidar_calib_files[ix], header=None)) )
-            self.trans_mat3D3D_eachlidar.append(
-                np.array(
-                    pd.read_csv(
-                        lidar_calib_filepath_loader(
-                            sac=self.sac, app_config_calib=self.app_config_calib
-                        )[ix],
-                        header=None,
+            lidar_calib_path = lidar_calib_paths[ix]
+            try:
+                transform = np.array(pd.read_csv(lidar_calib_path, header=None))
+            except (OSError, UnicodeError, ValueError) as error:
+                if file_io_error_reporter is not None:
+                    file_io_error_reporter(
+                        lidar_calib_path,
+                        "read data_capture LiDAR calibration CSV",
+                        error,
                     )
-                )
-            )
+                raise
+            self.trans_mat3D3D_eachlidar.append(transform)
 
     def release(self):
         pass
@@ -132,7 +147,7 @@ class capture3d:
         else:
             if self.point_readfail_count < point_readfail_count_threshold:
                 self.point_readfail_count += 1
-        
+
         return self.point_readfail_count < point_readfail_count_threshold
 
     def internal_lidar_accumulate(self, pcd):
@@ -149,7 +164,12 @@ class capture3d:
         return xyz
 
     # @profile
-    def read(self, data_lidars: list, dontread=False):
+    def read(
+        self,
+        data_lidars: list,
+        dontread=False,
+        adjust_coordinate_enable=True,
+    ):
         if dontread:
             pass
 
@@ -242,7 +262,10 @@ class capture3d:
                 f"after accumulate and 3d3d transform, {xyz_accum.shape = }, {np.max(xyz_accum, axis=0) = }, {np.min(xyz_accum, axis=0) = }",
             )
         # 以前の会議から：3D3D校正・点群蓄積後に校正座標に変換
-        xyz_accum_pts = self.adjust_coordinate(xyz_accum, 0)
+        if adjust_coordinate_enable:
+            xyz_accum_pts = self.adjust_coordinate(xyz_accum, 0)
+        else:
+            xyz_accum_pts = xyz_accum
 
         return xyz_accum_pts, timestamps
 
