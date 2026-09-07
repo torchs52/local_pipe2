@@ -241,14 +241,14 @@ class CalibrationUIGodot(FacadeUIClass_Base):
             )  # デバッグ用：未初期化を示すパターン（0xBAADF00D）で埋める
 
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"after preprocess_info, addr:{self.calibGodotInterfaceInst.writtenAdr}",
             )
         self.calibGodotInterfaceInst.error_info(
             sec=sec, errorcode_pre=self.errorcode_pre
         )  # エラー種別
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"after error_info, addr:{self.calibGodotInterfaceInst.writtenAdr}",
             )
         self.calibGodotInterfaceInst.WriteUInt8(is_end_calmode)  # 全体終了フラグ
@@ -300,31 +300,31 @@ class CalibrationUIGodot(FacadeUIClass_Base):
                     np.zeros((0), np.uint8), np.zeros((0, 0), np.float32)
                 )  # カメラ画像
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"after frames, addr:{self.calibGodotInterfaceInst.writtenAdr}"
             )
         self.calibGodotInterfaceInst.WriteFloat32(yaw)  # 上部旋回体回転角度
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"after yaw, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{yaw}",
             )
         self._transmit_3dfmat(points)
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"after points, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{points.shape}",
             )
 
         if self.sac.read().CalibUI_IF.show_trajectory:
             self._transmit_3dfmat(corner3d)
             if self.output_log:
-                self._logger.info(
+                self._logger.debug(
                     f"after corner3d, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{corner3d.shape}",
                 )
         else:
             corner3d_zeromat = np.zeros((0, 3), np.float32)
             self._transmit_3dfmat(corner3d_zeromat)
             if self.output_log:
-                self._logger.info(
+                self._logger.debug(
                     f"after corner3d, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{corner3d_zeromat.shape}",
                 )
 
@@ -352,14 +352,14 @@ class CalibrationUIGodot(FacadeUIClass_Base):
         for x in calib_status:
             self.calibGodotInterfaceInst.WriteUInt8(x)
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"after calib_status, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{calib_status}",
             )
 
         for x in mblock_progress_status:
             self.calibGodotInterfaceInst.WriteUInt8(x)
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"after mblock_progress_status, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{mblock_progress_status}",
             )
 
@@ -367,7 +367,7 @@ class CalibrationUIGodot(FacadeUIClass_Base):
         for x in sblock_progress_status:
             self.calibGodotInterfaceInst.WriteUInt8(x)
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"after sblock_progress_status, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{sblock_progress_status}",
             )
         self.calibGodotInterfaceInst.postprocess_info(
@@ -377,7 +377,7 @@ class CalibrationUIGodot(FacadeUIClass_Base):
             mmap_erase_rest=mmap_erase_rest,
         )
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"after postprocess_info, addr:{self.calibGodotInterfaceInst.writtenAdr}, ref_t:{ref_t}",
             )
 
@@ -654,7 +654,7 @@ class CalibrationUIGodot(FacadeUIClass_Base):
 
     def set_image(self, camera_id: int, data: NDArray[np.uint8]):
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"UI value set by set_image, camera {camera_id}, {data.shape}"
             )
         self.cameradata[camera_id] = data
@@ -673,7 +673,7 @@ class CalibrationUIGodot(FacadeUIClass_Base):
 
     def set_points(self, data: NDArray[np.float32], colordata: NDArray[np.float32]):
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"UI value set by set_points, {data.shape}, {colordata.shape}"
             )
         pcd = o3d.geometry.PointCloud()
@@ -694,7 +694,7 @@ class CalibrationUIGodot(FacadeUIClass_Base):
 
     def set_progress(self, value: float):
         if self.output_log:
-            self._logger.info(f"UI value set by set_progress, {value}")
+            self._logger.debug(f"UI value set by set_progress, {value}")
         self.progress: float = value
 
     def set_calibration_ready(self, value: int):
@@ -721,14 +721,14 @@ class CalibrationUIGodot(FacadeUIClass_Base):
 
     def set_blockprogress_status(self, blockprogress_status: NDArray[np.float32]):
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"UI value set by set_blockprogress_status, {blockprogress_status}",
             )
         self.blockprogress_status: list[float] = [int(x) for x in blockprogress_status]
 
     def set_subblockprogress_status(self, subblockprogress_status: NDArray[np.float32]):
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"UI value set by set_subblockprogress_status, {subblockprogress_status}",
             )
         self.subblockprogress_status: list[float] = [
@@ -741,7 +741,7 @@ class CalibrationUIGodot(FacadeUIClass_Base):
         points_multi_lines: NDArray[np.int32],
     ):
         if self.output_log:
-            self._logger.info("UI value set by set_calibend_reasonflag")
+            self._logger.info("UI value set by set_boxes")
         self.points_multipoints = points_multipoints
         self.points_multi_lines = points_multi_lines
         self.put_data("dataproc", f"3dobj_{0}_multipoints", points_multipoints)

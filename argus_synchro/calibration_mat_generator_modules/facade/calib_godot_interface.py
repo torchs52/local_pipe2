@@ -186,7 +186,7 @@ class CalibGodotInterface:
     def preprocess_info(self) -> None:
         self.sTime = time.time()
         if self.output_log:
-            self._logger.info(f"Adr(IsWrite): {self.writtenAdr!s}")
+            self._logger.debug(f"Adr(IsWrite): {self.writtenAdr!s}")
         # 書き込み中フラグ
         self.clsMMap.WriteInt8(self.writtenAdr, 1)
 
@@ -195,12 +195,14 @@ class CalibGodotInterface:
             self.UNIX_TIME_ADDR
         )  # 直前にReadOnlyアドレスがあるため明示的に指定.
         if self.output_log:
-            self._logger.info(f"Adr(unix_time): {self.writtenAdr!s}")
+            self._logger.debug(f"Adr(unix_time): {self.writtenAdr!s}")
         now_unix_time = int(time.time() * 1000 - 1732600000000)
         # 書込時間
         self.clsMMap.WriteInt64(self.writtenAdr, now_unix_time)
         if self.output_log:
-            self._logger.info(f"now_unix_time: {now_unix_time!s}, {self.mapIndex = }")
+            self._logger.debug(
+                f"now_unix_time: {now_unix_time!s}, {self.mapIndex = }"
+            )
         self.writtenAdr += BS.INT64
 
     def generate_error_code(self, sec: SharedExcepts, errorcode_pre: int) -> int:
@@ -216,12 +218,12 @@ class CalibGodotInterface:
 
     def error_info(self, sec: SharedExcepts, errorcode_pre: int) -> None:
         if self.output_log:
-            self._logger.info(f"Adr(error): {self.writtenAdr!s}")
+            self._logger.debug(f"Adr(error): {self.writtenAdr!s}")
         code: int = self.generate_error_code(sec, errorcode_pre)
         # code: int = 0x00000000
         # エラー種別
         if self.output_log:
-            self._logger.info(f"{code = }")
+            self._logger.debug(f"{code = }")
         self.clsMMap.WriteInt32(self.writtenAdr, code)
         self.writtenAdr += BS.INT32
 
@@ -289,23 +291,23 @@ class CalibGodotInterface:
             encoded = np.zeros(0, np.uint8)
 
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"encoded.size: {encoded.size}" + f", writtenAdr: {self.writtenAdr}",
             )
 
         # カメラ画像バイト数
         if self.output_log:
-            self._logger.info(f"Adr(cam.size): {self.writtenAdr}")
+            self._logger.debug(f"Adr(cam.size): {self.writtenAdr}")
         self.clsMMap.WriteInt32(self.writtenAdr, encoded.size)
         self.writtenAdr += BS.INT32
 
         # カメラ画像の実体（圧縮データ）
         if self.output_log:
-            self._logger.info(f"Adr(cam.data): {self.writtenAdr}")
+            self._logger.debug(f"Adr(cam.data): {self.writtenAdr}")
         self.clsMMap.WriteBytes(self.writtenAdr, encoded)
         self.writtenAdr += encoded.size * BS.INT8
         if self.output_log:
-            self._logger.info(encoded)
+            self._logger.debug(encoded)
 
         # 人検知結果（四角形BB個数、座標）
         # self.write_2d_object_detection_result(frame, LS_cam_det)
@@ -397,10 +399,10 @@ class CalibGodotInterface:
 
         # 処理フレーム番号をデバッグ用に記述
         if self.output_log:
-            self._logger.info(f"Adr(frame_num): {self.writtenAdr!s}")
+            self._logger.debug(f"Adr(frame_num): {self.writtenAdr!s}")
         self.clsMMap.WriteInt64(self.writtenAdr, ref_t)
         if self.output_log:
-            self._logger.info(f"{ref_t = }")
+            self._logger.debug(f"{ref_t = }")
         self.writtenAdr += BS.INT64
 
         if mmap_erase_rest:

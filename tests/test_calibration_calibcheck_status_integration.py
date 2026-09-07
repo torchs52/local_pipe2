@@ -165,3 +165,20 @@ values = [2,4,5]
     )
 
     assert len(logs) == 2
+
+
+def test_facade_uses_debug_for_continuous_values_and_info_for_state() -> None:
+    debug_logs: list[str] = []
+    info_logs: list[str] = []
+    facade = cast(CalibrationUIGodot, object.__new__(CalibrationUIGodot))
+    facade.output_log = True
+    facade._logger = SimpleNamespace(
+        debug=debug_logs.append,
+        info=info_logs.append,
+    )
+
+    facade.set_yaw(12.5)
+    facade.set_currentmode(2)
+
+    assert debug_logs == ["UI value set by set_yaw, value: 12.5"]
+    assert info_logs == ["UI value set by set_currentmode: 2"]
