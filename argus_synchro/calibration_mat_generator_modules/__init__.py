@@ -28,7 +28,6 @@ from argus_synchro.common.app_logger import AppLogger, AppLoggerFactory
 from argus_synchro.config.app_config_calibration import AppConfigCalibration
 from argus_synchro.shared_errors import SharedErrors
 from argus_synchro.shared_excepts import SharedExcepts
-from argus_synchro.shared_errors import SharedErrors
 
 
 class calibration2d3d_manager_class:
@@ -62,10 +61,16 @@ class calibration2d3d_manager_class:
 
         self.is_enable_profiler = self.app_config_calib.debug.is_enable_profiler
         # 校正モードのプロファイラ立ち上げ
-        if self.is_enable_profiler:
-            self.pr = cProfile.Profile()
-            self.pr.enable()
-            self._logger.info("cProfile.Profile started!")
+        self.pr = None
+        try:
+            if self.is_enable_profiler:
+                self.pr = cProfile.Profile()
+                self.pr.enable()
+                self._logger.info("cProfile.Profile started!")
+        except Exception as error:
+            self._logger.warning(
+                f"cProfile enable failed: {error}; continue without profiler"
+            )
 
         self.boss_inst = boss(
             app_config_calib=self.app_config_calib,
@@ -124,12 +129,17 @@ class calibration2d3d_manager_class:
     def app_close(self):
         self._logger.info("app_close() called")
         if not self.is_closed:
-            if self.is_enable_profiler:
-                self.pr.disable()
-                profile_path = f"./calib_profiler_results_{dt.now().strftime('%Y-%m-%d_%H-%M-%S_%f')}.prof"
-                self.pr.dump_stats(profile_path)
-                self._logger.info(
-                    f"cProfile.Profile closed, calib profiler file saved: {profile_path}"
+            try:
+                if self.is_enable_profiler and self.pr is not None:
+                    self.pr.disable()
+                    profile_path = f"./calib_profiler_results_{dt.now().strftime('%Y-%m-%d_%H-%M-%S_%f')}.prof"
+                    self.pr.dump_stats(profile_path)
+                    self._logger.info(
+                        f"cProfile.Profile closed, calib profiler file saved: {profile_path}"
+                    )
+            except Exception as error:
+                self._logger.warning(
+                    f"cProfile disable or dump_stats failed: {error}; continue shutdown"
                 )
 
             self._logger.info("close monitor")

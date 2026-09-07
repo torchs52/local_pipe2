@@ -2,6 +2,7 @@ from __future__ import annotations
 
 # パフォーマンスプロファイリング（デバッグ用）
 import cProfile
+import json
 import queue
 import sys
 import time
@@ -9,6 +10,7 @@ import traceback
 import typing
 from datetime import datetime as dt
 
+from pandas.errors import EmptyDataError, ParserError
 from argus_synchro_lib.visualizer import GodotUIVisualizer
 
 import argus_synchro.calibration_mat_generator_modules.ctrl.calibcheck2d3d as calibcheck2d3d_log
@@ -62,7 +64,10 @@ from argus_synchro import (
 from argus_synchro.calibration_mat_generator_modules.boss import boss
 
 # from argus_synchro.calibration_mat_generator_modules.facade import FacadeUIManager
-from argus_synchro.calibration_mat_generator_modules.facade import CalibrationUIGodot
+from argus_synchro.calibration_mat_generator_modules.facade import (
+    CalibrationCommonStatus,
+    CalibrationUIGodot,
+)
 from argus_synchro.config.app_config_calibration import AppConfigCalibration
 from argus_synchro.process.synchronizer import ProcessActivator
 from argus_synchro.shared_excepts import SharedCalMatGeneratorExcept
@@ -78,6 +83,7 @@ class CalibProcess(ProcessBase):
         "_last_updated",
         "_sac",
         "_sac_calib",
+        "_ser",
         "fifo_input",
         "sec",
     )
@@ -132,6 +138,9 @@ class CalibProcess(ProcessBase):
 
     def _err_config_load(self) -> None:
         self._err_config = self._ser.shared_err_conf.read()
+        self._ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR].update(
+            self._err_config
+        )
         self._ser.state_errors_D[StateErrorDIndex.INVALID_DATA_INPUT].update(
             self._err_config
         )
@@ -142,32 +151,51 @@ class CalibProcess(ProcessBase):
             self._err_config
         )
 
+    def _report_file_io_error(self, error: Exception, operation: str) -> None:
+        file_io_error = self._ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR]
+        result = file_io_error.errors_diagnosis(True)
+        error_path = getattr(error, "filename", None) or self.inifilepath
+        file_io_error.log_output(
+            *result,
+            StateErrorDIndex.FILE_IO_ERROR,
+            str(error_path),
+            operation,
+            f"{type(error).__name__}: {error}",
+        )
+
     def _startup(self) -> None:
         self._err_config_load()
-        self.uimanager = CalibrationUIGodot(
-            sac=self._sac,
-            sec=self.sec,
-            app_logger_factory=self._app_logger_factory,
-            directory_config=self._directory_config,
-        )
-        _ = StatusMMAP(
-            self._logger,
-            create=False,
-            directory_config=self._directory_config,
-        )
-        # mprof_handler = MachineProfile.MachineProfileHandler()
-        self._logger.info(
-            f"{datetime.datetime.now()} - calibration_mat_generator started"
-        )
-        admin_inst = calibration_mat_generator_modules.calibration2d3d_manager_class(
-            sec=self.sec,
-            ser=self._ser,
-            arglist=[],
-            shared_errors=self._ser,
-            inifilepath=self.inifilepath,
-            app_logger_factory=self._app_logger_factory,
-            directory_config=self._directory_config,
-        )
+        try:
+            self.uimanager = CalibrationUIGodot(
+                sac=self._sac,
+                sec=self.sec,
+                app_logger_factory=self._app_logger_factory,
+                directory_config=self._directory_config,
+            )
+            _ = StatusMMAP(
+                self._logger,
+                create=False,
+                directory_config=self._directory_config,
+            )
+            # mprof_handler = MachineProfile.MachineProfileHandler()
+            self._logger.info(
+                f"{datetime.datetime.now()} - calibration_mat_generator started"
+            )
+            admin_inst = calibration_mat_generator_modules.calibration2d3d_manager_class(
+                sec=self.sec,
+                ser=self._ser,
+                arglist=[],
+                shared_errors=self._ser,
+                inifilepath=self.inifilepath,
+                app_logger_factory=self._app_logger_factory,
+                directory_config=self._directory_config,
+            )
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            self._report_file_io_error(
+                error,
+                "read calibration auxiliary file during startup",
+            )
+            raise
         self.uimanager.apply_config(
             FacadeConfInst=admin_inst.get_calibconfig(sec=self.sec).facadeConf
         )
@@ -182,9 +210,15 @@ class CalibProcess(ProcessBase):
 
         self.is_enable_profiler = self.app_config_calib.debug.is_enable_profiler
         # 校正モードのプロファイラ立ち上げ
-        if self.is_enable_profiler:
-            self.pr = cProfile.Profile()
-            self.pr.enable()
+        self.pr = None
+        try:
+            if self.is_enable_profiler:
+                self.pr = cProfile.Profile()
+                self.pr.enable()
+        except Exception as error:
+            self._logger.warning(
+                f"cProfile enable failed: {error}; continue without profiler"
+            )
 
         self.boss_inst = boss(
             app_config_calib=self.app_config_calib,
@@ -283,8 +317,11 @@ class CalibProcess(ProcessBase):
                     self._config_load()
                     self._apply_parameters()
 
+                is_running_3d3d = False
                 try:
-                    if self._sac.read().CalibMode.isRunning3D3Dcalib:
+                    calib_mode = self._sac.read().CalibMode
+                    is_running_3d3d = calib_mode.isRunning3D3Dcalib
+                    if is_running_3d3d:
                         self.calib3d3d_app(
                             self.fifo_consumer,
                             self.uimanager,
@@ -317,38 +354,69 @@ class CalibProcess(ProcessBase):
                             self.app_config_calib,
                         )
                 except Exception as e:
-                    is_state_error_d_exception = self._ser.is_state_error_d_exception(
-                        e, self._logger
-                    )
-                    if not is_state_error_d_exception:
-                        if self._ser.module_errors[
+                    if is_running_3d3d:
+                        self._set_calib3d3d_error_state(self.uimanager)
+                        self.uimanager.set_dummydata(
+                            enable_systemerrorflag=True,
+                            enable_errorflag=True,
+                        )
+                        self.uimanager.transmit_setdata(sec=self.sec, ref_t=None)
+                    if self._ser.is_state_error_d_exception(e, self._logger):
+                        continue
+                    if isinstance(
+                        e,
+                        (
+                            OSError,
+                            UnicodeError,
+                            json.JSONDecodeError,
+                            EmptyDataError,
+                            ParserError,
+                            KeyError,
+                        ),
+                    ):
+                        self._report_file_io_error(
+                            e,
+                            "read calibration auxiliary file",
+                        )
+                        raise
+                    if self._ser.module_errors[
+                        ModuleErrorIndex.CALIBRATION_MODULE_ERROR
+                    ].excepts_diagnosis(e):
+                        self._ser.module_errors[
                             ModuleErrorIndex.CALIBRATION_MODULE_ERROR
-                        ].excepts_diagnosis(e):
-                            self._ser.module_errors[
-                                ModuleErrorIndex.CALIBRATION_MODULE_ERROR
-                            ].log_output(
-                                ResultDiagnosis.DETECTION,
-                                ResultDiagnosis.DETECTION,
-                                ModuleErrorIndex.CALIBRATION_MODULE_ERROR,
-                                e,
-                            )
-                        else:
-                            raise e
+                        ].log_output(
+                            ResultDiagnosis.DETECTION,
+                            ResultDiagnosis.DETECTION,
+                            ModuleErrorIndex.CALIBRATION_MODULE_ERROR,
+                            e,
+                        )
+                    else:
+                        raise e
 
         except KeyboardInterrupt:
             self._logger.info("KeyboardInterrupt を検知して終了")
 
     def app_close(self) -> None:
-        if self.is_enable_profiler:
-            self.pr.disable()
-            profile_path = f"calib_profiler_results_{dt.now().strftime('%Y-%m-%d_%H-%M-%S_%f')}.prof"
-            self.pr.dump_stats(profile_path)
+        try:
+            if self.is_enable_profiler and self.pr is not None:
+                self.pr.disable()
+                profile_path = f"calib_profiler_results_{dt.now().strftime('%Y-%m-%d_%H-%M-%S_%f')}.prof"
+                self.pr.dump_stats(profile_path)
+        except Exception as error:
+            self._logger.warning(
+                f"cProfile disable or dump_stats failed: {error}; continue shutdown"
+            )
 
         self._logger.info("close monitor")
         if self.uimanager is not None:
             self.uimanager.close()
         self._logger.info("close boss_inst")
         self.boss_inst.close()
+
+    @staticmethod
+    def _set_calib3d3d_error_state(monitor: CalibrationUIGodot) -> None:
+        monitor.set_errors_calibcommon(2)
+        monitor.set_errorcode_unexpected_exception(True)
 
     @staticmethod
     # 精度自動テスト用の終了可否判定 製品版への実装はおそらく危険？
@@ -373,21 +441,24 @@ class CalibProcess(ProcessBase):
 
         # CalibStatus:B1
         self.uimanager.reset_internal_values(
-            errorcode_pre=0, status_calibcommon=1, currentmode=1
+            errorcode_pre=0,
+            status_calibcommon=CalibrationCommonStatus.RUNNING,
+            currentmode=1,
         )  # running:1, 3d3d:1
         self.uimanager.set_dummydata(enable_systemerrorflag=True, enable_errorflag=True)
         self.uimanager.transmit_setdata(sec=sec, ref_t=None, is_firstframe=True)
-        self.boss_inst.pre_calib3d3d(
-            monitor=self.uimanager,
-            sec=sec,
-            sac=sac,
-            app_config_calib=self.app_config_calib,
-        )
         try:
+            self.boss_inst.pre_calib3d3d(
+                monitor=self.uimanager,
+                sec=sec,
+                sac=sac,
+                app_config_calib=self.app_config_calib,
+            )
             self._logger.info("calib3d3d_app started")
 
             self._logger.info("app_loopmain begin")
             last_fifo_data: FIFOData | None = None
+            app_loop_failed = False
             try:
                 self.boss_inst.calibration3d3d_inst.pre_app_loopmain(
                     monitor=self.uimanager,
@@ -422,8 +493,9 @@ class CalibProcess(ProcessBase):
                 self._logger.error(
                     f"app_loopmain: exception! {ea} - \n{traceback.format_exc()}"
                 )
-                monitor.set_errorcode_unexpected_exception(True)
-            if last_fifo_data is not None:
+                self._set_calib3d3d_error_state(monitor)
+                app_loop_failed = True
+            if not app_loop_failed and last_fifo_data is not None:
                 self.boss_inst.calibration3d3d_inst.post_app_loopmain(
                     last_fifo_data,
                     self.uimanager,
@@ -450,7 +522,7 @@ class CalibProcess(ProcessBase):
             self._logger.critical(
                 f"calib3d3d_app exception: {ea}, traceback: \n{traceback.format_exc()}",
             )
-            monitor.set_errorcode_unexpected_exception(True)
+            self._set_calib3d3d_error_state(monitor)
             timercount = 0
             while self.enable:
                 timercount = calibration3d3d_class.end_wait(
@@ -470,7 +542,7 @@ class CalibProcess(ProcessBase):
         assert self.uimanager is not None
         self.uimanager.reset_internal_values(
             errorcode_pre=0,
-            status_calibcommon=1,
+            status_calibcommon=CalibrationCommonStatus.RUNNING,
             currentmode=2,
             currentcamera=sac.read().CalibMode.cameraID,
         )  # running:1, 2d3d:2
@@ -561,7 +633,9 @@ class CalibProcess(ProcessBase):
         assert self.uimanager is not None
         # CalibStatus:D1
         self.uimanager.reset_internal_values(
-            errorcode_pre=0, status_calibcommon=1, currentmode=3
+            errorcode_pre=0,
+            status_calibcommon=CalibrationCommonStatus.RUNNING,
+            currentmode=3,
         )  # running:1, 2d3dcheck:3
         self.uimanager.set_dummydata(enable_systemerrorflag=True, enable_errorflag=True)
         self.uimanager.transmit_setdata(sec=sec, ref_t=None, is_firstframe=True)
@@ -611,11 +685,17 @@ class CalibProcess(ProcessBase):
                     )
                     monitor.set_errorcode_unexpected_exception(True)
                 finally:
-                    self.boss_inst.calibcheck2d3d_inst.post_app_loopmain(
-                        monitor=self.uimanager,
-                        sec=sec,
-                        sac=sac,
-                    )
+                    if self.enable and sac.read().CalibMode.start2D3DCheckCalc:
+                        self.boss_inst.calibcheck2d3d_inst.post_app_loopmain(
+                            monitor=self.uimanager,
+                            sec=sec,
+                            sac=sac,
+                        )
+                    else:
+                        self._logger.info(
+                            "calibcheck2d3d calculation skipped: "
+                            "start2D3DCheckCalc was not requested"
+                        )
             except Exception as ea:
                 self._logger.error(
                     f"app_loopmain (status D3~): exception! {ea} - \n{traceback.format_exc()}",
@@ -665,7 +745,9 @@ class CalibProcess(ProcessBase):
         app_config_calib: AppConfigCalibration,
     ) -> None:
         assert self.uimanager is not None
-        self.uimanager.clear_internal_values(status_calibcommon=0)
+        self.uimanager.clear_internal_values(
+            status_calibcommon=CalibrationCommonStatus.INACTIVE
+        )
         self.uimanager.set_dummydata(
             enable_systemerrorflag=True,
             enable_errorflag=True,

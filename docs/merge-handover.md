@@ -967,6 +967,15 @@ SHI側だけで確認されたテスト:
 - M-060の大きな構造差はSHIのscene/tracking/score処理をVendor lifecycleへ再配置したもの、M-061は同等アルゴリズムへの診断callback追加、M-062は共通簡易validatorへの接続であり、未移植のblockerではない。M-064のwait dummy設定・送信はthree-wayユーザーレビューに基づきSHIを維持した。
 - M-060、M-061、M-062、M-064を`verified`へ更新した。M-063は単一consumer制約と専用flow契約の確認により`vendor-keep / verified`を維持する。
 
+### 2026-09-07 校正上位エラー処理レビュー
+
+- `CalibProcess._err_config_load()`で重要度D `FILE_IO_ERROR`を有効化し、下位data capture・2D-3D・3D-3DのFILE_IO callbackが同じ`SharedErrors`診断へ到達するようにした。
+- startupとruntimeの未捕捉I/O例外をprocess境界でFILE_IOへ報告するfallbackを移植した。`OSError.filename`がある場合は実ファイルpathを記録し、ない場合だけ校正INI pathを使用する。下位報告済みの例外はD診断の`KEEPING`契約により重複検出ログを抑制する。
+- 3D-3D例外時の共通error 2・unexpected exception・dummy data送信を移植し、loop失敗後は`post_app_loopmain()`を実行しない。status magic numberは`CalibrationCommonStatus`へ置換し、calibcheckは`start2D3DCheckCalc`要求時だけpost計算する。
+- processとmanagerのcProfile開始・終了失敗をwarningとして扱い、校正起動・終了処理を継続する。managerの`ser`/`shared_errors`二重引数は既存API互換のため本単位では維持し、重複importだけ除去した。
+- `_finalize_calib2d3d_fileend_autoexit()`は下位`calibration2d3d_class.app_loopmain()`の現行確定処理と重複するため移植しない。Vendorの`_unsubscribe()`、shutdown flag、top-level `allow_exit()`による自動終了契約を維持する。
+- 新規上位エラー処理3件、校正FILE_IO・自動終了を含む32件、calibcheckを含む65件がpassした。対象のPython compile、重大Ruff、VS Code診断、`git diff --check`も成功した。固定Vendor/SHIとのthree-way HTML 2件を再生成し、ユーザー確認前のため未レビューdirectoryに保持する。
+
 ## 10. 次のCopilotへの開始指示
 
 次回は、いきなり全体差分を再探索しない。次の順で開始する。
