@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
@@ -16,8 +16,16 @@ from argus_synchro.config.app_config import AppConfig
 from argus_synchro.config.app_config_calibration import AppConfigCalibration
 
 
-def _read_mat4_csv(path: str) -> np.ndarray:
-    T = pd.read_csv(path, header=None).values
+def _read_mat4_csv(
+    path: str,
+    file_io_error_reporter: Callable[[str, str, Exception], None] | None = None,
+) -> np.ndarray:
+    try:
+        T = pd.read_csv(path, header=None).values
+    except (OSError, UnicodeError, pd.errors.EmptyDataError, pd.errors.ParserError) as error:
+        if file_io_error_reporter is not None:
+            file_io_error_reporter(str(path), "read 3D-3D matrix CSV", error)
+        raise
     if T.shape != (4, 4):
         raise ValueError(f"{path}: 4x4行列が必要ですが shape={T.shape}")
     return T.astype(float, copy=False)
@@ -53,12 +61,16 @@ def _euler_zyx_from_R(R: np.ndarray) -> tuple[float, float, float]:
     return yaw, pitch, roll
 
 
-def csv_to_make_T_args(csv_path: str, order: str = "ZYX"):
+def csv_to_make_T_args(
+    csv_path: str,
+    order: str = "ZYX",
+    file_io_error_reporter: Callable[[str, str, Exception], None] | None = None,
+):
     """
     4x4 CSVから make_T_from_deg に渡す引数一式を抽出して返す。
     戻り値: (tx,ty,tz, yaw_deg, pitch_deg, roll_deg, order)
     """
-    T = _read_mat4_csv(csv_path)
+    T = _read_mat4_csv(csv_path, file_io_error_reporter)
     tx, ty, tz = T[0, 3], T[1, 3], T[2, 3]
     R = T[:3, :3]
     yaw, pitch, roll = _euler_zyx_from_R(R)
@@ -89,7 +101,10 @@ def _pose_from_dict(d: dict[str, Any]) -> Pose:
     )
 
 
-def load_crane_profiles(json_path: str | Path) -> dict[str, dict[str, Any]]:
+def load_crane_profiles(
+    json_path: str | Path,
+    file_io_error_reporter: Callable[[str, str, Exception], None] | None = None,
+) -> dict[str, dict[str, Any]]:
     """
     Jsonファイルを読み込み、LiDAR0/LiDAR1をPoseオブジェクトに復元した辞書を返す
 
@@ -98,26 +113,41 @@ def load_crane_profiles(json_path: str | Path) -> dict[str, dict[str, Any]]:
       profiles["900HSC"]["LiDAR1"]もPoseインスタンス
     """
     json_path = Path(json_path)
-    with json_path.open("r", encoding="utf-8") as f:
-        raw = json.load(f)
+    try:
+        with json_path.open("r", encoding="utf-8") as file:
+            raw = json.load(file)
+    except (OSError, UnicodeError, json.JSONDecodeError, KeyError, TypeError) as error:
+        if file_io_error_reporter is not None:
+            file_io_error_reporter(
+                str(json_path), "read 3D-3D crane profile JSON", error
+            )
+        raise
 
-    profiles: dict[str, dict[str, Any]] = {}
-
-    for crane_name, cfg in raw.items():
-        cfg_copy = dict(cfg)
-
-        # LiDAR0,LiDAR1をPose化する(あれば)
-        if "LiDAR0" in cfg_copy and cfg_copy["LiDAR0"] is not None:
-            cfg_copy["LiDAR0"] = _pose_from_dict(cfg_copy["LiDAR0"])
-        if "LiDAR1" in cfg_copy and cfg_copy["LiDAR1"] is not None:
-            cfg_copy["LiDAR1"] = _pose_from_dict(cfg_copy["LiDAR1"])
-
-        profiles[crane_name.upper()] = cfg_copy
+    try:
+        profiles: dict[str, dict[str, Any]] = {}
+        for crane_name, cfg in raw.items():
+            cfg_copy = dict(cfg)
+            # LiDAR0,LiDAR1をPose化する(あれば)
+            if "LiDAR0" in cfg_copy and cfg_copy["LiDAR0"] is not None:
+                cfg_copy["LiDAR0"] = _pose_from_dict(cfg_copy["LiDAR0"])
+            if "LiDAR1" in cfg_copy and cfg_copy["LiDAR1"] is not None:
+                cfg_copy["LiDAR1"] = _pose_from_dict(cfg_copy["LiDAR1"])
+            profiles[crane_name.upper()] = cfg_copy
+    except (KeyError, TypeError, AttributeError) as error:
+        if file_io_error_reporter is not None:
+            file_io_error_reporter(
+                str(json_path), "interpret 3D-3D crane profile JSON", error
+            )
+        raise
 
     return profiles
 
 
-def get_profile(crane: str, profile_path: Path) -> dict[str, Any]:
+def get_profile(
+    crane: str,
+    profile_path: Path,
+    file_io_error_reporter: Callable[[str, str, Exception], None] | None = None,
+) -> dict[str, Any]:
     """
     クレーン名に対応するプロファイル辞書を返す
     例:
@@ -127,7 +157,9 @@ def get_profile(crane: str, profile_path: Path) -> dict[str, Any]:
     """
 
     # TODO profiles.jsonはsettings.iniからPath指定する
-    _CRANE_PROFILES: dict[str, dict[str, Any]] = load_crane_profiles(profile_path)
+    _CRANE_PROFILES: dict[str, dict[str, Any]] = load_crane_profiles(
+        profile_path, file_io_error_reporter
+    )
     k = crane.upper()
     if k not in _CRANE_PROFILES:
         raise ValueError(f"Unknown crane: {crane}. Available: {list(_CRANE_PROFILES)}")
@@ -204,10 +236,19 @@ def _is_radian(a: np.ndarray) -> bool:
 
 
 def _read_angles_deg(
-    csv_path: str | Path, az_col: str | None, el_col: str | None, limit: int
+    csv_path: str | Path,
+    az_col: str | None,
+    el_col: str | None,
+    limit: int,
+    file_io_error_reporter: Callable[[str, str, Exception], None] | None = None,
 ):
     csv_path = Path(csv_path)
-    df = pd.read_csv(csv_path, nrows=limit)
+    try:
+        df = pd.read_csv(csv_path, nrows=limit)
+    except (OSError, UnicodeError, pd.errors.EmptyDataError, pd.errors.ParserError) as error:
+        if file_io_error_reporter is not None:
+            file_io_error_reporter(str(csv_path), "read 3D-3D angle CSV", error)
+        raise
     az = df["Az"].to_numpy(float)
     el = df["El"].to_numpy(float)
     az_deg = np.rad2deg(az) if _is_radian(az) else az
@@ -221,8 +262,11 @@ def make_rays_mid360_from_csv(
     el_col=None,
     limit: int = 20000,
     el_offset: int = 90,
+    file_io_error_reporter: Callable[[str, str, Exception], None] | None = None,
 ) -> np.ndarray:
-    az_deg, el_deg = _read_angles_deg(csv_path, az_col, el_col, limit)
+    az_deg, el_deg = _read_angles_deg(
+        csv_path, az_col, el_col, limit, file_io_error_reporter
+    )
     el_deg = (-1.0 * el_deg) + el_offset
     az = np.deg2rad(az_deg)
     el = np.deg2rad(el_deg)
@@ -574,10 +618,12 @@ def simulate_crane_pts(
     angle_data: float,
     app_config: AppConfig,
     calib_app_config: AppConfigCalibration,
+    file_io_error_reporter: Callable[[str, str, Exception], None] | None = None,
 ):
     prof = get_profile(
         crane=app_config.UI_IF.crane_model,
         profile_path=calib_app_config.Calib3d3d_CalibParams.crane_profile_path,
+        file_io_error_reporter=file_io_error_reporter,
     )
     ground_z = prof["ground_z"]
 
@@ -604,7 +650,9 @@ def simulate_crane_pts(
     lidar_Ts: list[np.ndarray] = []
 
     for i in range(len(lidar_pos)):
-        tx, ty, tz, yaw, pitch, roll, order = csv_to_make_T_args(lidar_pos[i])
+        tx, ty, tz, yaw, pitch, roll, order = csv_to_make_T_args(
+            lidar_pos[i], file_io_error_reporter=file_io_error_reporter
+        )
 
         T = make_T_from_deg(
             tx,
@@ -645,6 +693,7 @@ def simulate_crane_pts(
             calib_app_config.Calib3d3d_SimParams.mid360_laser_pattern_path,
             limit=800000,  # 読み込み行数の最大値
             el_offset=90,
+            file_io_error_reporter=file_io_error_reporter,
         )
 
     # Colors（センサごとに色スキームをローテーション）

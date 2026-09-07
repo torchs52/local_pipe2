@@ -1,4 +1,5 @@
 import json
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -29,10 +30,12 @@ class calc_progress_class:
         camerasel: int,
         verbose: bool,
         app_logger_factory: AppLoggerFactory,
+        file_io_error_reporter: Callable[[str, str, Exception], None] | None = None,
     ):
         self._app_logger_factory = app_logger_factory
         self._logger: AppLogger = app_logger_factory.register_from_type(self.__class__)
         self.verbose: bool = verbose
+        self.file_io_error_reporter = file_io_error_reporter
         self.calib2d3d_CalcProgress: Calib2d3dConf.CalcProgressConf = (
             calib2d3d_CalcProgress
         )
@@ -63,8 +66,17 @@ class calc_progress_class:
         calib2d3d_areadefinition_filepath: str = (
             self.calib2d3d_CalcProgress.areadefinition_filepathes[camerasel]
         )
-        with open(calib2d3d_areadefinition_filepath) as rf_json:
-            setting_json = json.load(rf_json)
+        try:
+            with open(calib2d3d_areadefinition_filepath) as rf_json:
+                setting_json = json.load(rf_json)
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            if self.file_io_error_reporter is not None:
+                self.file_io_error_reporter(
+                    calib2d3d_areadefinition_filepath,
+                    "read 2D-3D area definition JSON",
+                    error,
+                )
+            raise
 
         grid_y_info = setting_json["grid_y_info"]
         grid_x_info = setting_json["grid_x_info"]

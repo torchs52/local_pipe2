@@ -44,6 +44,23 @@ def _controller(camera_count: int = 1) -> calibcheck2d3d:
     ]
     controller.EVAL_FRAME_STRIDE = 1
     controller.USE_LEGACY_LIKE_METRIC = True
+    controller.VIRTUAL_BBOX_CANDIDATE_NAMES = (
+        "real",
+        "x_minus",
+        "x_plus",
+        "y_minus",
+        "y_plus",
+    )
+    controller.DEBUG_CALIBCHECK_ENABLED = False
+    controller.DEBUG_EVAL_TRACE_ENABLED = False
+    controller.DEBUG_EVAL_TRACE_ALL_FRAMES = False
+    controller.DEBUG_EVAL_TRACE_RANGE_START = 0
+    controller.DEBUG_EVAL_TRACE_RANGE_END = -1
+    controller.DEBUG_EVAL_TRACE_TARGET_FRAMES = set()
+    controller._debug_video_paths = []
+    controller._debug_eval_info = {}
+    controller._virtual_bbox_debug_counts = []
+    controller._evaluation_metric_debug = []
     return controller
 
 
@@ -124,6 +141,27 @@ def test_evaluate_2d3d_scores_common_overlapping_frame() -> None:
     assert scores == [1.0]
     assert reasons == [0]
     assert controller.judge_calibration_result(scores, threshold=0.5) == [True]
+
+
+def test_evaluate_2d3d_records_shi_debug_metrics_when_enabled() -> None:
+    controller = _controller()
+    controller.DEBUG_CALIBCHECK_ENABLED = True
+    controller.DEBUG_EVAL_TRACE_ENABLED = True
+    controller.DEBUG_EVAL_TRACE_ALL_FRAMES = True
+    controller.evaluate_bbox_overlap_scenedesc = lambda *_args: 1.0
+
+    scores, reasons = controller.evaluate_2d3d(
+        _tracking_3d(0, (-1.0, -1.0, 1.0, 1.0)),
+        [_tracking_2d(0, (30.0, 30.0, 70.0, 70.0))],
+        zvalues=(5.0, 10.0),
+    )
+
+    assert scores == [1.0]
+    assert reasons == [0]
+    assert controller.evaluation_metric_debug[0]["selected_score"] == 1.0
+    assert controller._debug_eval_info["eval_trace_by_camera"][0][0][0][
+        "stage"
+    ] == "project_3d_to_2d"
 
 
 def test_evaluate_2d3d_reports_reason_11_without_valid_score() -> None:

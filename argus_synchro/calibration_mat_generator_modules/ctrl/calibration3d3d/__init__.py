@@ -19,7 +19,10 @@ from argus_synchro.calibration_mat_generator_modules.ctrl.data_capture import (
 from argus_synchro.calibration_mat_generator_modules.ctrl.data_capture.datacapture_local import (
     datacapture_class,
 )
-from argus_synchro.calibration_mat_generator_modules.facade import CalibrationUIGodot
+from argus_synchro.calibration_mat_generator_modules.facade import (
+    CalibrationCommonStatus,
+    CalibrationUIGodot,
+)
 from argus_synchro.common.app_logger import AppLogger, AppLoggerFactory
 from argus_synchro.config.app_config import AppConfig
 from argus_synchro.config.app_config_calibration import AppConfigCalibration
@@ -29,7 +32,11 @@ from argus_synchro.message.calib_fifo_message import FIFOData
 # from interface.sourse2target_point import NormalColor, PaintColorInterface, UnifromColor
 # from lidar_registration.icp import registrateTwoPClouds
 from argus_synchro.shared_app_config import SharedAppConfig
-from argus_synchro.shared_errors import SharedErrors, StateErrorDIndex
+from argus_synchro.shared_errors import (
+    ActionErrorIndex,
+    SharedErrors,
+    StateErrorDIndex,
+)
 from argus_synchro.shared_excepts import SharedExcepts
 
 _logger: AppLogger = AppLoggerFactory.from_name("calibration3d3d_class")
@@ -81,6 +88,23 @@ class calibration3d3d_class:
     def _close(self) -> None:
         pass
 
+    def _report_file_io_error(
+        self, path: str, operation: str, error: Exception
+    ) -> None:
+        file_io_error = self._ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR]
+        result = file_io_error.errors_diagnosis(True)
+        file_io_error.log_output(
+            *result,
+            StateErrorDIndex.FILE_IO_ERROR,
+            path,
+            operation,
+            f"{type(error).__name__}: {error}",
+        )
+
+    @staticmethod
+    def _set_error_state(monitor: CalibrationUIGodot) -> None:
+        monitor.set_errors_calibcommon(2)
+
     def pre_app_loopmain(
         self,
         monitor: CalibrationUIGodot,
@@ -90,7 +114,7 @@ class calibration3d3d_class:
     ):
         self._logger.info("app_loopmain running")
         # UI向けmmap 稼働状態=1 (状態B1, B2)
-        monitor.set_status_calibcommon(1)
+        monitor.set_status_calibcommon(CalibrationCommonStatus.RUNNING)
         monitor.set_dummydata(enable_systemerrorflag=True, enable_errorflag=True)
         monitor.transmit_setdata(sec, None, is_firstframe=True, mmap_erase_rest=True)
 
@@ -121,7 +145,7 @@ class calibration3d3d_class:
 
     def input_post_data_diagnosis(
         self,
-        lidar_datalist: list[tuple[NDArray[np.float32], int, float]],
+        lidar_datalist: list[tuple[NDArray[np.float64], int, float]],
         can_data: tuple[int, float],
     ) -> bool:
         invalid_data_input = self._ser.state_errors_D[
@@ -151,7 +175,7 @@ class calibration3d3d_class:
 
     def input_capture_data_diagnosis(
         self,
-        lidar_datalist: list[tuple[NDArray[np.uint8], int, float]],
+        lidar_datalist: list[tuple[NDArray[np.float64], int, float]],
     ) -> bool:
         invalid_data_input = self._ser.state_errors_D[
             StateErrorDIndex.INVALID_DATA_INPUT
@@ -187,6 +211,7 @@ class calibration3d3d_class:
     ):
         camera_datalist, lidar_datalist, can_data, framecounter = readresult_pop
         if self.input_post_data_diagnosis(lidar_datalist, can_data):
+            self._set_error_state(monitor)
             return False
         # 撮ってきた点群を蓄積
         accum_points = []
@@ -198,9 +223,10 @@ class calibration3d3d_class:
                 self._logger.info(f"lidar {lid_ix} : accum_points {pts.shape}")
 
         angle_data = can_data[0]  # CAN入力実装済み
+        monitor.set_yaw(angle_data)
 
         # UI向けmmap 稼働状態=2 #CalibStatus:B3
-        monitor.set_status_calibcommon(2)
+        monitor.set_status_calibcommon(CalibrationCommonStatus.CALCULATING)
         monitor.set_dummydata(enable_systemerrorflag=True, enable_errorflag=True)
         monitor.transmit_setdata(sec, None)
 
@@ -212,13 +238,15 @@ class calibration3d3d_class:
             o3d.visualization.draw_geometries([np_to_pcd(pts0), np_to_pcd(pts1), coord])
 
         # T_i2C =
-        self.calib3d3d_once(
+        result_is_invalid = self.calib3d3d_once(
             lidar_pts=accum_points,
             angle_data=angle_data,
             resultmat_paths=resultmat_paths,
             app_config=self.app_config,
             app_config_calib=app_config_calib,
         )
+        if result_is_invalid:
+            self._set_error_state(monitor)
 
         self.debug_index += 1
 
@@ -232,7 +260,7 @@ class calibration3d3d_class:
         sac: SharedAppConfig,
         monitor: CalibrationUIGodot,
     ) -> int:
-        monitor.set_status_calibcommon(3)
+        monitor.set_status_calibcommon(CalibrationCommonStatus.COMPLETED)
         monitor.set_dummydata(enable_systemerrorflag=True, enable_errorflag=True)
         monitor.transmit_setdata(sec=sec, ref_t=None)
 
@@ -254,7 +282,7 @@ class calibration3d3d_class:
         sac: SharedAppConfig,
         monitor: CalibrationUIGodot,
     ) -> None:
-        monitor.set_status_calibcommon(0)
+        monitor.set_status_calibcommon(CalibrationCommonStatus.INACTIVE)
         monitor.set_dummydata(enable_systemerrorflag=True, enable_errorflag=True)
         monitor.transmit_setdata(sec=sec, ref_t=None)
 
@@ -283,10 +311,12 @@ class calibration3d3d_class:
         self._logger.info(f"capture {self.validcount}")
 
         if readresult_pop is None:
+            self._set_error_state(monitor)
             return False
 
         camera_datalist, lidar_datalist, can_data, framecounter = readresult_pop
         if self.input_capture_data_diagnosis(lidar_datalist):
+            self._set_error_state(monitor)
             return False
         # points_ts = 0
         both_valid = True
@@ -324,7 +354,7 @@ class calibration3d3d_class:
         resultmat_paths: list[str],
         app_config: AppConfig,
         app_config_calib: AppConfigCalibration,
-    ):  # -> List[ndarray[Any, Any]]:# -> List[ndarray[Any, Any]]:
+    ) -> bool:
         lidars_points_list = [lid_pts for lid_pts in lidar_pts]
         lidar_raw_pcd_list = [np_to_pcd(lid_pts[:, :3]) for lid_pts in lidar_pts]
         self._logger.info("entering calib3d3d_once")
@@ -336,6 +366,23 @@ class calibration3d3d_class:
             savepaths=resultmat_paths,
             app_config=app_config,
             calib_app_config=app_config_calib,
+            file_io_error_reporter=self._report_file_io_error,
         )
+        diagnosis = self._ser.action_errors_A_C[
+            ActionErrorIndex.SENSOR_CALIB_DATA_INVALID
+        ]
+        validation_issues = diagnosis.diagnose_matrices(
+            T_i2C,
+            ActionErrorIndex.SENSOR_CALIB_DATA_INVALID,
+            matrix_paths=resultmat_paths,
+        )
+        result_is_invalid = bool(validation_issues)
+        if result_is_invalid:
+            self._logger.error(
+                "3D-3D calibration result validation failed: "
+                f"issues={len(validation_issues)} first={validation_issues[0]}"
+            )
+        else:
+            self._logger.info("3D-3D calibration result validation succeeded")
         self._logger.info("end calib3d3d_once")
-        return T_i2C
+        return result_is_invalid

@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import Optional
 
 import numpy as np
@@ -18,6 +19,7 @@ from argus_synchro.calibration_mat_generator_modules.utils.debugdata_store impor
 from argus_synchro.common.app_logger import AppLoggerFactory
 from argus_synchro.config.app_config_calibration import AppConfigCalibration
 from argus_synchro.shared_app_config import SharedAppConfig
+from argus_synchro.shared_errors import SharedErrors
 
 
 class track_main_class:
@@ -28,6 +30,8 @@ class track_main_class:
         Mc: NDArray[np.float64],
         camera_index: int,
         app_logger_factory: AppLoggerFactory,
+        file_io_error_reporter: Callable[[str, str, Exception], None] | None = None,
+        shared_errors: SharedErrors | None = None,
     ) -> None:
         self._logger: AppLogger = app_logger_factory.register_from_type(self.__class__)
         self.app_config_calib = app_config_calib
@@ -39,6 +43,8 @@ class track_main_class:
             app_config_calib=app_config_calib,
             camera_index=camera_index,
             app_logger_factory=app_logger_factory,
+            file_io_error_reporter=file_io_error_reporter,
+            shared_errors=shared_errors,
         )
         self.detect3d = detect3d_class(
             app_config_calib=app_config_calib,

@@ -1,4 +1,5 @@
 import copy
+from collections.abc import Callable
 
 import numpy as np
 from numpy.typing import NDArray
@@ -26,6 +27,7 @@ class bbox2D_postprocess:
         Mc: NDArray[np.float64],
         camera_index: int,
         app_logger_factory: AppLoggerFactory,
+        file_io_error_reporter: Callable[[str, str, Exception], None] | None = None,
     ) -> None:
         self.bbsf = bbox2D_shapefilter(
             Mc=Mc, app_config_calib=app_config_calib, camera_index=camera_index
@@ -34,6 +36,7 @@ class bbox2D_postprocess:
             app_config_calib=app_config_calib,
             camera_index=camera_index,
             app_logger_factory=app_logger_factory,
+            file_io_error_reporter=file_io_error_reporter,
         )
         self.bbef = bbox2D_edgefilter(
             app_config_calib=app_config_calib, camera_index=camera_index

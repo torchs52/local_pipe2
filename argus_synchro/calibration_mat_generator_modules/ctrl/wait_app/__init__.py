@@ -314,6 +314,13 @@ class wait_app:
 
             # cv2.waitKey(1)
 
+        monitor.set_dummydata(
+            enable_systemerrorflag=True,
+            enable_errorflag=True,
+            enable_yawangle=True,
+            overwrite_checkresult=True,
+            overwrite_calibresult=True,
+        )
         monitor.transmit_setdata(sec=sec, ref_t=self.debug_index)
 
         self.debug_index += 1

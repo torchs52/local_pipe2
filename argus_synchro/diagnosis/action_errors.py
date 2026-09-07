@@ -12,17 +12,20 @@ from configparser import (
 )
 from typing import cast
 
+import numpy as np
+from numpy.typing import NDArray
+
 import argus_synchro.diagnosis.error_config as err_conf
 from argus_synchro.config.app_config import CalibrationConf
+from argus_synchro.diagnosis.calib_matrix_validator import (
+    LidarCalibValidationIssue,
+    LidarCalibValidator,
+)
 from argus_synchro.diagnosis.error_diagnosis import (
     ActionErrorDiagnosisA,
     ActionErrorDiagnosisB,
     ActionErrorDiagnosisC,
     DiagnosisRuntimePolicy,
-)
-from argus_synchro.diagnosis.lidar_calib_validator import (
-    LidarCalibValidationIssue,
-    LidarCalibValidator,
 )
 from argus_synchro.shared_excepts import SharedLidarShiftMonitorExcept
 
@@ -195,21 +198,26 @@ class CraneModelFileMissingDiagnosis(ActionErrorDiagnosisA):
 
     def __init__(self) -> None:
         super().__init__()
+        self.param: err_conf.CraneModelFileMissingParameters
+
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.crane_model_file_missing
+        self.is_enabled = self.param.is_enabled
 
     def excepts_diagnosis(self, e: Exception) -> bool:
         is_target = isinstance(
             e,
             (
-                FileNotFoundError,
-                PermissionError,
-                IsADirectoryError,
-                NotADirectoryError,
-                OSError,
-                UnicodeDecodeError,
-                json.JSONDecodeError,
-                ValueError,
-                KeyError,
-                RuntimeError,
+                FileNotFoundError,  # JSON/CSV ファイルが存在しない
+                PermissionError,  # 読み取り権限なし
+                IsADirectoryError,  # パス先がディレクトリ
+                NotADirectoryError,  # パスの一部がディレクトリでない
+                OSError,  # デバイス・I/O エラー
+                UnicodeDecodeError,  # エンコーディング不正
+                json.JSONDecodeError,  # JSON/JSONC 構文破損
+                ValueError,  # 必須フィールド欠落・型不正
+                KeyError,  # 必須キーが存在しない
+                RuntimeError,  # C++ 側の CSV 読み込み失敗
             ),
         )
         if is_target:
@@ -366,6 +374,33 @@ class SensorCalibDataInvalidDiagnosis(ActionErrorDiagnosisB):
             self.increment_counter()
         return issues
 
+    def validate_matrices(
+        self,
+        matrices: list[NDArray[np.float64]] | NDArray[np.float64],
+        matrix_paths: list[str] | None = None,
+    ) -> tuple[LidarCalibValidationIssue, ...]:
+        if not self.is_enabled:
+            return ()
+        issues = tuple(
+            LidarCalibValidator(self.param).validate_matrices(
+                matrices,
+                matrix_paths=matrix_paths,
+            )
+        )
+        if issues:
+            self.increment_counter()
+        return issues
+
+    def diagnose_matrices(
+        self,
+        matrices: list[NDArray[np.float64]] | NDArray[np.float64],
+        err_idx: int,
+        matrix_paths: list[str] | None = None,
+    ) -> tuple[LidarCalibValidationIssue, ...]:
+        issues = self.validate_matrices(matrices, matrix_paths=matrix_paths)
+        self.log_output(bool(issues), False, err_idx, issues)
+        return issues
+
     def excepts_diagnosis(self, e: Exception) -> bool:
         is_target = isinstance(e, (OSError, UnicodeError, ValueError))
         if is_target:
@@ -426,7 +461,15 @@ class MmapReadWriteErrorDiagnosis(ActionErrorDiagnosisB):
         super().__init__()
 
     def excepts_diagnosis(self, e: Exception) -> bool:
-        is_target = isinstance(e, (OSError, ValueError, BufferError, RuntimeError))
+        is_target = isinstance(
+            e,
+            (
+                OSError,  # ファイルシステム障害・ディスク容量不足 (mmap.error を含む)
+                ValueError,  # mmap クローズ/無効状態でのアクセス・範囲外
+                BufferError,  # バッファ競合
+                RuntimeError,  # C++ 側 (ErrorMMapWriter) の内部エラー
+            ),
+        )
         if is_target:
             self.increment_counter()
         return is_target
@@ -521,13 +564,13 @@ class AiModelLoadFailed(ActionErrorDiagnosisB):
         is_target = isinstance(
             e,
             (
-                FileNotFoundError,
-                PermissionError,
-                OSError,
-                RuntimeError,
-                ValueError,
-                ImportError,
-                ModuleNotFoundError,
+                FileNotFoundError,  # パスが存在しない。
+                PermissionError,  # 読み取り権限が無い。
+                OSError,  # デバイス・I/O エラー、パス長、ファイルシステム不調など
+                RuntimeError,  # 実行時エラー
+                ValueError,  # 値エラー
+                ImportError,  # インポートエラー
+                ModuleNotFoundError,  # モジュールが見つからない
             ),
         )
         if is_target:
@@ -611,7 +654,12 @@ class LogFileIoErrorDiagnosis(ActionErrorDiagnosisB):
         return True
 
     def excepts_diagnosis(self, e: Exception) -> bool:
-        if isinstance(e, OSError):
+        if isinstance(
+            e,
+            (
+                OSError,  # ディスク容量不足・権限エラー・デバイスI/Oエラー (PermissionError/FileNotFoundError含む)
+            ),
+        ):
             if self._should_increment_counter(e):
                 self.increment_counter()
             return True

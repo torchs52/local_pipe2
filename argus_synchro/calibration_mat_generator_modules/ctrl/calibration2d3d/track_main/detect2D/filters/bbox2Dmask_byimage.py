@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 import cv2
 import numpy as np
 from numpy.typing import NDArray
@@ -79,6 +81,7 @@ class bbox2Dmask_byimage:
         app_config_calib: AppConfigCalibration,
         camera_index: int,
         app_logger_factory: AppLoggerFactory,
+        file_io_error_reporter: Callable[[str, str, Exception], None] | None = None,
     ) -> None:
         self._logger: AppLogger = app_logger_factory.register_from_type(self.__class__)
         filterimgpath = app_config_calib.calib2d3d.Proc2d.camera_mask_images[
@@ -90,9 +93,15 @@ class bbox2Dmask_byimage:
         self.image_h = app_config_calib.dataCapture.Camera.sys_height
         self.image_w = app_config_calib.dataCapture.Camera.sys_width
 
-        self.img = cv2.resize(
-            cv2.imread(filename=filterimgpath), dsize=(self.image_w, self.image_h)
-        )
+        img = cv2.imread(filename=filterimgpath)
+        if img is None:
+            error = OSError(f"image mask could not be loaded: {filterimgpath}")
+            if file_io_error_reporter is not None:
+                file_io_error_reporter(
+                    filterimgpath, "read 2D-3D bbox mask image", error
+                )
+            raise error
+        self.img = cv2.resize(img, dsize=(self.image_w, self.image_h))
 
         self.verbose = not app_config_calib.default.print_disabled
 

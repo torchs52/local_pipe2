@@ -7,6 +7,7 @@ import pickle
 import signal
 import time
 import traceback
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Optional
 
@@ -39,13 +40,22 @@ from argus_synchro.calibration_mat_generator_modules.ctrl.data_capture import (
 from argus_synchro.calibration_mat_generator_modules.ctrl.data_capture.datacapture_local import (
     datacapture_class,
 )
-from argus_synchro.calibration_mat_generator_modules.facade import CalibrationUIGodot
+from argus_synchro.calibration_mat_generator_modules.facade import (
+    CalibrationCommonStatus,
+    CalibrationUIGodot,
+)
 from argus_synchro.calibration_mat_generator_modules.utils.debugdata_store import (
     debug_config,
     debug_store,
 )
 from argus_synchro.common.app_logger import AppLogger, AppLoggerFactory
 from argus_synchro.config.app_config_calibration import AppConfigCalibration
+from argus_synchro.diagnosis.calib2d3d_result_diagnosis import (
+    Calib2d3dErrorCommon,
+    Calib2d3dResultDiagnosis,
+    CameraCalibrationStatus,
+    CameraCalibrationStatusDiagnosis,
+)
 from argus_synchro.diagnosis.error_diagnosis import ResultDiagnosis
 from argus_synchro.message.calib_fifo_message import FIFOData
 from argus_synchro.shared_app_config import SharedAppConfig
@@ -57,6 +67,9 @@ _extract_ordered_data_logger: AppLogger = AppLoggerFactory.from_name(
 )
 _logger: AppLogger = AppLoggerFactory.from_name("calibration2d3d_class")
 
+MIN_FINAL_3DPOINTS_SIZE = 100
+PROGRESS_RECALC_THRESHOLD = 0.5
+
 
 def log_register(app_logger_factory: AppLoggerFactory) -> None:
     app_logger_factory.append_logger(_logger)
@@ -65,6 +78,19 @@ def log_register(app_logger_factory: AppLoggerFactory) -> None:
 
 
 class calibration2d3d_class:
+    def _report_file_io_error_impl(
+        self, path: str, operation: str, error: Exception
+    ) -> None:
+        file_io_error = self._ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR]
+        result = file_io_error.errors_diagnosis(True)
+        file_io_error.log_output(
+            *result,
+            StateErrorDIndex.FILE_IO_ERROR,
+            path,
+            operation,
+            f"{type(error).__name__}: {error}",
+        )
+
     def __init__(
         self,
         app_config_calib: AppConfigCalibration,
@@ -85,6 +111,11 @@ class calibration2d3d_class:
 
         self.app_config_calib: AppConfigCalibration = app_config_calib
         self._ser: SharedErrors = shared_errors
+        self._report_file_io_error: Callable[[str, str, Exception], None] = (
+            self._report_file_io_error_impl
+        )
+        self._result_diagnosis = Calib2d3dResultDiagnosis()
+        self._camera_calibration_status_diagnosis = CameraCalibrationStatusDiagnosis()
 
         self.read_settingfile()
 
@@ -107,18 +138,22 @@ class calibration2d3d_class:
             Mc=self.proccap.get_cameramatrix(),
             camera_index=camerasel,
             app_logger_factory=app_logger_factory,
+            file_io_error_reporter=self._report_file_io_error,
+            shared_errors=self._ser,
         )
         self.proccorr = correspondence_class_loader(
             app_config_calib=app_config_calib,
             cameramatrix=self.proccap.get_cameramatrix(),
             camera_index=camerasel,
             app_logger_factory=app_logger_factory,
+            file_io_error_reporter=self._report_file_io_error,
         )
         self.procprog = calc_progress_class(
             calib2d3d_CalcProgress=app_config_calib.calib2d3d.CalcProgress,
             camerasel=camerasel,
             verbose=self.verbose,
             app_logger_factory=app_logger_factory,
+            file_io_error_reporter=self._report_file_io_error,
         )
         self.prog_settings = self.procprog.read_settings(camerasel)
         self.procaccr = calc_accuracy_class()
@@ -129,6 +164,10 @@ class calibration2d3d_class:
             None  # dataproc関数やfacadeなどで使用中。できれば正しいフレームインデックスにしたいが設計を見直す必要あり
         )
         self.monitor_data = {}
+        self.finalized_fileend_autoexit = False
+        self.current_progress_score = 0.0
+        self.progress_mem = 0.0
+        self.datasource_endflag = False
 
         self.lastts2d: int | None = None
         self.lastts3d: int | None = None
@@ -182,6 +221,26 @@ class calibration2d3d_class:
                 camerasel
             ]
         )
+        self.center3d_apply_zratio_x_min = (
+            self.app_config_calib.calib2d3d.CalcCorrespondence.bbox_center3d_z_ratio_area_xmin[
+                camerasel
+            ]
+        )
+        self.center3d_apply_zratio_x_max = (
+            self.app_config_calib.calib2d3d.CalcCorrespondence.bbox_center3d_z_ratio_area_xmax[
+                camerasel
+            ]
+        )
+        self.center3d_apply_zratio_y_min = (
+            self.app_config_calib.calib2d3d.CalcCorrespondence.bbox_center3d_z_ratio_area_ymin[
+                camerasel
+            ]
+        )
+        self.center3d_apply_zratio_y_max = (
+            self.app_config_calib.calib2d3d.CalcCorrespondence.bbox_center3d_z_ratio_area_ymax[
+                camerasel
+            ]
+        )
 
     def __delattr__(self, name: str) -> None:
         self._close()
@@ -215,13 +274,13 @@ class calibration2d3d_class:
         _logger.info(f"entering app_loopmain, arg: {resultmat_path = }")
 
         self.loopcount = 0
-        self.current_progress_score = 0
+        self.current_progress_score = 0.0
         self.debug_processingtime_record: list[float] = []
         self.starttime: datetime.datetime = datetime.datetime.now()
         self.datasource_endflag = False
 
         # CalibStatus:C1/C2 もう一度送信
-        monitor.set_status_calibcommon(1)
+        monitor.set_status_calibcommon(CalibrationCommonStatus.RUNNING)
         monitor.set_dummydata(
             enable_systemerrorflag=True,
             enable_errorflag=True,
@@ -232,11 +291,94 @@ class calibration2d3d_class:
 
         self.final_2dpoints = None
         self.final_3dpoints = None
+        self.finalized_fileend_autoexit = False
 
         self.camera_id: int = sac.read().CalibMode.cameraID
 
         _logger.info("clear all data in queues")
         self.progress_mem: float = 0.0
+
+    def finalize_fileend_autoexit(
+        self,
+        monitor: CalibrationUIGodot,
+        sec: SharedExcepts,
+        sac: SharedAppConfig,
+        resultmat_path: str,
+    ) -> bool:
+        del sac
+        if self.finalized_fileend_autoexit:
+            return True
+
+        self.datasource_endflag = True
+        self.finalized_fileend_autoexit = True
+        missing = []
+        if self.lastts2d is None:
+            missing.append("lastts2d")
+        if self.lastts3d is None:
+            missing.append("lastts3d")
+        if self.facade_index_offset is None:
+            missing.append("facade_index_offset")
+        if self.final_2dpoints is None or self.final_2dpoints.size == 0:
+            missing.append("final_2dpoints")
+        if (
+            self.final_3dpoints is None
+            or self.final_3dpoints.size <= MIN_FINAL_3DPOINTS_SIZE
+        ):
+            missing.append("final_3dpoints")
+        if missing:
+            _logger.error(
+                "Data source end, but calibration points are insufficient: "
+                f"missing={missing}, {self.lastts2d=}, {self.lastts3d=}, "
+                f"{self.current_progress_score=}, {self.progress_score=}",
+            )
+            monitor.set_errorcode_unexpected_exception(True)
+            return True
+
+        ref_t = self.lastts2d - self.facade_index_offset
+        _logger.info(
+            "Data source end: running calibration calculation before auto exit. "
+            f"{self.lastts2d=}, {self.lastts3d=}, "
+            f"{self.current_progress_score=}, {self.progress_score=}",
+        )
+        monitor.set_calibration_ready(1)
+        monitor.set_status_calibcommon(
+            CalibrationCommonStatus.CALCULATING
+        )  # CalibStatus:C4
+        monitor.set_dummydata(
+            enable_systemerrorflag=True,
+            enable_errorflag=True,
+            overwrite_calibresult=True,
+            enable_yawangle=True,
+        )
+        monitor.transmit_setdata(sec=sec, ref_t=ref_t)
+
+        transmat, accvalue = self.get_calibval(
+            recalc_bbox_index=(self.progress_mem < PROGRESS_RECALC_THRESHOLD),
+            frame_ix=self.lastts3d,
+        )
+        debug_store("transmat", transmat, self.lastts2d)
+        monitor.set_dummydata(
+            enable_systemerrorflag=True,
+            enable_errorflag=True,
+            overwrite_calibresult=True,
+            enable_yawangle=True,
+        )
+        monitor.transmit_setdata(sec=sec, ref_t=ref_t)
+        _logger.info(f"get_calibval: {transmat} accvalue: {accvalue}")
+
+        if not self.app_config_calib.calib2d3d.CalcAccuracy.check_enable:
+            _logger.info("** [CalcAccuracy]check_enable=False **")
+        _logger.info(
+            "** debug - calibration evaluation mode, Accuracy check disabled **"
+        )
+        Path(resultmat_path).parent.mkdir(parents=True, exist_ok=True)
+        np.savetxt(resultmat_path, transmat, delimiter=",")
+        _logger.info(
+            f"Accuracy Check OK ({accvalue}), result written: {resultmat_path} end"
+        )
+        monitor.set_camera_calibration_status(camera_id=self.camera_id, value=1)
+        self._update_errors_calibcommon(monitor)
+        return True
 
     def app_loopmain(
         self,
@@ -353,7 +495,8 @@ class calibration2d3d_class:
             return True
 
         corner2d, corner3d = self.get_corrpoints_fast(
-            recalc_bbox_index=(self.progress_mem < 0.5), frame_ix=self.lastts3d
+            recalc_bbox_index=(self.progress_mem < PROGRESS_RECALC_THRESHOLD),
+            frame_ix=self.lastts3d,
         )
 
         if self.app_config_calib.dataCapture.save_sensordata:
@@ -573,11 +716,21 @@ class calibration2d3d_class:
                         sec, self.lastts2d - self.facade_index_offset
                     )
 
+                    if debug_allow_calibcalc_flag:
+                        endflag = self.finalize_fileend_autoexit(
+                            monitor=monitor,
+                            sec=sec,
+                            sac=sac,
+                            resultmat_path=resultmat_path,
+                        )
+                        break
+
                     if (
                         sac.read().CalibMode.start2D3DCalibCalc
-                        or debug_allow_calibcalc_flag
                     ):  # TODO:　仮の値 ini閾値等に変える
-                        monitor.set_status_calibcommon(2)  # CalibStatus:C4
+                        monitor.set_status_calibcommon(
+                            CalibrationCommonStatus.CALCULATING
+                        )  # CalibStatus:C4
                         monitor.set_dummydata(
                             enable_systemerrorflag=True,
                             enable_errorflag=True,
@@ -589,7 +742,9 @@ class calibration2d3d_class:
                         )
 
                         transmat, accvalue = self.get_calibval(
-                            recalc_bbox_index=(self.progress_mem < 0.5),
+                            recalc_bbox_index=(
+                                self.progress_mem < PROGRESS_RECALC_THRESHOLD
+                            ),
                             frame_ix=self.lastts3d,
                         )
                         debug_store("transmat", transmat, self.lastts2d)
@@ -625,7 +780,6 @@ class calibration2d3d_class:
                                 )
                             if debug_allow_calibcalc_flag:
                                 _logger.info(
-                                    self,
                                     "** debug - calibration evaluation mode, Accuracy check disabled **",
                                 )
                             Path(resultmat_path).parent.mkdir(
@@ -637,7 +791,8 @@ class calibration2d3d_class:
                             )
                             endflag = True
                             monitor.set_camera_calibration_status(
-                                camera_id=self.camera_id, value=1
+                                camera_id=self.camera_id,
+                                value=int(CameraCalibrationStatus.CALIBRATION_SUCCEEDED),
                             )
 
                         else:
@@ -645,6 +800,13 @@ class calibration2d3d_class:
                                 f"accuracy check failed!! {self.current_progress_score = }",
                             )
                             monitor.set_errorcode_unexpected_exception(True)
+                            camera_status = (
+                                self._camera_calibration_status_diagnosis.diagnose()
+                            )
+                            monitor.set_camera_calibration_status(
+                                camera_id=self.camera_id,
+                                value=int(camera_status),
+                            )
                             if self.datasource_endflag:
                                 endflag = True
                         break
@@ -739,7 +901,7 @@ class calibration2d3d_class:
         sac: SharedAppConfig,
         monitor: CalibrationUIGodot,
     ) -> int:
-        monitor.set_status_calibcommon(3)
+        monitor.set_status_calibcommon(CalibrationCommonStatus.COMPLETED)
         monitor.set_dummydata(
             enable_systemerrorflag=True,
             enable_errorflag=True,
@@ -766,7 +928,7 @@ class calibration2d3d_class:
         sac: SharedAppConfig,
         monitor: CalibrationUIGodot,
     ) -> None:
-        monitor.set_status_calibcommon(0)
+        monitor.set_status_calibcommon(CalibrationCommonStatus.INACTIVE)
         monitor.set_dummydata(
             enable_systemerrorflag=True,
             enable_errorflag=True,
@@ -804,6 +966,10 @@ class calibration2d3d_class:
         )  # accumulate_lengthは奇数（中心が整数であること）
 
         self.pcd_indexoffset = (self.accumulate_length - 1) / 2
+
+    def _update_errors_calibcommon(self, monitor: CalibrationUIGodot) -> None:
+        status: Calib2d3dErrorCommon = self._result_diagnosis.diagnose()
+        monitor.set_errors_calibcommon(int(status))
 
     def get_last_singleyoloBB(self) -> list[NDArray[np.float64]] | None:
         return self.track_main.get_last_singleyoloBB()
@@ -983,6 +1149,7 @@ class calibration2d3d_class:
         )
         # for result_index in range(self.calc3dcount):
         if True:
+            # bbox中心対応点を取得
             corner2d_set_c, corner3d_set_c = self.track_main.extract_fromcenter(
                 recalc_bbox_index=recalc_bbox_index, frame_ix=frame_ix
             )
@@ -991,6 +1158,7 @@ class calibration2d3d_class:
             debug_store(key="corner2d_set_calib", value=corner2d_set_c)
             debug_store(key="corner3d_set_calib", value=corner3d_set_c)
 
+            # タイムスタンプ同期
             corner2d_center, corner3d_center = self._get_result_single(
                 corner2d_set=corner2d_set_c,
                 corner3d_set=corner3d_set_c,
@@ -998,6 +1166,7 @@ class calibration2d3d_class:
                 points_per_time=points_per_time,
             )
 
+            # 校正行列推定
             self.proccorr.estimate(
                 corner2d_center, corner3d_center, centerF_or_axisT=False
             )
@@ -1016,6 +1185,7 @@ class calibration2d3d_class:
                 value=self.proccorr.get_last_rtvec(),
             )
 
+            # 人の軸推定を使った、画像bboxから頭・足対応点推定
             corner2d_set_axis, corner3d_set_axis = self.track_main.extract_withaxis(
                 final_rtvec[0],
                 final_rtvec[1],
@@ -1027,6 +1197,7 @@ class calibration2d3d_class:
             debug_store(key="corner2d_set_head_and_foot", value=corner2d_set_axis)
             debug_store(key="corner3d_set_head_and_foot", value=corner3d_set_axis)
 
+            # タイムスタンプ同期
             corner2d_axis, corner3d_axis = self._get_result_single(
                 corner2d_set=corner2d_set_axis,
                 corner3d_set=corner3d_set_axis,
@@ -1041,7 +1212,10 @@ class calibration2d3d_class:
                 value=self.proccorr.get_last_rtvec(),
             )
 
+            # ここから、最終出力に向けて対応点の調整を行う。（全部bbox中央でも全部頭足でも精度は上がり切らない。混合する）
+
             # 範囲フィルター
+            # 一度全部Trueのフィルターを作っておいて、モードに応じてFalseにする CY-XY相当
             corner_center_filter = corner3d_center[:, 0] == corner3d_center[:, 0]
             corner_axis_filter = corner3d_axis[:, 0] == corner3d_axis[:, 0]
 
@@ -1052,14 +1226,14 @@ class calibration2d3d_class:
                     "CN"
                 )
                 >= 0
-            ):
+            ):  # CN: bbox中心点は使用しないモード
                 corner_center_filter = corner3d_center[:, 0] != corner3d_center[:, 0]
             elif (
                 self.app_config_calib.calib2d3d.CalcCorrespondence.corrpoint_mode.find(
                     "CL"
                 )
                 >= 0
-            ):
+            ):  # CL: bbox中心点は指定範囲内を使用するモード
                 corner_center_filter = (
                     (corner3d_center[:, 0] >= self.use_centerpoint_x_min)
                     & (corner3d_center[:, 0] <= self.use_centerpoint_x_max)
@@ -1071,7 +1245,7 @@ class calibration2d3d_class:
                     "CE"
                 )
                 >= 0
-            ):
+            ):  # CE: bbox中心点は指定範囲外を使用するモード
                 corner_center_filter = ~(
                     (corner3d_center[:, 0] >= self.use_centerpoint_x_min)
                     & (corner3d_center[:, 0] <= self.use_centerpoint_x_max)
@@ -1084,14 +1258,14 @@ class calibration2d3d_class:
                     "XN"
                 )
                 >= 0
-            ):
+            ):  # XN: bbox頭足点は使用しないモード
                 corner_axis_filter = corner3d_axis[:, 0] != corner3d_axis[:, 0]
             elif (
                 self.app_config_calib.calib2d3d.CalcCorrespondence.corrpoint_mode.find(
                     "XL"
                 )
                 >= 0
-            ):
+            ):  # XL: bbox頭足点は指定範囲内を使用するモード
                 corner_axis_filter = (
                     (corner3d_axis[:, 0] >= self.use_centerpoint_x_min)
                     & (corner3d_axis[:, 0] <= self.use_centerpoint_x_max)
@@ -1103,7 +1277,7 @@ class calibration2d3d_class:
                     "XE"
                 )
                 >= 0
-            ):
+            ):  # XE: bbox頭足点は指定範囲外を使用するモード
                 corner_axis_filter = ~(
                     (corner3d_axis[:, 0] >= self.use_centerpoint_x_min)
                     & (corner3d_axis[:, 0] <= self.use_centerpoint_x_max)
@@ -1111,14 +1285,24 @@ class calibration2d3d_class:
                     & (corner3d_axis[:, 1] <= self.use_centerpoint_y_max)
                 )
 
+            # 3D bbox Z座標高さを補正する
             if self.app_config_calib.calib2d3d.CalcCorrespondence.enable_recalc_center3d_z:
                 head_z: np.float64 = corner3d_axis[0, 2]
                 foot_z: np.float64 = corner3d_axis[1, 2]
-                corner3d_center[:, 2] = (
+                center_area_filter = (
+                    (corner3d_center[:, 0] >= self.center3d_apply_zratio_x_min)
+                    & (corner3d_center[:, 0] <= self.center3d_apply_zratio_x_max)
+                    & (corner3d_center[:, 1] >= self.center3d_apply_zratio_y_min)
+                    & (corner3d_center[:, 1] <= self.center3d_apply_zratio_y_max)
+                )
+                corner3d_center[center_area_filter, 2] = (
                     (head_z - foot_z)
                     * self.app_config_calib.calib2d3d.CalcCorrespondence.bbox_center3d_z_ratio
                     + foot_z
                 )
+                corner3d_center[~center_area_filter, 2] = (
+                    head_z - foot_z
+                ) * 0.5 + foot_z
 
             corner2d_final = np.concatenate(
                 [

@@ -1,5 +1,6 @@
 import os
 import pickle
+from collections.abc import Callable
 from typing import Optional
 
 import numpy as np
@@ -32,6 +33,11 @@ from argus_synchro.calibration_mat_generator_modules.utils.debugdata_store impor
 from argus_synchro.common.app_logger import AppLogger, AppLoggerFactory
 from argus_synchro.config.app_config_calibration import AppConfigCalibration
 from argus_synchro.detect2d import Detect2dDamoYoloOnnx
+from argus_synchro.shared_errors import (
+    ActionErrorIndex,
+    SharedErrors,
+    StateErrorDIndex,
+)
 
 
 class detect2d_class:
@@ -41,18 +47,28 @@ class detect2d_class:
         app_config_calib: AppConfigCalibration,
         camera_index: int,
         app_logger_factory: AppLoggerFactory,
+        file_io_error_reporter: Callable[[str, str, Exception], None] | None = None,
+        shared_errors: SharedErrors | None = None,
     ) -> None:
         self._logger: AppLogger = app_logger_factory.register_from_type(self.__class__)
         self.app_config_calib: AppConfigCalibration = app_config_calib
         self.verbose = not self.app_config_calib.default.print_disabled
         self.Mc = Mc
+        self._camera_index = camera_index
+        self._ser = shared_errors
+        if self._ser is not None:
+            self._ser.state_errors_D[StateErrorDIndex.AI_INFERENCE_RESULT_ERROR].update(
+                self._ser.shared_err_conf.read()
+            )
 
         # 内部状態リセット＆変数作成
         self.reset()
 
         # 画像事前処理
         self.image_preprocess_inst = image_preprocess(
-            app_config_calib=app_config_calib, camera_index=camera_index
+            app_config_calib=app_config_calib,
+            camera_index=camera_index,
+            file_io_error_reporter=file_io_error_reporter,
         )
 
         # YOLO人検知
@@ -60,13 +76,17 @@ class detect2d_class:
             onnx_model_path=app_config_calib.calib2d3d.Proc2d.yolo_modelpath
         )
         self._detect2d_batch_size: int = app_config_calib.dataCapture.Camera.count
-        self.YOLOinst = Detect2dDamoYoloOnnx(
-            conf_thresh=inference_config.conf_thresh,
-            nms_thresh=inference_config.nms_thresh,
-            onnx_model_path=inference_config.onnx_model_path,
-            batch_size=self._detect2d_batch_size,
-            app_logger_factory=app_logger_factory,
-        )
+        try:
+            self.YOLOinst = Detect2dDamoYoloOnnx(
+                conf_thresh=inference_config.conf_thresh,
+                nms_thresh=inference_config.nms_thresh,
+                onnx_model_path=inference_config.onnx_model_path,
+                batch_size=self._detect2d_batch_size,
+                app_logger_factory=app_logger_factory,
+            )
+        except Exception as error:
+            self._report_model_load_failure(error)
+            raise
 
         # BBox追跡、記録
         self.bbox_track_and_record = proc2d_bboxtracker_recorder(
@@ -85,6 +105,7 @@ class detect2d_class:
             Mc=Mc,
             camera_index=camera_index,
             app_logger_factory=app_logger_factory,
+            file_io_error_reporter=file_io_error_reporter,
         )
 
         # 人の軸推定
@@ -93,6 +114,13 @@ class detect2d_class:
         )
 
         self.final_framesize = None
+
+    def _report_model_load_failure(self, error: Exception) -> None:
+        if self._ser is None:
+            return
+        diagnosis = self._ser.action_errors_A_C[ActionErrorIndex.AI_MODEL_LOAD_FAILED]
+        if diagnosis.excepts_diagnosis(error):
+            self._logger.error("AI model initialization failed (CE013): %r", error)
 
     def reset(self):
         self.last_bbox: NDArray[np.float64] | None = None
@@ -113,6 +141,21 @@ class detect2d_class:
         # DAMO-YOLOが3枚入力であるため、画像を複製
         frames: NDArray[np.uint8] = np.stack([frame] * self._detect2d_batch_size)
         yoloBB_all_yolofor_tuple = self.YOLOinst._inference(frames)
+        if self._ser is not None:
+            ai_inference_result_error = self._ser.state_errors_D[
+                StateErrorDIndex.AI_INFERENCE_RESULT_ERROR
+            ]
+            result, failsafe_result = ai_inference_result_error.errors_diagnosis(
+                yoloBB_all_yolofor_tuple[0],
+                yoloBB_all_yolofor_tuple[1],
+                yoloBB_all_yolofor_tuple[3],
+            )
+            ai_inference_result_error.log_output(
+                result,
+                failsafe_result,
+                StateErrorDIndex.AI_INFERENCE_RESULT_ERROR,
+                self._camera_index,
+            )
         # n_batch>1の場合、dummyの画像を入れて推論しているだけなので、最初の一つ目の結果だけ取り出す
         # batch sizeはscore(yoloresult_whole_tuple[1].shape[0])から取得
         if yoloBB_all_yolofor_tuple[1].shape[0] > 1:

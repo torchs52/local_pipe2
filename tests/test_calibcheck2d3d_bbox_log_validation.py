@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any, cast
 
 import numpy as np
+import pytest
 
+import argus_synchro.calibration_mat_generator_modules.ctrl.calibcheck2d3d as calibcheck_module
 from argus_synchro.calibration_mat_generator_modules.ctrl.calibcheck2d3d import (
     calibcheck2d3d,
 )
@@ -88,4 +91,108 @@ def test_reason_mappings_match_shi_contract() -> None:
         4,
         3,
         4,
+    ]
+
+
+def test_input_settings_reports_lidar_calibration_read_error(monkeypatch) -> None:
+    controller = _controller()
+    controller.calibcheck2d3d_conf = SimpleNamespace(
+        lidar_calib_files=["missing-lidar.csv"],
+        camera_calib_files=[],
+    )
+    reports: list[tuple[str, str, Exception]] = []
+    controller._report_file_io_error = (
+        lambda file_path, operation, error: reports.append(
+            (file_path, operation, error)
+        )
+    )
+
+    error = OSError("missing calibration")
+
+    def raise_read_error(*_args, **_kwargs):
+        raise error
+
+    monkeypatch.setattr(np, "loadtxt", raise_read_error)
+
+    with pytest.raises(OSError, match="missing calibration"):
+        controller.input_settings()
+
+    assert reports == [
+        (
+            "missing-lidar.csv",
+            "read calibcheck2d3d LiDAR calibration CSV",
+            error,
+        )
+    ]
+
+
+def test_static_point_filter_is_applied_when_enabled() -> None:
+    controller = _controller()
+    controller.app_config_calib = SimpleNamespace(
+        calib2d3d=SimpleNamespace(
+            Proc3d=SimpleNamespace(
+                enable_static_point_filter=True,
+                static_point_filter_initlength=1,
+                static_point_filter_refresh_period=10,
+            )
+        ),
+        default=SimpleNamespace(print_disabled=True),
+    )
+    filtered = np.array([[1.0, 2.0, 3.0]], dtype=np.float32)
+
+    class _StaticFilterStub:
+        filtersource_framecount = 0
+
+        def add_single_voxel_map(self, frame) -> None:
+            del frame
+            self.filtersource_framecount += 1
+
+        def apply_voxelfilter(self) -> None:
+            return None
+
+        def extract_moving_objects(self, frame):
+            del frame
+            return filtered
+
+    controller.static_point_filter = _StaticFilterStub()
+    controller.pointfilter_lastadd = -1
+
+    result = controller._sub_detect_apply_static_point_filter(
+        np.zeros((1, 3), dtype=np.float32),
+        timestamp_pcd=0,
+    )
+
+    assert result is filtered
+    assert controller.static_point_filter.filtersource_framecount == 1
+
+
+def test_input_settings_reports_camera_calibration_read_error(monkeypatch) -> None:
+    controller = _controller()
+    controller.calibcheck2d3d_conf = SimpleNamespace(
+        lidar_calib_files=[],
+        camera_calib_files=["missing-camera.csv"],
+        new_axis_mode=True,
+    )
+    reports: list[tuple[str, str, Exception]] = []
+    controller._report_file_io_error = (
+        lambda file_path, operation, error: reports.append(
+            (file_path, operation, error)
+        )
+    )
+    error = RuntimeError("missing calibration")
+
+    def raise_read_error(**_kwargs):
+        raise error
+
+    monkeypatch.setattr(calibcheck_module, "read_rtvec", raise_read_error)
+
+    with pytest.raises(RuntimeError, match="missing calibration"):
+        controller.input_settings()
+
+    assert reports == [
+        (
+            "missing-camera.csv",
+            "read calibcheck2d3d camera calibration",
+            error,
+        )
     ]

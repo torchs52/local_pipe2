@@ -2,6 +2,7 @@ import datetime
 import json
 import os
 from abc import abstractmethod
+from collections.abc import Callable
 from typing import Any, Dict, Optional
 
 import numpy as np
@@ -24,17 +25,33 @@ class correspondence_class_base:
         self,
         app_config_calib: AppConfigCalibration,
         app_logger_factory: AppLoggerFactory,
+        file_io_error_reporter: Callable[[str, str, Exception], None] | None = None,
     ) -> None:
         self._logger: AppLogger = app_logger_factory.register_from_type(self.__class__)
         self.additional_info = app_config_calib
 
         self.app_config_calib = app_config_calib
-        self.postprocess_mat = np.array(
-            pd.read_csv(
-                app_config_calib.calib2d3d.CalcCorrespondence.postprocess_mat,
-                header=None,
-            )
+        self.file_io_error_reporter = file_io_error_reporter
+        postprocess_mat_path = (
+            app_config_calib.calib2d3d.CalcCorrespondence.postprocess_mat
         )
+        try:
+            self.postprocess_mat = np.array(
+                pd.read_csv(postprocess_mat_path, header=None)
+            )
+        except (
+            OSError,
+            UnicodeError,
+            pd.errors.EmptyDataError,
+            pd.errors.ParserError,
+        ) as error:
+            if self.file_io_error_reporter is not None:
+                self.file_io_error_reporter(
+                    postprocess_mat_path,
+                    "read 2D-3D postprocess matrix CSV",
+                    error,
+                )
+            raise
 
     def close(self) -> None:
         pass
@@ -191,10 +208,12 @@ class correspondence_class_oldmethod(correspondence_class_base):
         app_config_calib: AppConfigCalibration,
         cameramatrix: NDArray[np.float64],
         app_logger_factory: AppLoggerFactory,
+        file_io_error_reporter: Callable[[str, str, Exception], None] | None = None,
     ) -> None:
         super().__init__(
             app_config_calib=app_config_calib,
             app_logger_factory=app_logger_factory,
+            file_io_error_reporter=file_io_error_reporter,
         )
         self._app_logger_factory = app_logger_factory
         self.reset(cameramatrix)
@@ -244,10 +263,12 @@ class correspondence_class_optmethod(correspondence_class_base):
         cameramatrix: NDArray[np.float64],
         camera_index: int,
         app_logger_factory: AppLoggerFactory,
+        file_io_error_reporter: Callable[[str, str, Exception], None] | None = None,
     ) -> None:
         super().__init__(
             app_config_calib=app_config_calib,
             app_logger_factory=app_logger_factory,
+            file_io_error_reporter=file_io_error_reporter,
         )
         self._app_logger_factory: AppLoggerFactory = app_logger_factory
 
@@ -288,11 +309,20 @@ class correspondence_class_optmethod(correspondence_class_base):
             verbose=True,
         )
 
-        with open(
-            app_config_calib.calib2d3d.CalcCorrespondence.optparam_initialvector,
-            encoding="utf-8",
-        ) as rtf:
-            initial_vectors: list[dict[str, list[float]]] = json.load(rtf)
+        initial_vectors_path = (
+            app_config_calib.calib2d3d.CalcCorrespondence.optparam_initialvector
+        )
+        try:
+            with open(initial_vectors_path, encoding="utf-8") as rtf:
+                initial_vectors: list[dict[str, list[float]]] = json.load(rtf)
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            if self.file_io_error_reporter is not None:
+                self.file_io_error_reporter(
+                    initial_vectors_path,
+                    "read 2D-3D initial vector JSON",
+                    error,
+                )
+            raise
 
         self.initial_rvec_rad: NDArray[np.float64] = np.array(
             initial_vectors[camera_index]["initial_rvec_rad"]
@@ -338,12 +368,14 @@ def correspondence_class_loader(
     cameramatrix: NDArray[np.float64],
     camera_index: int,
     app_logger_factory: AppLoggerFactory,
+    file_io_error_reporter: Callable[[str, str, Exception], None] | None = None,
 ) -> correspondence_class_oldmethod | correspondence_class_optmethod:
     if app_config_calib.calib2d3d.CalcCorrespondence.calcmethod == "old":
         return correspondence_class_oldmethod(
             app_config_calib=app_config_calib,
             cameramatrix=cameramatrix,
             app_logger_factory=app_logger_factory,
+            file_io_error_reporter=file_io_error_reporter,
         )
     if app_config_calib.calib2d3d.CalcCorrespondence.calcmethod == "opt":
         return correspondence_class_optmethod(
@@ -351,6 +383,7 @@ def correspondence_class_loader(
             cameramatrix=cameramatrix,
             camera_index=camera_index,
             app_logger_factory=app_logger_factory,
+            file_io_error_reporter=file_io_error_reporter,
         )
     raise RuntimeError(
         f"undefined calcmethod: {app_config_calib.calib2d3d.CalcCorrespondence.calcmethod}"

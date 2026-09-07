@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -187,6 +188,7 @@ def calibrateLidars2Crane(
     calib_app_config: AppConfigCalibration,
     angle_data: float = 0,
     visualize: bool = False,
+    file_io_error_reporter: Callable[[str, str, Exception], None] | None = None,
 ) -> tuple[
     o3d.geometry.PointCloud,  # 統合点群 (Crane 座標系) P₁₂…N
     list[o3d.geometry.PointCloud],  # 各 LiDAR の点群 (Crane 座標系)
@@ -234,9 +236,16 @@ def calibrateLidars2Crane(
     ideal_calib_path = calib_app_config.Calib3d3d_CalibParams.lidars_calib_path
 
     for i in range(num_lidars):
-        lidar_np_list[i] = calibration.old_calib_lidar(
-            lidar_np_list[i], ideal_calib_path[i]
-        )
+        try:
+            lidar_np_list[i] = calibration.old_calib_lidar(
+                lidar_np_list[i], ideal_calib_path[i]
+            )
+        except (OSError, UnicodeError, ValueError) as error:
+            if file_io_error_reporter is not None:
+                file_io_error_reporter(
+                    ideal_calib_path[i], "read 3D-3D ideal calibration CSV", error
+                )
+            raise
 
     # AppLogger.info("calibrateLidars2Crane", "make LiDARi2LiDAR1_list")
 
@@ -246,6 +255,7 @@ def calibrateLidars2Crane(
         angle_data=angle_data,
         app_config=app_config,
         calib_app_config=calib_app_config,
+        file_io_error_reporter=file_io_error_reporter,
     )
 
     # 2. LiDAR0基準で逐次登録
@@ -332,11 +342,22 @@ def calibrateLidars2Crane(
     for i, (raw_pcd_i, T_i2L1) in enumerate(
         zip(lidar_raw_pcd_list, LiDARi2LiDAR1_list, strict=False)
     ):
-        T_i2Crane = (
-            T_merge2Crane
-            @ T_i2L1
-            @ pd.read_csv(ideal_calib_path[i], header=None).values
-        )
+        try:
+            ideal_transform = pd.read_csv(
+                ideal_calib_path[i], header=None
+            ).values
+        except (
+            OSError,
+            UnicodeError,
+            pd.errors.EmptyDataError,
+            pd.errors.ParserError,
+        ) as error:
+            if file_io_error_reporter is not None:
+                file_io_error_reporter(
+                    ideal_calib_path[i], "read 3D-3D ideal calibration CSV", error
+                )
+            raise
+        T_i2Crane = T_merge2Crane @ T_i2L1 @ ideal_transform
         LiDARi2Crane_list.append(T_i2Crane)
         lidar_pcds_crane.append(translate_points(utils.pcd_to_np(raw_pcd_i), T_i2Crane))
 

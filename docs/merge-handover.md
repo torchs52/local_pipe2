@@ -1,6 +1,6 @@
 # Vendor/SHI 統合作業 引継ぎ
 
-最終更新: 2026-09-06
+最終更新: 2026-09-07
 
 この文書は、別PCまたは別のCopilotチャットで統合作業を再開するための入口である。
 作業を始める前に本書を読み、判断・実装・検証が進んだら同じ作業内で更新すること。
@@ -379,11 +379,11 @@ SHI側だけで確認されたテスト:
 | M-057 | legacy setupのpackage/extension名整合 | SHI `7f34907` | manual-port | pending | lib `setup.py`, package tests | `octotree`とCMake出力`argus_synchro_lib`の不整合。現行make経路への影響確認後に修正 |
 | M-058 | 校正settings/MMAP/FIFO契約固定 | vendor現行 / Godot UI契約 | vendor-keep | verified | config schema, facade, FIFO, contract tests | settings 8項目、mode値、FIFO 4要素順、MMAP header、共通field書込順を固定。関連回帰20件pass |
 | M-059 | 2D-3D校正診断UI結果・設定schema | SHI `7f58643`, `fc7f75e` | manual-port | verified | diagnosis, app config, facade, tests | UI enum・reason code変換、設定schema、facade validationを移植し、新producerとの同時切替を確認 |
-| M-060 | 2D-3D校正診断アルゴリズム | SHI `d60c83d` ほか / 現行SHI | manual-port | in-review | `calibcheck2d3d`, `SceneDesc`, `YOLOadapter`, tracking, tests | SHI診断器による新status producerは接続済み。scene/tracking/score判定本体をvendor lifecycleへ段階接続する |
-| M-061 | 通常2D-3D校正アルゴリズム | 現行SHI | manual-port | pending | calibration2d3d, progress/correspondence/tracking, tests | SHIの処理表現を優先する。共有部品の診断側影響を先に固定し、終了時計算とprocess終了制御を分離する |
-| M-062 | 3D-3D校正アルゴリズム・エラー完了 | SHI `b64f6f9` / 現行SHI | manual-port | pending | calibration3d3d, lidar calibration, tests | SHIの処理表現を優先し、行列生成とUIエラー完了を分離してvendor例外境界へ接続する |
-| M-063 | 校正capture・厳密同期 | vendor / 現行SHI | vendor-keep | pending | calib FIFO/data capture, tests | 周辺監視の入力sourceを共有し、同期成立frameだけを既存FIFO形式で渡す |
-| M-064 | 校正wait・facade・MMAP接続 | vendor / SHI `fc7f75e`, `d9edbc0` | manual-port | pending | wait app, facade, mmap contract tests | lifecycleとABIはvendorを維持し、必要なenum化・診断結果出力だけを採用する |
+| M-060 | 2D-3D校正診断アルゴリズム | SHI `d60c83d` ほか / 現行SHI | manual-port | verified | `calibcheck2d3d`, `SceneDesc`, `YOLOadapter`, tracking, tests | scene/tracking/score診断とcamera slotを保持するactive YOLO adapterをvendor lifecycleへ接続し、three-way確認済み |
+| M-061 | 通常2D-3D校正アルゴリズム | 現行SHI | manual-port | verified | calibration2d3d, progress/correspondence/tracking, tests | FILE_IO、file-end一回完了、100点gate、進捗再計算、camera別center-Z補正、UI/AI診断を接続し、three-way確認済み |
+| M-062 | 3D-3D校正アルゴリズム・エラー完了 | SHI `b64f6f9` / 現行SHI | manual-port | verified | calibration3d3d, lidar calibration, tests | 生成行列のCE006簡易検証、UI error/status/yaw、matrix/profile/angle FILE_IOを接続。高度な参照差分はdeferredとしてthree-way確認済み |
+| M-063 | 校正capture・厳密同期 | vendor / 現行SHI | vendor-keep | verified | calib FIFO/data capture, tests | `MessageFlow`は単一consumerのためCALIB/SCRUT専用flowを維持。同期成立frameだけをcamera/LiDAR/CAN/ref_t順で渡す契約を確認 |
+| M-064 | 校正wait・facade・MMAP接続 | vendor / SHI `fc7f75e`, `d9edbc0` | manual-port | verified | wait app, facade, mmap contract tests | enum・校正要否status直書きとSHIのwait dummy設定・送信を移植し、Vendor lifecycleとMMAP ABIを維持してthree-way確認済み |
 | M-065 | 校正エラー処理接続 | `docs/error_list.txt` / 現行SHI | manual-port | pending | calibration process/modules/diagnosis/tests | UI専用状態と製品エラーを分離し、固有CE、FILE_IO、module errorを所有境界で接続する |
 | M-066 | 校正設定validation・機種別設定 | SHI現行 calibration validator / machine profile | manual-port | in-review | calibration config validation/machine profile/file watch/tests | SHI validatorと機種別校正設定を移植。CALIB中も`settings.ini`監視を常時維持し、機種別校正INI監視は追加登録する |
 | M-067 | 校正三者差分ビューア導入 | `local_pipe` `origin/vendor-20260817-integration:scripts/three_way_review.py` | manual-port | verified | `scripts/three_way_review.py`, tests | vendor/SHIのrepoとrefを個別指定し、統合working treeと比較する。別repo・片側限定ファイルの専用テスト2件pass |
@@ -818,7 +818,7 @@ SHI側だけで確認されたテスト:
 ### 2026-09-04 M-038実施記録
 
 - CE006のうち通常運転が消費するLiDAR校正CSVの基本健全性だけをvendorへ移植した。`CalibrationConf.BothLidars`と`Lidar_calib_files`を対象とし、存在・CSV読込可否、4x4形状、有限値を検査する。対象と参照を`zip`しないため、設定された全対象を途中打切りせず検査する。
-- 純粋なファイル検証は`diagnosis/lidar_calib_validator.py`へ置き、`SensorCalibDataInvalidDiagnosis`が有効化、parameter、CE006 counter、先頭issueと総issue数を含むログを所有する。複数issueがあっても一回の起動時検査につきcounterは一回だけ増加する。
+- 純粋なファイル検証は、LiDARとcameraのvalidatorを統一的に扱う`diagnosis/calib_matrix_validator.py`へ置く。現時点ではLiDAR validatorを実装し、camera validatorはスタブ段階のため後続移植とする。`SensorCalibDataInvalidDiagnosis`が有効化、parameter、CE006 counter、先頭issueと総issue数を含むログを所有し、複数issueがあっても一回の起動時検査につきcounterは一回だけ増加する。
 - `load_config()`はvendorの設定読込とCE005再試行制御を維持し、`SharedAppConfig`読込後にCE006を一回検査する。校正CSV異常はCE006として記録するがCE005へ渡さず、`SharedAppConfigCalibration`読込と起動を継続する。
 - 設定には`check_lidar2lidar`、`check_lidar2crane`、`enforce_shape_4x4`、`finite_value_only`だけを追加した。SHIの参照差分parameter、並進・回転・XY変位判定、3D-3D校正生成直後の検証は追加しておらず、M-005の採用方針決定まで保留する。
 - `tests/test_sensor_calib_data_invalid.py`と`tests/test_config_file_missing.py`で正常4x4、全対象欠損、解析不能、不正形状、NaN、無効化、全件検査、counter、CE006ログ、CE005非計上、起動継続を確認した。CE006専用・起動統合は26 passed、共有設定は3 passed。新規箇所のVS Code診断なし、残る`action_errors.py`の診断は既存CE012箇所だけである。
@@ -940,7 +940,32 @@ SHI側だけで確認されたテスト:
 - `config/app_config_calibration.py`: SHIの`bbox_center3d_z_ratio_area_xmin/xmax/ymin/ymax`、2D/3Dの`trackresult_use_lastmove_ix`、6個の`axis_gridpoints_*`を型定義とreaderへ追加した。さらにINIの未収容実パラメータである`z_height`、`z_height_withmargin`、LiDARの`dev_str`、`enable_bbox_shapefilter`を追加し、`placeholder`もINIから読むようにした。directory rootは`resolve_ini_roots()`、個別pathキーは補間後のlistとして既に収容されるため二重保持せず、`DEBUG_REF`は手動切替用の候補値として扱う。
 - `config/calib_settings.ini`: `mmap_dir`は統合版の`/dev/shm`を維持し、それ以外のSHIと共通する明示キーはSHI値へ統一した。ONNXモデルも`new_bench_full_20260625.onnx`へ同期した。DEFAULT継承を除く構造比較で、SHIとの差が`mmap_dir`だけであることを確認した。
 - 設定回帰は11 passed、Python compile、VS Code診断、`git diff --check`が成功した。Ruff全体実行は同モジュール既存の命名・全角句読点違反を報告したが、今回の追加行に新規違反はない。固定vendor/SHI commitを使って両設定ファイルのthree-way HTMLを再生成済み。再レビュー待ち。
+- `calibcheck2d3d/__init__.py`: 診断用2D/3D recorderで欠落していたSHIの評価LUTと作業領域LUTの分離、評価値min/max更新、2D bboxの累積`xymin`/`xymax`更新、`reset()`とperson検出状態を復元した。3D距離maxはSHIの`min()`誤記を採用せず、統合版の正しい`max()`を維持した。関連45件がpassし、Python compile、VS Code診断、`git diff --check`も成功した。
+- レビュー済み`YOLODamoBatchAdapter`をactive `dataproc()`へ接続した。camera入力を設定camera数の固定長配列として扱い、中間camera欠損時も後続cameraの推論結果を元のslotへ保持する。欠損slotは空bboxとしてUI・評価・recorderへ渡し、範囲外cameraと欠損frameの描画をskipする。AIモデルload失敗・推論結果診断を含むM-060関連61件がpassした。
 - 残りのM-060対象ファイルは未確認。確認状況は`.merge_review/three-way-reviewed/review-status.md`で管理する。
+
+### 2026-09-07 M-061部分実施記録
+
+- `calibration2d3d_class`にSHIのFILE_IO reporterを追加し、通常2D-3D校正の進捗領域JSON、postprocess行列CSV、初期vector JSON、camera mask画像、bbox mask画像の読込境界までcallbackを接続した。診断は`(path, operation, "ExceptionType: detail")`を記録し、元例外を再送出するためvendor lifecycleと停止条件は変更しない。
+- SHIの`correspondence_class_optmethod.reset()`は例外時に未定義のローカル`file_io_error_reporter`を参照していたため、その誤記は採用せずbase instanceに保持したcallbackを使用した。mask画像の読込失敗は`assert`または`cv2.resize(None)`ではなく、診断可能な`OSError`へ統一した。
+- FILE_IO専用7件、校正保護契約・設定読込を含む関連21件がpassした。Python compile、VS Code診断、import順Ruff、`git diff --check`も成功した。対象モジュール全体のRuffはlegacy命名・型注釈など既存違反を報告するため、この単位では変更していない。
+
+### 2026-09-07 M-061～M-064残件完了記録
+
+- M-061はfile input終端時の一回だけの完了処理、最終3D点100点超のgate、進捗0.5未満時の再計算、結果保存、camera別center-Z ratio領域、校正結果/UI statusのenum plumbing、AI model load・推論診断を接続した。固定SHIにない行列determinant、追加PnP収束、独自tracking品質条件は推測移植しない。
+- M-062は起動時と生成直後のLiDAR行列を共通`LidarCalibValidator`へ通し、4x4形状と有限値を同じCE006 policyで検査する。SHIの参照行列差分、並進・回転閾値、XY grid検査は、周辺監視モードのフル検証を後段でまとめて移植する計画に従いdeferredとした。
+- M-062の生成結果異常・入力診断異常は校正UI共通error 2へ反映し、共通status enumとyawを送る。初期ideal matrix、後段ideal transform、simulation matrix、crane profile JSON、angle CSVのFILE_IO callbackを所有境界へ接続し、元例外の再送出とVendor lifecycleを維持した。
+- 生成行列の評価・CE006 counter・共通error logは`SensorCalibDataInvalidDiagnosis.diagnose_matrices()`へ集約した。3D-3D controllerは生成行列を診断へ渡し、返却issuesからUI/処理結果を決めるだけとし、診断ロジックを`ctrl`へ置かない。
+- M-063は`MessageFlow.create_consumer()`が2個目のconsumerを拒否するため、CALIBとSCRUTで入力flowを共有する案を不採用とした。各pipelineの専用flow、Vendor `CalibFIFOProcess`、同期不成立frameの非出力、`FIFOData`のcamera/LiDAR/CAN/`ref_t`順を維持した。
+- M-064は`CalibrationCommonStatus`、校正要否statusのvalidationと値の直接書込み、MMAP 0～14 byte header、共通field順が既に統合済みであることを確認した。three-wayユーザーレビューに基づき、SHI waitの毎frame dummy設定と送信を維持し、値と送信順をテストで固定した。
+- M-060～M-064の集中回帰は106 passed。M-064のfacade/MMAP/waitは15 passed、CE006再検証は12 passed。対象ファイルのPython compile、VS Code診断、`git diff --check`も成功した。
+- 固定Vendor `62dfe7d289c6c607ff0330ba9ae2146cdf982344`、固定SHI `2283a0a68f512d7595fb81032925630f07f1b522`との残差を再確認し、M-060～M-064にthree-way目視確認を妨げる具体的な未移植挙動は残っていない。次工程をthree-way最終確認とする。
+
+### 2026-09-07 M-060～M-064 three-way最終確認
+
+- 固定Vendor、固定SHI、統合working treeのHTMLを対象15ファイルで再生成し、既存レビュー済み9ファイルと合わせて確認した。結果は`.merge_review/three-way-reviewed/review-status.md`へ記録した。
+- M-060の大きな構造差はSHIのscene/tracking/score処理をVendor lifecycleへ再配置したもの、M-061は同等アルゴリズムへの診断callback追加、M-062は共通簡易validatorへの接続であり、未移植のblockerではない。M-064のwait dummy設定・送信はthree-wayユーザーレビューに基づきSHIを維持した。
+- M-060、M-061、M-062、M-064を`verified`へ更新した。M-063は単一consumer制約と専用flow契約の確認により`vendor-keep / verified`を維持する。
 
 ## 10. 次のCopilotへの開始指示
 

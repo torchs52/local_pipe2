@@ -1,6 +1,7 @@
 # ruff: noqa: ARG005, DTZ005, N802, PLR2004, SLF001
 from __future__ import annotations
 
+import ast
 import datetime
 import inspect
 import json
@@ -12,15 +13,18 @@ from typing import get_args
 
 import numpy as np
 
+from argus_synchro.calibration_mat_generator_modules.ctrl.wait_app import wait_app
 from argus_synchro.calibration_mat_generator_modules.facade import CalibrationUIGodot
 from argus_synchro.config.app_config import CalibrationModeSwitchConf, GeneralConf
 from argus_synchro.message.calib_fifo_message import FIFOData
 from argus_synchro.message.input_message import CameraData, CanData, PointCloudData
 from argus_synchro.process.calib_fifo_process import CalibFIFOProcess
+from argus_synchro.process.message import MessageFlow
 from argus_synchro.process.operation_mode import OPERATION_MODE, CalibMode
 
 MMAP_ASSIGN_PATH = Path("config/calibration_mat_generator_modules/mmap_assign.json")
 SETTINGS_PATH = Path("config/settings.ini")
+MAIN_PATH = Path("argus_synchro/__main__.py")
 
 
 class _SharedConfigStub:
@@ -104,6 +108,38 @@ def test_facade_keeps_calibration_error_overwrite_hook() -> None:
     assert parameter.default is True
 
 
+def test_wait_app_transmits_shi_dummy_data() -> None:
+    controller = object.__new__(wait_app)
+    controller.debug_index = 7
+    controller.verbose = False
+    controller.input_data_diagnosis = lambda *args: False
+    dummy_calls: list[dict[str, object]] = []
+    transmit_calls: list[dict[str, object]] = []
+    monitor = SimpleNamespace(
+        set_dummydata=lambda **kwargs: dummy_calls.append(kwargs),
+        transmit_setdata=lambda **kwargs: transmit_calls.append(kwargs),
+    )
+    sec = SimpleNamespace()
+
+    assert controller.dataproc(
+        readresult_pop=([], [], (0, 0.0), 0),
+        monitor=monitor,
+        sec=sec,
+    )
+
+    assert dummy_calls == [
+        {
+            "enable_systemerrorflag": True,
+            "enable_errorflag": True,
+            "enable_yawangle": True,
+            "overwrite_checkresult": True,
+            "overwrite_calibresult": True,
+        }
+    ]
+    assert transmit_calls == [{"sec": sec, "ref_t": 7}]
+    assert controller.debug_index == 8
+
+
 def test_calibration_fifo_data_has_four_ordered_elements() -> None:
     assert len(get_args(FIFOData)) == 4
     camera_data: list[tuple[np.ndarray, int, float]] = []
@@ -159,6 +195,33 @@ def test_calibration_fifo_process_returns_synchronized_data_in_contract_order() 
     assert fifo_data[1] == [(lidar_points, 20, 2.5)]
     assert fifo_data[2] == (15, 3.5)
     assert fifo_data[3] == 42
+
+
+def test_message_flow_allows_only_one_consumer() -> None:
+    source = inspect.getsource(MessageFlow.create_consumer)
+
+    assert "if self._is_created_consumer.value:" in source
+    assert "raise RuntimeError" in source
+
+
+def test_calibration_and_surround_pipelines_keep_separate_input_flows() -> None:
+    module = ast.parse(MAIN_PATH.read_text(encoding="utf-8"))
+    functions = {
+        node.name: node
+        for node in module.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name in {"start_calib_pipeline", "start_scrut_pipeline"}
+    }
+
+    for function_name in ("start_calib_pipeline", "start_scrut_pipeline"):
+        calls = [
+            node
+            for node in ast.walk(functions[function_name])
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "create_input_message"
+        ]
+        assert len(calls) == 1
 
 
 def test_calibration_mmap_header_layout_is_stable() -> None:

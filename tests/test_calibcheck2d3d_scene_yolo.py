@@ -99,6 +99,20 @@ def test_yolo_adapter_preserves_camera_slots_for_missing_frames() -> None:
     assert int(results[2][3]) == 2
 
 
+def test_yolo_adapter_returns_empty_results_when_all_frames_are_missing() -> None:
+    adapter = cast(YOLODamoBatchAdapter, object.__new__(YOLODamoBatchAdapter))
+    adapter._camera_count = 3
+    adapter._ser = None
+    adapter._detector = _DetectorStub()
+
+    results = adapter.predict_batch(
+        cast(SharedExcepts, object()), [None, None, None]
+    )
+
+    assert [int(result[3]) for result in results] == [0, 0, 0]
+    assert [result[0].shape for result in results] == [(0, 4), (0, 4), (0, 4)]
+
+
 def test_yolo_adapter_rejects_wrong_camera_count() -> None:
     adapter = cast(YOLODamoBatchAdapter, object.__new__(YOLODamoBatchAdapter))
     adapter._camera_count = 3

@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from argus_synchro.diagnosis.action_errors import CraneModelFileMissingDiagnosis
+from argus_synchro.diagnosis.error_config import ErrorConfig
 from argus_synchro.process.points_refine_process import PointsRefineProcess
 from argus_synchro.process.visual_process import VisualProcess
 from argus_synchro.shared_errors import ActionErrorIndex
@@ -37,6 +38,22 @@ def test_crane_model_file_missing_ignores_non_target_exception() -> None:
 
     assert diagnosis.excepts_diagnosis(TypeError("unexpected")) is False
     assert diagnosis.err_cnt.value == 0
+
+
+def test_crane_model_file_missing_updates_enabled_setting() -> None:
+    diagnosis = CraneModelFileMissingDiagnosis()
+    error_config = ErrorConfig()
+
+    error_config.crane_model_file_missing.is_enabled = True
+    diagnosis.update(error_config)
+
+    assert diagnosis.param is error_config.crane_model_file_missing
+    assert diagnosis.is_enabled is True
+
+    error_config.crane_model_file_missing.is_enabled = False
+    diagnosis.update(error_config)
+
+    assert diagnosis.is_enabled is False
 
 
 def test_crane_model_file_missing_owns_error_log_output() -> None:
