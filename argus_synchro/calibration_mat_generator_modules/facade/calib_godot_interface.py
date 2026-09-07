@@ -315,7 +315,7 @@ class CalibGodotInterface:
         dsize = len(bboxes_transmit)
 
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"Adr(bboxes_transmit): {self.writtenAdr}, len: {len(bboxes_transmit)}, data:{bboxes_transmit}, {dsize}",
             )
         self.clsMMap.WriteInt16(self.writtenAdr, dsize)
@@ -324,7 +324,7 @@ class CalibGodotInterface:
         for d in bboxes_transmit:
             for ix, elem in enumerate(d):
                 if self.output_log:
-                    self._logger.info(
+                    self._logger.debug(
                         f"bboxes_transmit {ix} : {elem} @ {self.writtenAdr}"
                     )
                 self.clsMMap.WriteInt16(self.writtenAdr, elem)
@@ -423,28 +423,28 @@ class CalibGodotInterface:
         if isRead or ref_t == self.s_frame or force_changepage:
             if isRead:
                 if self.output_log:
-                    self._logger.info(
+                    self._logger.debug(
                         f"{isRead = } or {ref_t = } == {self.s_frame = }, MMAP Index will be changed!",
                     )
             if self.output_log:
-                self._logger.info(f"{self.clsMMap.ReadInt8(self.IsReading_ADR) = }")
-                self._logger.info(f"{self.clsMMap.ReadInt8(self.IsWriting_ADR) = }")
-                self._logger.info(f"{self.clsMMap.ReadInt64(self.UNIX_TIME_ADDR) = }")
+                self._logger.debug(f"{self.clsMMap.ReadInt8(self.IsReading_ADR) = }")
+                self._logger.debug(f"{self.clsMMap.ReadInt8(self.IsWriting_ADR) = }")
+                self._logger.debug(f"{self.clsMMap.ReadInt64(self.UNIX_TIME_ADDR) = }")
             self.clsMMap.WriteInt8(self.IsWriting_ADR, 0)
             self.mapIndex = (self.mapIndex + 1) % len(self.clsMMap_list)
             self.clsMMap = self.clsMMap_list[self.mapIndex]
             if self.output_log:
-                self._logger.info("MMAP Index changed!")
+                self._logger.debug("MMAP Index changed!")
 
-                self._logger.info(f"{self.clsMMap.ReadInt8(self.IsReading_ADR) = }")
-                self._logger.info(f"{self.clsMMap.ReadInt8(self.IsWriting_ADR) = }")
-                self._logger.info(f"{self.clsMMap.ReadInt64(self.UNIX_TIME_ADDR) = }")
+                self._logger.debug(f"{self.clsMMap.ReadInt8(self.IsReading_ADR) = }")
+                self._logger.debug(f"{self.clsMMap.ReadInt8(self.IsWriting_ADR) = }")
+                self._logger.debug(f"{self.clsMMap.ReadInt64(self.UNIX_TIME_ADDR) = }")
 
         now: float = time.time()
         MMapdelta: float = (now - self.sTime) * 1000
         Alldelta: float = (now - self.preProcessTime) * 1000
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"Adr(last): {self.writtenAdr!s}"
                 f", MMapdelta: {MMapdelta:.2f} msec"
                 f", Alldelta: {Alldelta:.2f} msec",
@@ -453,7 +453,7 @@ class CalibGodotInterface:
 
         self.writtenAdr = self.Start_ADR
         if self.output_log:
-            self._logger.info("writtenAdr Reset!")
+            self._logger.debug("writtenAdr Reset!")
 
     def damp_info(self) -> None:
         # damp of mmap file.

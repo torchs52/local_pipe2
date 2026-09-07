@@ -253,7 +253,7 @@ class CalibrationUIGodot(FacadeUIClass_Base):
             )
         self.calibGodotInterfaceInst.WriteUInt8(is_end_calmode)  # 全体終了フラグ
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"after CalMatGen_ex-IsFinished, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{sec.CalMatGen_ex.IsFinished.value}",
             )
 
@@ -261,7 +261,7 @@ class CalibrationUIGodot(FacadeUIClass_Base):
             status_calibcommon
         )  # 稼働状態（各校正共通）
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"after status_calibcommon, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{status_calibcommon}",
             )
 
@@ -269,14 +269,14 @@ class CalibrationUIGodot(FacadeUIClass_Base):
             currentmode
         )  # currentmode（各校正共通）
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"after currentmode, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{currentmode}",
             )
         self.calibGodotInterfaceInst.WriteUInt8(
             currentcamera
         )  # currentcamera（各校正共通）
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"after currentcamera, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{currentcamera}",
             )
 
@@ -284,7 +284,7 @@ class CalibrationUIGodot(FacadeUIClass_Base):
             errors_calibcommon
         )  # エラー番号（各校正共通）
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"after errors_calibcommon, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{errors_calibcommon}",
             )
 
@@ -330,7 +330,7 @@ class CalibrationUIGodot(FacadeUIClass_Base):
 
         self.calibGodotInterfaceInst.WriteFloat32(progress_summary)
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"after progress_summary, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{progress_summary}",
             )
 
@@ -338,13 +338,13 @@ class CalibrationUIGodot(FacadeUIClass_Base):
             1 if is_calib_available else 0
         )  # 校正可能フラグ
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"after is_calib_available, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{is_calib_available}",
             )
 
         self._transmit_calibcheck_status(calibcheck_status)
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"after calibcheck_status, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{calibcheck_status}",
             )
         # self._transmit_calibstatus_list_to_bitlist(mblock_progress_status)
@@ -661,14 +661,14 @@ class CalibrationUIGodot(FacadeUIClass_Base):
 
     def set_2Dbbox(self, camera_id: int, data: NDArray[np.int32]):
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"UI value set by set_2Dbbox, camera {camera_id}, {data.shape}"
             )
         self.camera_bbox[camera_id] = data
 
     def set_yaw(self, value: float):
         if self.output_log:
-            self._logger.info(f"UI value set by set_yaw, value: {value}")
+            self._logger.debug(f"UI value set by set_yaw, value: {value}")
         self.yaw_value: float = value
 
     def set_points(self, data: NDArray[np.float32], colordata: NDArray[np.float32]):
@@ -686,7 +686,7 @@ class CalibrationUIGodot(FacadeUIClass_Base):
         self, data: NDArray[np.float32], colordata: NDArray[np.float32]
     ):
         if self.output_log:
-            self._logger.info(
+            self._logger.debug(
                 f"UI value set by set_cornerpoints, {data.shape}, {colordata.shape}",
             )
         self.cornerpointdata = data
@@ -741,7 +741,7 @@ class CalibrationUIGodot(FacadeUIClass_Base):
         points_multi_lines: NDArray[np.int32],
     ):
         if self.output_log:
-            self._logger.info("UI value set by set_boxes")
+            self._logger.debug("UI value set by set_boxes")
         self.points_multipoints = points_multipoints
         self.points_multi_lines = points_multi_lines
         self.put_data("dataproc", f"3dobj_{0}_multipoints", points_multipoints)
