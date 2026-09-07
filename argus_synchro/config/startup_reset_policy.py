@@ -22,7 +22,7 @@ class StartupResetChange:
 
 DEFAULT_STARTUP_RESET_VALUES: dict[str, dict[str, str]] = {
     # NOTE:　再起動時に前回の動作モードを継続するため、デフォルトのoperation_modeは指定しない
-    # "General": {"operation_mode": "0"},
+    "General": {"operation_mode": "0"},
     "CalibMode": {
         "cameraID": "0",
         "isRunning3D3Dcalib": "False",
