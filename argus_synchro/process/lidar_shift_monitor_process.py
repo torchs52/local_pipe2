@@ -61,6 +61,8 @@ class LidarShiftMonitorProcess(ProcessBase):
         # _startupで初期化
         self._ref_t: int
         self._err_config: ErrorConfig
+        self._diagnosis_warmup_start: float | None = None
+        self._last_heartbeat: float = time.perf_counter()
 
         self._req_start_diagnosis: bool = False
         self._req_stop_diagnosis: bool = False
@@ -159,10 +161,35 @@ class LidarShiftMonitorProcess(ProcessBase):
 
     def start_diagnosis(self) -> None:
         self._sec_lidar_sm.last_heartbeat.value = INVALID_TIMESTAMP
-        self._sec_lidar_sm.is_heartbeat_enabled.value = True
+        self._last_heartbeat = time.perf_counter()
+        self._diagnosis_warmup_start = None
+        self._sec_lidar_sm.is_heartbeat_enabled.value = False
 
     def stop_diagnosis(self) -> None:
         self._sec_lidar_sm.is_heartbeat_enabled.value = False
+        self._diagnosis_warmup_start = None
+
+    def _update_heartbeat(self, now: float) -> None:
+        heartbeat_interval = now - self._last_heartbeat
+        self._sec_lidar_sm.last_heartbeat.value = now
+        self._last_heartbeat = now
+        if self._sec_lidar_sm.is_heartbeat_enabled.value:
+            return
+
+        param = self._err_config.lidar_position_misalignment_not_responding
+        if (
+            self._diagnosis_warmup_start is None
+            or heartbeat_interval > param.recovery_receive_interval_sec
+        ):
+            self._diagnosis_warmup_start = now
+            return
+
+        recovery_duration = max(
+            param.error_recovery_confirm_duration_sec,
+            param.failsafe_recovery_confirm_duration_sec,
+        )
+        if now - self._diagnosis_warmup_start >= recovery_duration:
+            self._sec_lidar_sm.is_heartbeat_enabled.value = True
 
     # @log_main()
     def _loop(self) -> None:
@@ -215,7 +242,7 @@ class LidarShiftMonitorProcess(ProcessBase):
         self,
         imu_input_data: tuple[ImuData, ...],
     ) -> None:
-        self._sec_lidar_sm.last_heartbeat.value = time.perf_counter()
+        self._update_heartbeat(time.perf_counter())
         self._ref_t += 1
         self._lidmonitor.detect_lidar_shift_from_k_samples(
             imu_input_data,

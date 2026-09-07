@@ -58,8 +58,11 @@ def test_error_monitor_dispatches_mmap_failure_and_continues() -> None:
     diagnosis = MmapReadWriteErrorDiagnosis()
     diagnosis._logger = MagicMock()
     process = object.__new__(ErrorMonitorProcess)
+    process._is_last_app_manager_diag_enabled = False
     process._ser = SimpleNamespace(
-        AppMan_ex=SimpleNamespace(is_started=SimpleNamespace(value=False)),
+        AppMan_ex=SimpleNamespace(
+            is_heartbeat_enabled=SimpleNamespace(value=False)
+        ),
         action_errors_A_C={ActionErrorIndex.MMAP_READ_WRITE_ERROR: diagnosis},
         state_errors=(),
         action_errors=(),

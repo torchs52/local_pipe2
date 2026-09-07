@@ -104,7 +104,8 @@ def test_shared_app_manager_heartbeat_is_initially_disabled() -> None:
     shared = SharedAppManagerExcept()
 
     assert bool(shared.is_started.value) is False
-    assert shared.last_heartbeat.value == 0.0
+    assert shared.last_heartbeat.value == -1.0
+    assert bool(shared.is_heartbeat_enabled.value) is False
 
 
 def test_shared_excepts_reuses_app_manager_shared_state(app_config) -> None:
@@ -129,11 +130,25 @@ def test_app_manager_updates_shared_heartbeat(monkeypatch) -> None:
 
     assert bool(process._ser.AppMan_ex.is_started.value) is True
     assert process._ser.AppMan_ex.last_heartbeat.value == 12.5
+    assert bool(process._ser.AppMan_ex.is_heartbeat_enabled.value) is True
 
 
-@pytest.mark.parametrize("is_started", (False, True))
+def test_app_manager_shutdown_disables_heartbeat_monitoring() -> None:
+    process = object.__new__(AppManagerProcess)
+    process._ser = SimpleNamespace(AppMan_ex=SharedAppManagerExcept())
+    process._ser.AppMan_ex.is_started.value = True
+    process._ser.AppMan_ex.is_heartbeat_enabled.value = True
+    process._js_th = None
+
+    process._shutdown()
+
+    assert bool(process._ser.AppMan_ex.is_started.value) is False
+    assert bool(process._ser.AppMan_ex.is_heartbeat_enabled.value) is False
+
+
+@pytest.mark.parametrize("is_enabled", (False, True))
 def test_error_monitor_dispatches_app_manager_diagnosis(
-    monkeypatch, is_started: bool
+    monkeypatch, is_enabled: bool
 ) -> None:
     diagnosis = MagicMock()
     diagnosis.errors_diagnosis.return_value = (
@@ -141,10 +156,11 @@ def test_error_monitor_dispatches_app_manager_diagnosis(
         ResultDiagnosis.DETECTION,
     )
     app_manager_shared = SimpleNamespace(
-        is_started=SimpleNamespace(value=is_started),
+        is_heartbeat_enabled=SimpleNamespace(value=is_enabled),
         last_heartbeat=SimpleNamespace(value=10.0),
     )
     process = object.__new__(ErrorMonitorProcess)
+    process._is_last_app_manager_diag_enabled = False
     process._ser = SimpleNamespace(
         AppMan_ex=app_manager_shared,
         state_errors_A_C={
@@ -164,7 +180,8 @@ def test_error_monitor_dispatches_app_manager_diagnosis(
 
     process._update()
 
-    if is_started:
+    if is_enabled:
+        diagnosis.clear.assert_called_once_with()
         diagnosis.errors_diagnosis.assert_called_once_with(15.0, 10.0)
         diagnosis.log_output.assert_called_once_with(
             ResultDiagnosis.DETECTION,
@@ -172,5 +189,6 @@ def test_error_monitor_dispatches_app_manager_diagnosis(
             StateErrorIndex.APPLICATION_MANAGER_NOT_RESPONDING,
         )
     else:
+        diagnosis.clear.assert_not_called()
         diagnosis.errors_diagnosis.assert_not_called()
         diagnosis.log_output.assert_not_called()

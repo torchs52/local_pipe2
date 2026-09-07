@@ -25,6 +25,7 @@ class ErrorMonitorProcess(ProcessBase):
     __slots__ = (
         "_cycle",
         "_err_config",
+        "_is_last_app_manager_diag_enabled",
         "_paths",
         "_ser",
         "_system_activator",
@@ -43,6 +44,7 @@ class ErrorMonitorProcess(ProcessBase):
         self._ser: SharedErrors = ser
         self._system_activator: ProcessActivator = system_activator
         self._cycle: float = cycle  # fpsの逆数(秒)
+        self._is_last_app_manager_diag_enabled = False
         log_dir: Path = paths.get_mmap_dir(self._directory_config)
         err0_path: Path = normalize_path("./err0.dat", log_dir)
         err1_path: Path = normalize_path("./err1.dat", log_dir)
@@ -87,10 +89,13 @@ class ErrorMonitorProcess(ProcessBase):
             time.sleep(self._cycle)
 
     def _update(self) -> None:
-        if self._ser.AppMan_ex.is_started.value:
+        is_enabled = bool(self._ser.AppMan_ex.is_heartbeat_enabled.value)
+        if is_enabled:
             diagnosis = self._ser.state_errors_A_C[
                 StateErrorIndex.APPLICATION_MANAGER_NOT_RESPONDING
             ]
+            if self._is_last_app_manager_diag_enabled is False:
+                diagnosis.clear()
             try:
                 result = diagnosis.errors_diagnosis(
                     time.monotonic(), self._ser.AppMan_ex.last_heartbeat.value
@@ -104,6 +109,7 @@ class ErrorMonitorProcess(ProcessBase):
                     type(e).__name__,
                     e,
                 )
+        self._is_last_app_manager_diag_enabled = is_enabled
 
         try:
             self._mmap.start_write()

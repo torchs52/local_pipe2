@@ -27,7 +27,11 @@ from argus_synchro.shared_errors import (
     SharedErrors,
     StateErrorDIndex,
 )
-from argus_synchro.shared_excepts import SharedExcepts, SharedScrutinizerExcept
+from argus_synchro.shared_excepts import (
+    INVALID_TIMESTAMP,
+    SharedExcepts,
+    SharedScrutinizerExcept,
+)
 
 if TYPE_CHECKING:
     from argus_synchro.detect2d import ObjDetectionBase, ObjDetectionInterface
@@ -238,7 +242,7 @@ class ObjectDetectProcess(ProcessBase):
         self._config_load()
         self._err_config_load()
         self._build_provider()
-        self._spe.last_heartbeat.value = time.monotonic()
+        self.start_diagnosis()
         self._frames_buf = np.zeros(
             (
                 self._camera_conf.count,
@@ -278,7 +282,15 @@ class ObjectDetectProcess(ProcessBase):
         self.bb_box_producers.restart_completed()
 
     def _shutdown(self) -> None:
+        self.stop_diagnosis()
         self._fps_prof.export()
+
+    def start_diagnosis(self) -> None:
+        self._spe.last_heartbeat.value = INVALID_TIMESTAMP
+        self._spe.is_heartbeat_enabled.value = True
+
+    def stop_diagnosis(self) -> None:
+        self._spe.is_heartbeat_enabled.value = False
 
     @log_main()
     def _loop(self) -> None:

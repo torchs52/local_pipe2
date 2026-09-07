@@ -2551,6 +2551,9 @@ class SurroundMonitorModuleNotRespondingDiagnosis(StateErrorDiagnosisA):
         self._last_max_elapsed_sec: float = 0.0
         self.param: err_conf.SurroundMonitorModuleNotRespondingParameters
 
+    def clear(self) -> None:
+        self._last_max_elapsed_sec = 0.0
+
     def _parse_args(self, *args: object) -> list[float]:
         if len(args) != 1 or not isinstance(args[0], (list, tuple)):
             raise ValueError("args must be (elapsed_list,)")
@@ -2758,6 +2761,11 @@ class ApplicationManagerNotRespondingDiagnosis(StateErrorDiagnosisA):
         self._heartbeat_tolerance_sec: float = 0.01
         self._detected_in_current_cycle: bool = False
         self.param: err_conf.ApplicationManagerNotRespondingParameters
+
+    def clear(self) -> None:
+        self._previous_heartbeat = None
+        self._last_time = None
+        self._detected_in_current_cycle = False
 
     def _parse_args(self, *args: object) -> tuple[float, float | None]:
         if len(args) != 2:

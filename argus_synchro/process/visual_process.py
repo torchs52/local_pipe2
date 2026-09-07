@@ -50,6 +50,7 @@ from argus_synchro.shared_errors import (
     StateErrorDIndex,
     StateErrorIndex,
 )
+from argus_synchro.shared_excepts import INVALID_TIMESTAMP
 from argus_synchro.SystemMonitor import ProcessTimeMonitor
 from argus_synchro.SystemMonitor import ProcessTimeMonitor as PTMonitor
 from argus_synchro.tester import Tester
@@ -97,6 +98,7 @@ class VisualProcess(ProcessBase):
         "_pre_frame",
         "_sac",
         "_scene_camera",
+        "_sec_visu_ex",
         "_tester",
         "_visual_ui",
         "camera",
@@ -120,6 +122,7 @@ class VisualProcess(ProcessBase):
         activator: ProcessActivator,
     ) -> None:
         super().__init__(sec_visu_ex, activator, "VisualProcess")
+        self._sec_visu_ex = sec_visu_ex
         self._accum_points_input: MessageFlow[AccumPointsData] = self._subscribe(
             accum_points_input,
         )
@@ -460,7 +463,7 @@ class VisualProcess(ProcessBase):
     def _startup(self) -> None:
         self._config_load()
         self._err_config_load()
-        self._spe.last_heartbeat.value = time.monotonic()
+        self.start_diagnosis()
         self._build_camera()
 
         if self._app_config.OctoTree.func_on:
@@ -590,10 +593,18 @@ class VisualProcess(ProcessBase):
         SubScrutinizer.log_register(self._app_logger_factory)
 
     def _shutdown(self) -> None:
+        self.stop_diagnosis()
         self._visual_ui.close()
         self._fps_prof.export()
         # NOTE: 動作テスト用
         # self._tester.export()
+
+    def start_diagnosis(self) -> None:
+        self._sec_visu_ex.last_heartbeat.value = INVALID_TIMESTAMP
+        self._sec_visu_ex.is_heartbeat_enabled.value = True
+
+    def stop_diagnosis(self) -> None:
+        self._sec_visu_ex.is_heartbeat_enabled.value = False
 
     def _start_restart(self) -> None:
         self._config_load()
@@ -700,7 +711,7 @@ class VisualProcess(ProcessBase):
                             valid_detects,
                             frames,
                         )
-                        self._spe.last_heartbeat.value = time.monotonic()
+                        self._sec_visu_ex.last_heartbeat.value = time.monotonic()
 
                 except Exception as e:
                     is_state_error_d_exception = self._ser.is_state_error_d_exception(

@@ -16,7 +16,7 @@ from argus_synchro.profiler.prof_fps import ProfFps
 from argus_synchro.profiler.prof_mode import ProfCategory
 from argus_synchro.shared_app_config import SharedAppConfig
 from argus_synchro.shared_errors import ModuleErrorIndex, SharedErrors, StateErrorDIndex
-from argus_synchro.shared_excepts import SharedGetDataExcept
+from argus_synchro.shared_excepts import INVALID_TIMESTAMP, SharedGetDataExcept
 
 
 class GetDataProcess(ProcessBase):
@@ -35,6 +35,7 @@ class GetDataProcess(ProcessBase):
         "_pcd_outputs",
         "_ref_t",
         "_sac",
+        "_sec_get_data",
         "_ser",
         "_target_frame_time_sec",
     )
@@ -54,6 +55,7 @@ class GetDataProcess(ProcessBase):
         activator: ProcessActivator,
     ) -> None:
         super().__init__(sec_get_data, activator, "GetDataProcess")
+        self._sec_get_data = sec_get_data
         self._camera_inputs: tuple[MessageFlow[CameraData], ...] = tuple(
             self._subscribe(camera) for camera in camera_inputs
         )
@@ -120,7 +122,7 @@ class GetDataProcess(ProcessBase):
         self._config_load()
         self._err_config_load()
         self._ref_t = self._app_config.Scrutinizer.s_frame
-        self._spe.last_heartbeat.value = time.monotonic()
+        self.start_diagnosis()
 
         self._fps_prof.start()
         self.create_producer_and_consumer()
@@ -166,7 +168,15 @@ class GetDataProcess(ProcessBase):
         pass
 
     def _shutdown(self) -> None:
+        self.stop_diagnosis()
         self._fps_prof.export()
+
+    def start_diagnosis(self) -> None:
+        self._sec_get_data.last_heartbeat.value = INVALID_TIMESTAMP
+        self._sec_get_data.is_heartbeat_enabled.value = True
+
+    def stop_diagnosis(self) -> None:
+        self._sec_get_data.is_heartbeat_enabled.value = False
 
     def _wait_for_next_frame(self, frame_begin: float) -> None:
         elapsed_sec = time.perf_counter() - frame_begin
@@ -274,7 +284,7 @@ class GetDataProcess(ProcessBase):
                         candata,
                         cameras,
                     )
-                    self._spe.last_heartbeat.value = time.monotonic()
+                    self._sec_get_data.last_heartbeat.value = time.monotonic()
 
                     # 出力処理
                     if output_data is None:

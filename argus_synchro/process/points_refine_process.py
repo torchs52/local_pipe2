@@ -62,6 +62,8 @@ if typing.TYPE_CHECKING:
     from argus_synchro.shared_app_config import SharedAppConfig
     from argus_synchro.shared_excepts import SharedScrutinizerExcept
 
+from argus_synchro.shared_excepts import INVALID_TIMESTAMP
+
 
 class PointsRefineProcess(ProcessBase):
     __slots__ = (
@@ -459,7 +461,7 @@ class PointsRefineProcess(ProcessBase):
     def _startup(self) -> None:
         self._config_load()
         self._err_config_load()
-        self._spe.last_heartbeat.value = time.monotonic()
+        self.start_diagnosis()
         self._startup_remove()
         self._startup_accum()
         self._startup_collision_cliff()
@@ -499,7 +501,15 @@ class PointsRefineProcess(ProcessBase):
         pass
 
     def _shutdown(self) -> None:
+        self.stop_diagnosis()
         self._fps_prof.export()
+
+    def start_diagnosis(self) -> None:
+        self._spe.last_heartbeat.value = INVALID_TIMESTAMP
+        self._spe.is_heartbeat_enabled.value = True
+
+    def stop_diagnosis(self) -> None:
+        self._spe.is_heartbeat_enabled.value = False
 
     @log_main()
     def _loop(self) -> None:

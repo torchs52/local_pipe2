@@ -29,6 +29,7 @@ class SharedGetDataExcept(SharedProcessExcept):
         self.last_heartbeat: Synchronized[float] = create_shared_single_data(
             INVALID_TIMESTAMP
         )
+        self.is_heartbeat_enabled: Synchronized[bool] = create_shared_single_data(False)
 
     def close(self) -> None:
         pass
@@ -111,6 +112,7 @@ class SharedVisualizeExcept(SharedProcessExcept):
         self.last_heartbeat: Synchronized[float] = create_shared_single_data(
             INVALID_TIMESTAMP
         )
+        self.is_heartbeat_enabled: Synchronized[bool] = create_shared_single_data(False)
 
     def close(self) -> None:
         pass
@@ -122,7 +124,10 @@ class SharedAppManagerExcept(SharedProcessExcept):
         super().__init__()
         # エラーフラグをここに足していく.(Is... or Has...)
         self.is_started: Synchronized[bool] = create_shared_single_data(False)
-        self.last_heartbeat: Synchronized[float] = create_shared_single_data(0.0)
+        self.last_heartbeat: Synchronized[float] = create_shared_single_data(
+            INVALID_TIMESTAMP
+        )
+        self.is_heartbeat_enabled: Synchronized[bool] = create_shared_single_data(False)
 
     def close(self) -> None:
         pass
@@ -137,6 +142,7 @@ class SharedScrutinizerExcept(SharedProcessExcept):
         self.last_heartbeat: Synchronized[float] = create_shared_single_data(
             INVALID_TIMESTAMP
         )
+        self.is_heartbeat_enabled: Synchronized[bool] = create_shared_single_data(False)
 
     def close(self) -> None:
         pass

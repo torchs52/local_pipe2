@@ -27,7 +27,7 @@ from argus_synchro.profiler import log_target
 from argus_synchro.profiler.prof_mode import ProfCategory
 from argus_synchro.shared_app_config import SharedAppConfig
 from argus_synchro.shared_errors import ModuleErrorIndex, SharedErrors
-from argus_synchro.shared_excepts import SharedIMUExcept
+from argus_synchro.shared_excepts import INVALID_TIMESTAMP, SharedIMUExcept
 
 if TYPE_CHECKING:
     from argus_synchro.provider.imu import ImuProvider
@@ -40,6 +40,7 @@ class ImuProviderProcess(InputProcess[ImuData]):
         "_end_frame",
         "_err_config",
         "_heartbeat_interval",
+        "_diagnosis_warmup_start",
         "_index",
         "_last_heartbeat",
         "_last_updated",
@@ -74,6 +75,7 @@ class ImuProviderProcess(InputProcess[ImuData]):
         self._unique_lidar_name: str = ""
         self._heartbeat_interval: Final[float] = 0.5
         self._last_heartbeat: float = time.monotonic()
+        self._diagnosis_warmup_start: float | None = None
 
         # _startupで初期化
         self._err_config: ErrorConfig
@@ -106,7 +108,42 @@ class ImuProviderProcess(InputProcess[ImuData]):
         self._read_lidar_config()
         self._change_device()
         self.create_producer_and_consumer()
-        self._sec_imu.is_heartbeat_enabled.value = True
+        self.start_diagnosis()
+
+    def start_diagnosis(self) -> None:
+        self._sec_imu.last_heartbeat.value = INVALID_TIMESTAMP
+        self._last_heartbeat = time.perf_counter()
+        self._diagnosis_warmup_start = None
+        self._sec_imu.is_heartbeat_enabled.value = False
+
+    def stop_diagnosis(self) -> None:
+        self._sec_imu.is_heartbeat_enabled.value = False
+        self._diagnosis_warmup_start = None
+
+    def _update_heartbeat(self, now: float) -> None:
+        heartbeat_interval = now - self._last_heartbeat
+        if heartbeat_interval <= self._heartbeat_interval:
+            return
+
+        self._sec_imu.last_heartbeat.value = now
+        self._last_heartbeat = now
+        if self._sec_imu.is_heartbeat_enabled.value:
+            return
+
+        param = self._err_config.imu_n_connection_error
+        if (
+            self._diagnosis_warmup_start is None
+            or heartbeat_interval > param.recovery_receive_interval_sec
+        ):
+            self._diagnosis_warmup_start = now
+            return
+
+        recovery_duration = max(
+            param.error_recovery_confirm_duration_sec,
+            param.failsafe_recovery_confirm_duration_sec,
+        )
+        if now - self._diagnosis_warmup_start >= recovery_duration:
+            self._sec_imu.is_heartbeat_enabled.value = True
 
     def create_producer_and_consumer(self) -> None:
         self.producer: Producer[ImuData] = self._producer_flow.create_producer()
@@ -129,7 +166,7 @@ class ImuProviderProcess(InputProcess[ImuData]):
         self._lidar_config_index_map = dict(enumerate(keys))
 
     def _shutdown(self) -> None:
-        self._sec_imu.is_heartbeat_enabled.value = False
+        self.stop_diagnosis()
 
     @log_target("IMU入力I/F", ProfCategory.Process)
     def _update(self) -> ImuData | None:
@@ -143,9 +180,7 @@ class ImuProviderProcess(InputProcess[ImuData]):
             cube = np.stack(imu_ring, axis=0)
             flat = cube.reshape(cube.shape[0], -1)
             now = time.perf_counter()
-            if now - self._last_heartbeat > self._heartbeat_interval:
-                self._sec_imu.last_heartbeat.value = now
-                self._last_heartbeat = now
+            self._update_heartbeat(now)
             return ImuData(0, t, flat)
         return ImuData(0, t, np.zeros((2, 2), dtype=np.float64))
 

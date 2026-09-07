@@ -27,6 +27,7 @@ from argus_synchro.shared_errors import (
     StateErrorDIndex,
     StateErrorIndex,
 )
+from argus_synchro.shared_excepts import INVALID_TIMESTAMP
 
 if TYPE_CHECKING:
     from watchdog.observers.api import BaseObserver
@@ -101,6 +102,7 @@ class AppManagerProcess(ProcessBase):
         self._is_last_imu_diag_enabled: list[bool]
         self._is_last_lidar_diag_enabled: list[bool]
         self._is_last_lidar_sm_diag_enabled: bool
+        self._is_last_surround_diag_enabled: bool
 
     def _config_load(self) -> None:
         self._app_config: AppConfig = self._sac.read()
@@ -301,6 +303,7 @@ class AppManagerProcess(ProcessBase):
         self._is_last_imu_diag_enabled = [False] * self._num_lidars
         self._is_last_lidar_diag_enabled = [False] * self._num_lidars
         self._is_last_lidar_sm_diag_enabled = False
+        self._is_last_surround_diag_enabled = False
 
         result: tuple[ResultDiagnosis, ResultDiagnosis] = self._ser.state_errors_D[
             StateErrorDIndex.OTHER_HARDWARE_ERROR
@@ -309,6 +312,8 @@ class AppManagerProcess(ProcessBase):
             *result, StateErrorDIndex.OTHER_HARDWARE_ERROR
         )
         self._ser.AppMan_ex.is_started.value = False
+        self._ser.AppMan_ex.last_heartbeat.value = INVALID_TIMESTAMP
+        self._ser.AppMan_ex.is_heartbeat_enabled.value = False
 
         # チェック確認までしばらく待つ.
         time.sleep(5)
@@ -362,6 +367,7 @@ class AppManagerProcess(ProcessBase):
 
     def _shutdown(self) -> None:
         self._ser.AppMan_ex.is_started.value = False
+        self._ser.AppMan_ex.is_heartbeat_enabled.value = False
         with contextlib.suppress(Exception):
             if self._js_th is not None:
                 self._js_th.stop()
@@ -369,6 +375,7 @@ class AppManagerProcess(ProcessBase):
     def _update_heartbeat(self) -> None:
         self._ser.AppMan_ex.last_heartbeat.value = time.monotonic()
         self._ser.AppMan_ex.is_started.value = True
+        self._ser.AppMan_ex.is_heartbeat_enabled.value = True
 
     def _update_log_output_stopped(self) -> None:
         diagnosis = self._ser.state_errors_A_C[StateErrorIndex.LOG_OUTPUT_STOPPED]
@@ -536,22 +543,31 @@ class AppManagerProcess(ProcessBase):
     def _surround_monitor_modules_healthy_check(self) -> None:
         now_mono = time.monotonic()
         heartbeat_targets = (
-            self._sec.getData_ex.last_heartbeat,
-            self._sec.ObjDet_ex.last_heartbeat,
-            self._sec.PointsRefine_ex.last_heartbeat,
-            self._sec.Visu_ex.last_heartbeat,
+            self._sec.getData_ex,
+            self._sec.ObjDet_ex,
+            self._sec.PointsRefine_ex,
+            self._sec.Visu_ex,
         )
         elapsed_list = [
-            now_mono - heartbeat.value if heartbeat.value >= 0.0 else -1.0
-            for heartbeat in heartbeat_targets
+            now_mono - target.last_heartbeat.value
+            if target.is_heartbeat_enabled.value
+            and target.last_heartbeat.value >= 0.0
+            else -1.0
+            for target in heartbeat_targets
         ]
         diagnosis = self._ser.state_errors_A_C[
             StateErrorIndex.SURROUND_MONITOR_MODULE_NOT_RESPONDING
         ]
+        is_enabled = any(
+            target.is_heartbeat_enabled.value for target in heartbeat_targets
+        )
+        if is_enabled and self._is_last_surround_diag_enabled is False:
+            diagnosis.clear()
         result = diagnosis.errors_diagnosis(elapsed_list)
         diagnosis.log_output(
             *result, StateErrorIndex.SURROUND_MONITOR_MODULE_NOT_RESPONDING
         )
+        self._is_last_surround_diag_enabled = is_enabled
 
     def _monitor_argus_healthy_check(self) -> None:
         now: float = time.perf_counter()

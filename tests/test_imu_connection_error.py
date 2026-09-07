@@ -15,9 +15,20 @@ def _make_process(provider) -> ImuProviderProcess:
     process = object.__new__(ImuProviderProcess)
     process._ProcessBase__process = None
     process._provider = provider
-    process._sec_imu = SimpleNamespace(last_heartbeat=SimpleNamespace(value=-1.0))
+    process._sec_imu = SimpleNamespace(
+        last_heartbeat=SimpleNamespace(value=-1.0),
+        is_heartbeat_enabled=SimpleNamespace(value=True),
+    )
     process._heartbeat_interval = 0.5
     process._last_heartbeat = 10.0
+    process._diagnosis_warmup_start = None
+    process._err_config = SimpleNamespace(
+        imu_n_connection_error=SimpleNamespace(
+            recovery_receive_interval_sec=1.0,
+            error_recovery_confirm_duration_sec=5.0,
+            failsafe_recovery_confirm_duration_sec=5.0,
+        )
+    )
     return process
 
 
@@ -68,6 +79,50 @@ def test_imu_shutdown_disables_heartbeat_monitoring() -> None:
 
     process._shutdown()
 
+    assert process._sec_imu.is_heartbeat_enabled.value is False
+
+
+def test_imu_start_diagnosis_resets_heartbeat_before_enabling(monkeypatch) -> None:
+    process = object.__new__(ImuProviderProcess)
+    process._ProcessBase__process = None
+    process._sec_imu = SimpleNamespace(
+        last_heartbeat=SimpleNamespace(value=1.0),
+        is_heartbeat_enabled=SimpleNamespace(value=False),
+    )
+    process._last_heartbeat = 1.0
+    monkeypatch.setattr(
+        "argus_synchro.process.imu_process.time.perf_counter", lambda: 42.0
+    )
+
+    process.start_diagnosis()
+
+    assert process._sec_imu.last_heartbeat.value == -1.0
+    assert process._last_heartbeat == 42.0
+    assert process._sec_imu.is_heartbeat_enabled.value is False
+
+
+def test_imu_diagnosis_starts_after_continuous_heartbeat_warmup() -> None:
+    process = _make_process(SimpleNamespace())
+    process._sec_imu.is_heartbeat_enabled.value = False
+
+    for now in (10.6, 11.2, 11.8, 12.4, 13.0, 13.6, 14.2, 14.8, 15.4):
+        process._update_heartbeat(now)
+        assert process._sec_imu.is_heartbeat_enabled.value is False
+
+    process._update_heartbeat(16.0)
+
+    assert process._sec_imu.is_heartbeat_enabled.value is True
+
+
+def test_imu_diagnosis_warmup_restarts_after_receive_gap() -> None:
+    process = _make_process(SimpleNamespace())
+    process._sec_imu.is_heartbeat_enabled.value = False
+
+    process._update_heartbeat(10.6)
+    process._update_heartbeat(11.2)
+    process._update_heartbeat(13.0)
+
+    assert process._diagnosis_warmup_start == 13.0
     assert process._sec_imu.is_heartbeat_enabled.value is False
 
 
