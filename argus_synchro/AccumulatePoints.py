@@ -343,6 +343,9 @@ def accumulate_point(
             ),
         )
 
+    trim_accumulated_frames(accum_points_dq, max_accumulated_frames)
+    trim_accumulated_frames(accum_ground_dq, max_accumulated_frames_ground)
+
     return (
         counter,
         accumulated_points_wo_ground,

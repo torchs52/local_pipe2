@@ -286,7 +286,7 @@ void UI_interface::write_2d_object_detection_result(const std::tuple<int, int>& 
     int person_num = 0;
     const int person_num_Adr = this->writtenAdr; //書き込み場所を記憶して、最後に戻って書く.
     // 四角形BB個数
-    this->logger_.info("Adr(person_num) (Skip): %d", person_num_Adr);
+    this->logger_.debug("Adr(person_num) (Skip): %d", person_num_Adr);
     this->writtenAdr += static_cast<int>(ByteSize::INT8);
 
     Eigen::Vector<int16_t, 4> coordinate = Eigen::Vector<int16_t, 4>::Zero(4);
@@ -305,14 +305,14 @@ void UI_interface::write_2d_object_detection_result(const std::tuple<int, int>& 
             coordinate(1) = static_cast<int16_t>(out_boxes(i, 0) * std::get<0>(frame_shape)); // y 始点
             coordinate(2) = static_cast<int16_t>(out_boxes(i, 3) * std::get<1>(frame_shape)); // x 終点
             coordinate(3) = static_cast<int16_t>(out_boxes(i, 2) * std::get<0>(frame_shape)); // y 終点
-            this->logger_.info("Adr(person_coordinate) (Skip): %d", this->writtenAdr);
+            this->logger_.debug("Adr(person_coordinate) (Skip): %d", this->writtenAdr);
             // 四角形BB頂点1x, 1y, 2x, 2y (対角線)
             // WARNING iとなっており、再定義していたのので修正。
             for (int coordinate_i = 0; coordinate_i < coordinate.size(); coordinate_i++)
             {
                 this->clsMMap.WriteSignedInt16(this->writtenAdr, coordinate(coordinate_i));
                 this->writtenAdr += static_cast<int>(ByteSize::INT16);
-                this->logger_.info("coordinate[%d]: %d", coordinate_i, coordinate(coordinate_i));
+                this->logger_.debug("coordinate[%d]: %d", coordinate_i, coordinate(coordinate_i));
             }
         }
     }
@@ -336,19 +336,19 @@ void UI_interface::write_3d_object_detection_result_proj(const Eigen::Ref<const 
         camera, boxes.block(0, 0, n_clusters * 8, boxes.cols()), cluster2entity, this->draw_bbox_3d, this->logger_);
 
     // 直方体BB個数(2D射影)
-    this->logger_.info("Adr(3d_obj_num): %d", this->writtenAdr);
+    this->logger_.debug("Adr(3d_obj_num): %d", this->writtenAdr);
     int three_d_obj_num = w_2d_coord.rows();
-    this->logger_.info("three_d_obj_num = %d", three_d_obj_num);
+    this->logger_.debug("three_d_obj_num = %d", three_d_obj_num);
     this->clsMMap.WriteInt8(this->writtenAdr, three_d_obj_num);
     this->writtenAdr += static_cast<int>(ByteSize::INT8);
 
     // 直方体BB 8隅座標(2D射影)
-    this->logger_.info("Adr(3d_obj_proj_coord): %d", this->writtenAdr);
+    this->logger_.debug("Adr(3d_obj_proj_coord): %d", this->writtenAdr);
     Eigen::Matrix<int16_t, Eigen::Dynamic, Eigen::Dynamic> transposed_w_2d_coord = w_2d_coord.transpose();
     // NOTE ravel
     Eigen::Vector<int16_t, Eigen::Dynamic> w_2d_coord_16 = Eigen::Map<const Eigen::Vector<int16_t, Eigen::Dynamic>>(
         transposed_w_2d_coord.data(), transposed_w_2d_coord.size());
-    this->logger_.info("w_2d_coord_16 = %s", helper::EigenVectorToString(w_2d_coord_16).c_str());
+    this->logger_.debug("w_2d_coord_16 = %s", helper::EigenVectorToString(w_2d_coord_16).c_str());
     for (int i = 0; i < three_d_obj_num * 16; i++)
     {
         this->clsMMap.WriteSignedInt16(this->writtenAdr, w_2d_coord_16(i));
@@ -360,7 +360,7 @@ void UI_interface::write_collision_result_proj(
     const Eigen::Ref<const Eigen::Matrix<int16_t, Eigen::Dynamic, Eigen::Dynamic>>& w_2d_coord)
 {
     // 衝突ペア個数（2D射影）
-    this->logger_.info("Adr(collision_num): %d", this->writtenAdr);
+    this->logger_.debug("Adr(collision_num): %d", this->writtenAdr);
     int collision_proj_num = 0;
     if (w_2d_coord.size() != 0)
     {
@@ -368,16 +368,16 @@ void UI_interface::write_collision_result_proj(
     }
 
     this->clsMMap.WriteInt8(this->writtenAdr, collision_proj_num);
-    this->logger_.info("collision_proj_num = %d", collision_proj_num);
+    this->logger_.debug("collision_proj_num = %d", collision_proj_num);
     this->writtenAdr += static_cast<int>(ByteSize::INT8);
 
     //  衝突ペア座標(2D射影)
-    this->logger_.info("Adr(collision_proj_coord): %d", this->writtenAdr);
+    this->logger_.debug("Adr(collision_proj_coord): %d", this->writtenAdr);
     // NOTE ravel
     Eigen::Matrix<int16_t, Eigen::Dynamic, Eigen::Dynamic> transposed_w_2dcoord = w_2d_coord.transpose();
     Eigen::Vector<int16_t, Eigen::Dynamic> w_2d_coord_16 = Eigen::Map<const Eigen::Vector<int16_t, Eigen::Dynamic>>(
         transposed_w_2dcoord.data(), transposed_w_2dcoord.size());
-    this->logger_.info("w_2d_coord_16 = %s", helper::EigenVectorToString(w_2d_coord_16).c_str());
+    this->logger_.debug("w_2d_coord_16 = %s", helper::EigenVectorToString(w_2d_coord_16).c_str());
     for (int i = 0; i < (collision_proj_num * 4); i++)
     {
         this->clsMMap.WriteSignedInt16(this->writtenAdr, w_2d_coord_16(i));
@@ -395,7 +395,7 @@ void UI_interface::preprocess_info()
 
     // self.writtenAdr += BS.INT8
     this->writtenAdr = UNIX_TIME_ADR; //直前にReadOnlyアドレスがあるため明示的に指定.
-    this->logger_.info("Adr(unix_time): %d", this->writtenAdr);
+    this->logger_.debug("Adr(unix_time): %d", this->writtenAdr);
     auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
     int64_t now_unix_time = now_ms - 1732600000000;
     //書込時間
@@ -419,11 +419,11 @@ int UI_interface::generate_error_code(int isslow) const
 
 void UI_interface::error_info(int isslow)
 {
-    this->logger_.info("Adr(error): %d", this->writtenAdr);
+    this->logger_.debug("Adr(error): %d", this->writtenAdr);
     // int code = this->generate_error_code(isslow);
     int code = 0; //処理速度低下エラーが頻繁に出るので暫定処理
     //  エラー種別
-    this->logger_.info("code = %d", code);
+    this->logger_.debug("code = %d", code);
     this->clsMMap.WriteInt32(this->writtenAdr, code);
     this->writtenAdr += static_cast<int>(ByteSize::INT32);
 }
@@ -537,10 +537,10 @@ void UI_interface::detect_3d_info(const Eigen::Ref<const Eigen::MatrixXf>& minma
     // for i in range(cluster_3d_num):
     for (const auto& i : sorted_indices)
     {
-        this->logger_.info("i = %d", i);
+        this->logger_.debug("i = %d", i);
         // entity書き込み
         NodeEntity obj_entity = cluster2entity.at(i);
-        this->logger_.info("Adr(obj_entity): %d", this->writtenAdr);
+        this->logger_.debug("Adr(obj_entity): %d", this->writtenAdr);
         ENTITY_FOR_UI entity;
         if (obj_entity == NodeEntity::HUMAN)
         {
@@ -552,11 +552,11 @@ void UI_interface::detect_3d_info(const Eigen::Ref<const Eigen::MatrixXf>& minma
         }
         this->clsMMap.WriteInt8(this->writtenAdr, static_cast<int>(entity));
         this->writtenAdr += static_cast<int>(ByteSize::INT8);
-        this->logger_.info("entity_for_UI = %d", entity);
+        this->logger_.debug("entity_for_UI = %d", entity);
 
         // BBOX 8隅座標(対角線のみ)
         Eigen::VectorXf bbox_3d_points = multi_points.row(i);
-        this->logger_.info("bbox_3d_points = %s", helper::EigenVectorToString(bbox_3d_points).c_str());
+        this->logger_.debug("bbox_3d_points = %s", helper::EigenVectorToString(bbox_3d_points).c_str());
         for (const auto& point : bbox_3d_points)
         {
             this->clsMMap.WriteFloat(this->writtenAdr, point);
@@ -577,7 +577,7 @@ void UI_interface::collision_info()
     this->writtenAdr += static_cast<int>(ByteSize::INT8);
 
     Eigen::MatrixXf w_3d_coord(collision_num, 6);
-    this->logger_.info("collision_pair_point = %d", this->writtenAdr);
+    this->logger_.debug("collision_pair_point = %d", this->writtenAdr);
     // collision_num が0の時は一度も処理をせずにpassする.
     if (collision_num != 0)
     {
@@ -609,7 +609,7 @@ void UI_interface::collision_info()
             auto radius = std::get<5>(data);
             std::string radius_s = radius.has_value() ? std::to_string(radius.value()) : "None";
             std::string idx_s = idx.has_value() ? std::to_string(idx.value()) : "None";
-            this->logger_.info("[idx: %s, w_coord_from: %s, w_coord_to: %s, distance: %lf, radius: %s]", idx_s.c_str(),
+            this->logger_.debug("[idx: %s, w_coord_from: %s, w_coord_to: %s, distance: %lf, radius: %s]", idx_s.c_str(),
                                helper::EigenVectorToString(w_coord_from).c_str(),
                                helper::EigenVectorToString(w_coord_to).c_str(), distance, radius_s.c_str());
             w_2d_coord_i++;
@@ -640,7 +640,7 @@ void UI_interface::zero_padding(int n_byte)
 {
     for (int i = 0; i < n_byte; i++)
     {
-        this->logger_.info("Adr(zero_padding): %d", this->writtenAdr);
+        this->logger_.debug("Adr(zero_padding): %d", this->writtenAdr);
         this->clsMMap.WriteInt8(this->writtenAdr, 0);
         this->writtenAdr += static_cast<int>(ByteSize::INT8);
     }
@@ -670,17 +670,17 @@ void UI_interface::camera_info(const std::vector<cv::Mat>& frames,
 
         cv::Mat flat = frame.reshape(1, frame.total() * frame.channels());
         std::vector<uchar> vec_frame = frame.isContinuous() ? flat : flat.clone();
-        this->logger_.info("cameraindex: %d, vec_frame.size: %ld, writtenAdr: %d", i, vec_frame.size(),
+        this->logger_.debug("cameraindex: %d, vec_frame.size: %ld, writtenAdr: %d", i, vec_frame.size(),
                            this->writtenAdr);
 
         // カメラ画像バイト数
-        this->logger_.info("Adr(cam.size): %d", this->writtenAdr);
+        this->logger_.debug("Adr(cam.size): %d", this->writtenAdr);
 
         //  カメラ画像の実体（圧縮データ）
-        this->logger_.info("Adr(cam.data): %d", this->writtenAdr);
+        this->logger_.debug("Adr(cam.data): %d", this->writtenAdr);
         this->clsMMap.WriteBytes(this->writtenAdr, vec_frame);
         this->writtenAdr += (vec_frame.size() * static_cast<int>(ByteSize::INT8));
-        this->logger_.info("vec_frame = %s", VectorToString(vec_frame).c_str());
+        this->logger_.debug("vec_frame = %s", VectorToString(vec_frame).c_str());
 
         // 人検知結果(四角形BB個数、座標)
         this->write_2d_object_detection_result({frame.size().height, frame.size().width}, bb_box_data.at(i));
@@ -713,14 +713,14 @@ void UI_interface::octotree_info(OctoTree& octotree_obj)
             // 点群が格納されていない空属性はスキップ
             continue;
         }
-        this->logger_.info("Adr(octotree_pcd): %d", this->writtenAdr);
+        this->logger_.debug("Adr(octotree_pcd): %d", this->writtenAdr);
         Eigen::MatrixXd transposed_member_points = member_points.transpose();
         Eigen::VectorXf member_points32 = Eigen::Map<const Eigen::VectorXd>(transposed_member_points.data(),
                                                                             transposed_member_points.size())
                                               .cast<float>(); // 8byte -> 4byteに変換
         int member_points_num = static_cast<int>(member_points32.size() / 3);
-        this->logger_.info("member = %d", static_cast<int>(member));
-        this->logger_.info("member_points_num = %d", member_points_num);
+        this->logger_.debug("member = %d", static_cast<int>(member));
+        this->logger_.debug("member_points_num = %d", member_points_num);
         // self._logger.info(f"{member_points32 = }") C++移植前からコメント
         octotree_pcd_num = octotree_pcd_num + member_points_num;
         if (judge_show_member(member, this->show_unk))
@@ -734,18 +734,18 @@ void UI_interface::octotree_info(OctoTree& octotree_obj)
                 // this->_logger.info(self, point) C++移植前からコメント
             }
         }
-        this->logger_.info("Adr(octotree_pcd_num): %d", octotree_pcd_num_Adr);
-        this->clsMMap.WriteInt32(octotree_pcd_num_Adr, octotree_pcd_num);
-        this->logger_.info("octotree_pcd_num = %d", octotree_pcd_num);
     }
+    this->logger_.info("Adr(octotree_pcd_num): %d", octotree_pcd_num_Adr);
+    this->clsMMap.WriteInt32(octotree_pcd_num_Adr, octotree_pcd_num);
+    this->logger_.info("octotree_pcd_num = %d", octotree_pcd_num);
 }
 void UI_interface::cliff_info()
 {
     // 崖個数
     int n_cliffs = this->written_cliff_info.n_cliffs;
-    this->logger_.info("Adr(n_cliffs): %d", this->writtenAdr);
+    this->logger_.debug("Adr(n_cliffs): %d", this->writtenAdr);
     clsMMap.WriteInt8(writtenAdr, n_cliffs);
-    this->logger_.info("n_cliffs = %d", n_cliffs);
+    this->logger_.debug("n_cliffs = %d", n_cliffs);
     writtenAdr += static_cast<int>(ByteSize::INT8);
 
     // 崖境界の書き込み
@@ -757,9 +757,9 @@ void UI_interface::cliff_info()
         for (int cliff_vertices_i = 0; cliff_vertices_i < this->written_cliff_info.cliff_vertices.size();
              cliff_vertices_i++)
         {
-            this->logger_.info("Adr(cliff_vertices): %d", this->writtenAdr);
+            this->logger_.debug("Adr(cliff_vertices): %d", this->writtenAdr);
             clsMMap.WriteInt16(writtenAdr, this->written_cliff_info.cliff_vertices(cliff_vertices_i));
-            this->logger_.info("cliff_vertices(%d) = %d", cliff_vertices_i,
+            this->logger_.debug("cliff_vertices(%d) = %d", cliff_vertices_i,
                                this->written_cliff_info.cliff_vertices(cliff_vertices_i));
 
             writtenAdr += static_cast<int>(ByteSize::INT16);
@@ -772,7 +772,7 @@ void UI_interface::cliff_info()
             {
                 const auto& target_cliff_point = cliff_points.row(target_cliff_point_i);
                 // x座標の書き込み
-                this->logger_.info("target_cliff_point: %s",
+                this->logger_.debug("target_cliff_point: %s",
                                    helper::EigenMatrixToString(target_cliff_point, true).c_str());
                 clsMMap.WriteFloat(writtenAdr, target_cliff_point(0));
                 writtenAdr += static_cast<int>(ByteSize::FLOAT);
@@ -786,9 +786,9 @@ void UI_interface::cliff_info()
     }
     // 崖検知警告
     CLIFF_LEVEL cliff_det_level = this->written_cliff_info.cliff_det_level;
-    this->logger_.info("Adr(cliff_det_level): %d", this->writtenAdr);
+    this->logger_.debug("Adr(cliff_det_level): %d", this->writtenAdr);
     this->clsMMap.WriteInt8(this->writtenAdr, static_cast<int>(cliff_det_level));
-    this->logger_.info("cliff_det_level: %d", static_cast<int>(cliff_det_level));
+    this->logger_.debug("cliff_det_level: %d", static_cast<int>(cliff_det_level));
     this->writtenAdr += static_cast<int>(ByteSize::INT8);
 }
 
@@ -847,9 +847,9 @@ void UI_interface::WriteFloatArray(const Eigen::Ref<const Eigen::MatrixXf>& arra
     std::string _array_name = array_name.has_value() ? array_name.value() : "array";
 
     int array_len = array.rows();
-    this->logger_.info("Adr(_array_name): %d", this->writtenAdr);
+    this->logger_.debug("Adr(_array_name): %d", this->writtenAdr);
     this->clsMMap.WriteInt16(this->writtenAdr, array_len);
-    this->logger_.info("array_len = %d", array_len);
+    this->logger_.debug("array_len = %d", array_len);
     this->writtenAdr += static_cast<int>(ByteSize::INT16);
 
     // 配列長さが0の時は、要素を書き込まないので、early returnする
@@ -861,7 +861,7 @@ void UI_interface::WriteFloatArray(const Eigen::Ref<const Eigen::MatrixXf>& arra
     //  配列の各要素を書き込む
     assert(array.cols() == 3);
     //"各行の要素数が3である必要があります"
-    this->logger_.info("Adr(%s_point): %d", _array_name.c_str(), this->writtenAdr);
+    this->logger_.debug("Adr(%s_point): %d", _array_name.c_str(), this->writtenAdr);
     for (int xyz_i = 0; xyz_i < array.rows(); xyz_i++)
     {
         WriteFloat(array(xyz_i, 0));

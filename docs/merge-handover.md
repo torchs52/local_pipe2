@@ -367,16 +367,16 @@ SHI側だけで確認されたテスト:
 | M-042 | 起動時ログ診断parameter初期化 | 実機起動ログ / vendor起動順 | vendor-fix | verified | main/log diagnosis/tests | logger callback登録前にログ圧縮・時刻逆転診断を初期化し、起動直後のAttributeErrorを防ぐ |
 | M-046 | エラーMMAP更新停止 | 実機起動ログ / SHI parameter定義 | manual-port | verified | error config/SE039/SE042/tests | 欠落していた診断閾値を復元し、ErrorMonitorのAttributeError終了とAppManagerの反復例外を防ぐ |
 | M-047 | TensorRT cache・入力名・provider選択の堅牢化 | SHI `ecbc79f` / 現行 `detect2d.py` | manual-port | pending | `detect2d.py`, tests | モデル固有入力名、モデル/config別cache、provider fallbackを小単位で移植する。Jetson検証必須 |
-| M-048 | 負荷低減中の蓄積deque上限保証 | SHI現行 `AccumulatePoints.py` | manual-port | pending | `AccumulatePoints.py`, tests | vendorはappend後に設定上限を1フレーム超え得る。M-006の局所補完 |
-| M-049 | 点群メッセージ上限20,000→40,000 | SHI `2283a0a` | decision-needed | pending | Python/C++ PcdData、detect3d、Visual | 現行20,000では40,000基準の点数負荷判定へ到達不能。固定容量契約・メモリ・FPS評価後に判断 |
-| M-050 | MID360点群復号のNumPyベクトル化 | SHI `5265abb` | manual-port | pending | `device/lidar/mid360_points.py`, tests | 復号だけを移植し、M-035の`perf_counter()`と公開property契約を維持する |
+| M-048 | 負荷低減中の蓄積deque上限保証 | SHI現行 `AccumulatePoints.py` | manual-port | verified | `AccumulatePoints.py`, tests | append後にもmode別上限へtrimし、通常/負荷低減とも最新frameを保持して返却dequeの実効上限を保証 |
+| M-049 | 点群メッセージ上限20,000→40,000 | SHI `2283a0a` | manual-port | verified | Python/C++ PcdData、detect3d、Visual | 認識精度確保のためPython/C++容量を40,000へ統一。40,000点の共有slot往復、一括build、extension import成功 |
+| M-050 | MID360点群復号のNumPyベクトル化 | SHI `5265abb` | manual-port | verified | `device/lidar/mid360_points.py`, tests | structured dtypeと`np.frombuffer()`で96点を一括復号し、M-035の`perf_counter()`と公開property契約を維持。短packetは明示拒否 |
 | M-051 | 新YOLOモデルの機種別既定化 | SHI `9d5c72f` | decision-needed | pending | 機種別settings、性能試験 | モデル実体は同一hashで配置済み。精度・速度承認後に設定だけ変更する |
 | M-052 | SCX3500可視化CAD資産 | SHI `6699794` | decision-needed | pending | `config/crane3d/visualize/SCX3500-3/` | vendorにOBJ/MTL 4ファイルなし。表示側の配置契約を確認して採用する |
-| M-053 | 負荷低減閾値・切替ログ | SHI `2283a0a` | decision-needed | pending | reduced load/PointsRefine/tests | 90/80%→40/30%は製品調整値。M-049と実機測定後に判断し、ログは分離可能 |
-| M-054 | MMAP二重バッファ切替時の次バッファ予約 | SHI `d9ba78b`, `655aaaf` | decision-needed | pending | lib `ClsMMap.cpp`、Godot reader、tests | index切替直後に次mapを`IsWriting=1`へする。保護領域のためreaderとの並行試験後に判断 |
-| M-055 | UI MMAP octotree点数の確定書込み | SHI `d9ba78b` | manual-port | pending | lib `ui_interface.cpp`, tests | 全entity空時も0を書けるよう、合計点数の書込みをloop外へ移す |
-| M-056 | UI MMAP詳細ログのdebug化 | SHI `d9ba78b` | manual-port | pending | lib `ui_interface.cpp`, performance tests | フレーム単位の座標・画像・点群ログをinfoからdebugへ下げる。M-055とは分離する |
-| M-057 | legacy setupのpackage/extension名整合 | SHI `7f34907` | manual-port | pending | lib `setup.py`, package tests | `octotree`とCMake出力`argus_synchro_lib`の不整合。現行make経路への影響確認後に修正 |
+| M-053 | 負荷低減閾値・切替ログ | SHI `2283a0a` | manual-port | verified | reduced load/PointsRefine/tests | 40,000点契約に対して開始40%・復帰30%を採用。現在modeは毎frame、deque詳細はmode変化時だけ出力し、境界と5frame継続を検証 |
+| M-054 | MMAP二重バッファ切替時の次バッファ予約 | SHI `d9ba78b`, `655aaaf` | manual-port | implemented | lib `clsmmap/ClsMMap.cpp`、Godot reader、tests | UI/Error writerがともに2面固定であることを確認し、index切替直後に次mapを`IsWriting=1`へ予約。一括build済み、Godot reader並行試験待ち |
+| M-055 | UI MMAP octotree点数の確定書込み | SHI `d9ba78b` | manual-port | implemented | lib `ui_interface.cpp`, tests | 合計点数の書込みをentity loop外へ移し、全entity空時も0を確定。単一object compile・一括build済み、実MMAP読戻し待ち |
+| M-056 | UI MMAP詳細ログのdebug化 | SHI `d9ba78b` | manual-port | implemented | lib `ui_interface.cpp`, performance tests | フレーム単位のアドレス・座標・画像・点群詳細をdebugへ変更。サマリinfoは維持し、単一object compile・一括build済み、実機ログ量確認待ち |
+| M-057 | legacy setupのpackage/extension名整合 | SHI `7f34907` | manual-port | verified | lib `setup.py`, package tests | distribution/extension名を`argus_synchro_lib`へ統一。wheel生成・installとextension import、metadata `2026.8.25`を確認 |
 | M-058 | 校正settings/MMAP/FIFO契約固定 | vendor現行 / Godot UI契約 | vendor-keep | verified | config schema, facade, FIFO, contract tests | settings 8項目、mode値、FIFO 4要素順、MMAP header、共通field書込順を固定。関連回帰20件pass |
 | M-059 | 2D-3D校正診断UI結果・設定schema | SHI `7f58643`, `fc7f75e` | manual-port | verified | diagnosis, app config, facade, tests | UI enum・reason code変換、設定schema、facade validationを移植し、新producerとの同時切替を確認 |
 | M-060 | 2D-3D校正診断アルゴリズム | SHI `d60c83d` ほか / 現行SHI | manual-port | verified | `calibcheck2d3d`, `SceneDesc`, `YOLOadapter`, tracking, tests | scene/tracking/score診断とcamera slotを保持するactive YOLO adapterをvendor lifecycleへ接続し、three-way確認済み |
@@ -384,8 +384,8 @@ SHI側だけで確認されたテスト:
 | M-062 | 3D-3D校正アルゴリズム・エラー完了 | SHI `b64f6f9` / 現行SHI | manual-port | verified | calibration3d3d, lidar calibration, tests | 生成行列のCE006簡易検証、UI error/status/yaw、matrix/profile/angle FILE_IOを接続。高度な参照差分はdeferredとしてthree-way確認済み |
 | M-063 | 校正capture・厳密同期 | vendor / 現行SHI | vendor-keep | verified | calib FIFO/data capture, tests | `MessageFlow`は単一consumerのためCALIB/SCRUT専用flowを維持。同期成立frameだけをcamera/LiDAR/CAN/ref_t順で渡す契約を確認 |
 | M-064 | 校正wait・facade・MMAP接続 | vendor / SHI `fc7f75e`, `d9edbc0` | manual-port | verified | wait app, facade, mmap contract tests | enum・校正要否status直書きとSHIのwait dummy設定・送信を移植し、Vendor lifecycleとMMAP ABIを維持してthree-way確認済み |
-| M-065 | 校正エラー処理接続 | `docs/error_list.txt` / 現行SHI | manual-port | pending | calibration process/modules/diagnosis/tests | UI専用状態と製品エラーを分離し、固有CE、FILE_IO、module errorを所有境界で接続する |
-| M-066 | 校正設定validation・機種別設定 | SHI現行 calibration validator / machine profile | manual-port | in-review | calibration config validation/machine profile/file watch/tests | SHI validatorと機種別校正設定を移植。CALIB中も`settings.ini`監視を常時維持し、機種別校正INI監視は追加登録する |
+| M-065 | 校正エラー処理接続 | `docs/error_list.txt` / 現行SHI | manual-port | verified | calibration process/modules/diagnosis/tests | FILE_IO D有効化とstartup/runtime fallback、3D-3D UI error状態、profiler防御、失敗後post抑止をVendor lifecycleへ接続しthree-way確認済み |
+| M-066 | 校正設定validation・機種別設定 | SHI現行 calibration validator / machine profile | manual-port | verified | calibration config validation/machine profile/file watch/tests | SHI validatorと機種別校正設定を移植。CALIB中も`settings.ini`監視を常時維持し、機種別校正INI監視を追加。関連14件pass |
 | M-067 | 校正三者差分ビューア導入 | `local_pipe` `origin/vendor-20260817-integration:scripts/three_way_review.py` | manual-port | verified | `scripts/three_way_review.py`, tests | vendor/SHIのrepoとrefを個別指定し、統合working treeと比較する。別repo・片側限定ファイルの専用テスト2件pass |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
@@ -975,6 +975,32 @@ SHI側だけで確認されたテスト:
 - processとmanagerのcProfile開始・終了失敗をwarningとして扱い、校正起動・終了処理を継続する。managerの`ser`/`shared_errors`二重引数は既存API互換のため本単位では維持し、重複importだけ除去した。
 - `_finalize_calib2d3d_fileend_autoexit()`は下位`calibration2d3d_class.app_loopmain()`の現行確定処理と重複するため移植しない。Vendorの`_unsubscribe()`、shutdown flag、top-level `allow_exit()`による自動終了契約を維持する。
 - 新規上位エラー処理3件、校正FILE_IO・自動終了を含む32件、calibcheckを含む65件がpassした。対象のPython compile、重大Ruff、VS Code診断、`git diff --check`も成功した。固定Vendor/SHIとのthree-way HTML 2件を再生成し、ユーザー確認前のため未レビューdirectoryに保持する。
+
+### 2026-09-07 M-048 蓄積deque上限保証
+
+- `accumulate_point()`は処理前にmode別上限へtrimしていたが、最新frame append後は再trimせず、呼出し後のdequeが設定上限を1frame超えていた。SHI現行と同様にpoints/ground双方をappend後にもtrimした。
+- 通常modeのpoints/ground上限3/2、負荷低減modeの上限1/1で4frameを連続投入し、毎回上限以内で最新frameが保持されることをテストした。既存buffer切替テストを含む5件がpassした。
+
+### 2026-09-07 M-050 MID360点群復号ベクトル化
+
+- 96点をPython loopと`int.from_bytes()`で復号していた処理を、14 byteのstructured dtypeと`np.frombuffer()`による一括復号へ置換した。little-endian signed XYZ、signed reflect、tag除外、timestampの既存契約を維持する。
+- M-035で確定した品質低下時刻の`time.perf_counter()`と`last_quality_degraded` propertyは変更していない。必要な1380 byte未満のpacketは偽の0点へ変換せず、長さを含む`ValueError`で明示拒否する。
+- 合成packetの正負XYZ・reflect・timestamp・96x4連続float64配列、短packet、通信品質、不正点群、M-048を含む関連28件がpassした。Python compile、重大Ruff、VS Codeのproduction診断、`git diff --check`も成功した。
+
+### 2026-09-07 M-055・M-057・M-066残件整理
+
+- M-055はoctotree合計点数のMMAP書込みをentity loop外へ移し、UNK/HUMAN/OTHERがすべて空でも予約済み4 byteへ0を書き込むようにした。生成済みflagsによる`ui_interface.cpp`単一object compileは成功した。フルbuildと実MMAP読戻しはC++変更の一括確認へ回す。
+- M-057はlegacy `setup.py`のdistribution名とCMake extension名を`octotree`から`argus_synchro_lib`へ統一した。`setup.py --name/--version`は`argus_synchro_lib / 2026.8.25`を返し、CMakeの`${PROJECT_NAME}`出力と一致した。wheel生成はC++一括buildへ回す。
+- M-066はcalibration validator、機種別calib設定解決、CALIB中のsettings監視維持、機種別calib INI watcher追加が統合済みであることを確認した。validator・machine profile・reload retryの関連14件とVS Code診断が成功したため`verified`とした。値域の製品仕様確定はマージ欠落ではなく別途仕様管理とする。
+
+### 2026-09-07 M-049・M-053～M-057 C++残件整理と一括build
+
+- M-049は認識精度確保のため、Python/C++の`PcdData.SIZE`を40,000へ統一した。40,000x3の共有slot write/borrowで切捨てがないことを確認し、C++一括build後もextension importに成功した。
+- M-053は負荷低減開始を16,000点超、復帰を12,000点未満へ変更した。いずれも5frame継続を維持する。Visualの現在modeログは毎frameのまま、PointsRefineのdeque前後長・mode別上限はmode変化時だけ出力する。閾値境界、継続frame、deque上限、切替ログの関連7件がpassした。
+- M-054は`classMMap`を使うUI MMAPとError MMAPが全実設定で2面構成であることを確認した。現mapの`IsWriting`を0にしてindexを切り替えた直後、次mapの`IsWriting`を1へ設定し、次の`begin_frame()`までreaderに取得される競合窓を閉じた。単一objectと一括buildは成功したが、Godot readerとの並行試験は残す。
+- M-056はフレームごとのアドレス、座標配列、画像バイト列、点群詳細を`info`から`debug`へ変更した。起動情報、件数、総点数、frame末尾時間などのサマリは`info`に維持した。M-055を含む`ui_interface.cpp`単一objectと一括buildは成功した。実機でのログ量確認は残す。
+- M-057は`argus_synchro_lib-2026.8.25-cp312-cp312-linux_aarch64.whl`の生成、install、`argus_synchro_lib.controller` import、distribution metadataを確認して`verified`とした。
+- `make install`は成功し、C++ extensionとwheelを再生成した。MMAP例外・校正MMAP ABI・負荷低減を含む関連34件と、M-053専用7件がpassした。M-055の実MMAP読戻し、M-054のGodot reader並行試験、M-056の実機ログ量確認は引き続き残件とする。
 
 ## 10. 次のCopilotへの開始指示
 

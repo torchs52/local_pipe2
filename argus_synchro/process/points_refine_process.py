@@ -84,6 +84,7 @@ class PointsRefineProcess(ProcessBase):
         "_init_r",
         "_init_t",
         "_l_machine_col",
+        "_last_accum_reduced_load_mode",
         "_last_updated",
         "_machine_immobile_points_measure",
         "_octotree_obj",
@@ -136,6 +137,7 @@ class PointsRefineProcess(ProcessBase):
         self._init_t: NDArray[np.float64]
         self._app_config: AppConfig
         self._last_updated: int
+        self._last_accum_reduced_load_mode: bool | None = None
 
         # _startupで初期化(3処理共通)
         self._err_config: ErrorConfig
@@ -689,6 +691,9 @@ class PointsRefineProcess(ProcessBase):
         # 点群数を負荷低減モードの判定に使用するために更新する
         points_num: int = pcd_input_data.point_cloud.shape[0]
         self._ser.reduced_load_mode.update_pcd_nums(points_num)
+        is_reduced_load_mode = self._ser.reduced_load_mode.enabled
+        accum_frames_before = len(self._accum_points_dq)
+        ground_frames_before = len(self._accum_ground_dq)
 
         accum_points: NDArray[np.float64] | None
         accum_ground_points: NDArray[np.float64] | None
@@ -708,8 +713,33 @@ class PointsRefineProcess(ProcessBase):
             delta_yaw_input.delta_yaw,
             self._app_config,
             crane_state,
-            self._ser.reduced_load_mode.enabled,
+            is_reduced_load_mode,
         )
+
+        if is_reduced_load_mode != self._last_accum_reduced_load_mode:
+            accumulation = self._app_config.Accumulation
+            max_accumulated_frames = (
+                accumulation.max_accumulated_frames_reduced_load
+                if is_reduced_load_mode
+                else accumulation.max_accumulated_frames
+            )
+            max_accumulated_frames_ground = (
+                accumulation.max_accumulated_frames_ground_reduced_load
+                if is_reduced_load_mode
+                else accumulation.max_accumulated_frames_ground
+            )
+            self._logger.info(
+                "蓄積バッファ切替: mode=%s, frame=%s, points=%s->%s (上限=%s), ground=%s->%s (上限=%s)",
+                "reduced_load" if is_reduced_load_mode else "normal",
+                pcd_input_data.frame,
+                accum_frames_before,
+                len(self._accum_points_dq),
+                max_accumulated_frames,
+                ground_frames_before,
+                len(self._accum_ground_dq),
+                max_accumulated_frames_ground,
+            )
+            self._last_accum_reduced_load_mode = is_reduced_load_mode
 
         if accum_points is None or accum_ground_points is None:
             return None

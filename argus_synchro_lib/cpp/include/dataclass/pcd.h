@@ -4,7 +4,7 @@
 class PcdData
 {
   public:
-    static constexpr unsigned int SIZE = 20000U;
+    static constexpr unsigned int SIZE = 40000U;
 };
 
 enum class PCD : int

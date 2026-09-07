@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from enum import Enum
@@ -19,6 +21,7 @@ from argus_synchro.shared_excepts import SharedExcepts
 
 TRT_INPUT_NAME = "images"
 TRT_MAX_WORKSPACE_SIZE = 16 * 1024 * 1024 * 1024
+TRT_BUILDER_OPTIMIZATION_LEVEL = 5
 
 
 class _OnnxRuntimeBackend(Enum):
@@ -27,8 +30,42 @@ class _OnnxRuntimeBackend(Enum):
     CPU = "cpu"
 
 
-def trt_profile_shape(batch_size: int) -> str:
-    return f"{TRT_INPUT_NAME}:{batch_size}x3x640x640"
+def trt_profile_shape(batch_size: int, input_name: str = TRT_INPUT_NAME) -> str:
+    return f"{input_name}:{batch_size}x3x640x640"
+
+
+def _onnx_input_name(onnx_file: str) -> str:
+    metadata_session = onnxruntime.InferenceSession(
+        onnx_file,
+        providers=["CPUExecutionProvider"],
+    )
+    return metadata_session.get_inputs()[0].name
+
+
+def _trt_cache_directory(onnx_file: str, batch_size: int) -> Path:
+    model_path = Path(onnx_file).resolve()
+    with model_path.open("rb") as model_file:
+        model_digest = hashlib.file_digest(model_file, "sha256").hexdigest()[:16]
+
+    settings = {
+        "batch_size": batch_size,
+        "builder_optimization_level": TRT_BUILDER_OPTIMIZATION_LEVEL,
+        "context_memory_sharing": True,
+        "cuda_graph": True,
+        "fp16": True,
+        "int8": False,
+        "max_workspace_size": TRT_MAX_WORKSPACE_SIZE,
+    }
+    settings_json = json.dumps(settings, sort_keys=True, separators=(",", ":"))
+    settings_digest = hashlib.sha256(settings_json.encode()).hexdigest()[:12]
+    cache_dir = (
+        model_path.parent
+        / ".trt_cache"
+        / f"model-{model_digest}"
+        / f"config-{settings_digest}"
+    )
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
 
 
 def trt_ep_options(
@@ -36,15 +73,16 @@ def trt_ep_options(
     batch_size: int,
     *,
     detailed_build_log: bool = False,
+    input_name: str = TRT_INPUT_NAME,
 ) -> dict[str, Any]:
-    cache_dir = str(Path(onnx_file).parent)
-    profile_shape = trt_profile_shape(batch_size)
+    cache_dir = str(_trt_cache_directory(onnx_file, batch_size))
+    profile_shape = trt_profile_shape(batch_size, input_name)
     options: dict[str, Any] = {
         "device_id": 0,
         "trt_fp16_enable": True,
         "trt_int8_enable": False,
         "trt_max_workspace_size": TRT_MAX_WORKSPACE_SIZE,
-        "trt_builder_optimization_level": 5,
+        "trt_builder_optimization_level": TRT_BUILDER_OPTIMIZATION_LEVEL,
         "trt_auxiliary_streams": -1,
         "trt_engine_cache_enable": True,
         "trt_engine_cache_path": cache_dir,
@@ -71,6 +109,32 @@ def _detect_onnx_runtime_backend(
     if "CUDAExecutionProvider" in providers:
         return _OnnxRuntimeBackend.CUDA
     return _OnnxRuntimeBackend.CPU
+
+
+def _onnx_session_providers(
+    onnx_file: str,
+    batch_size: int,
+    *,
+    detailed_build_log: bool = False,
+) -> list[str | tuple[str, dict[str, Any]]]:
+    available_providers = onnxruntime.get_available_providers()
+    providers: list[str | tuple[str, dict[str, Any]]] = ["CPUExecutionProvider"]
+    if "CUDAExecutionProvider" in available_providers:
+        providers.insert(0, "CUDAExecutionProvider")
+    if "TensorrtExecutionProvider" in available_providers:
+        providers.insert(
+            0,
+            (
+                "TensorrtExecutionProvider",
+                trt_ep_options(
+                    onnx_file,
+                    batch_size,
+                    detailed_build_log=detailed_build_log,
+                    input_name=_onnx_input_name(onnx_file),
+                ),
+            ),
+        )
+    return providers
 
 
 class _OnnxInferenceRunner(Protocol):
@@ -218,18 +282,11 @@ def create_onnx_inference_session(
     return onnxruntime.InferenceSession(
         onnx_file,
         sess_options=sess_options,
-        providers=[
-            (
-                "TensorrtExecutionProvider",
-                trt_ep_options(
-                    onnx_file,
-                    batch_size,
-                    detailed_build_log=detailed_build_log,
-                ),
-            ),
-            "CUDAExecutionProvider",
-            "CPUExecutionProvider",
-        ],
+        providers=_onnx_session_providers(
+            onnx_file,
+            batch_size,
+            detailed_build_log=detailed_build_log,
+        ),
     )
 
 

@@ -70,7 +70,7 @@ class CanData:
 # NOTE: ファイル入力だと点群数がオーバーするため、
 # 元のargus_synchroと同じ表示にしたい場合は100000にする
 class PcdData:
-    SIZE = 20000  # 一度に入力される点群データの数
+    SIZE = 40000  # 一度に入力される点群データの数
 
 
 class IMUConfig:

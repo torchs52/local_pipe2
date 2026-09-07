@@ -142,9 +142,10 @@ class CMakeBuild(build_ext):
 # The information here can also be placed in setup.cfg - better separation of
 # logic and declaration, and simpler if you include description/version in a file.
 setup(
-    name="octotree",  # Name of your package
+    name="argus_synchro_lib",  # Name of your package
     version="0.1",
-    ext_modules=[CMakeExtension("octotree", sourcedir=".")],
+    # Extension name must match the pybind11 module OUTPUT_NAME.
+    ext_modules=[CMakeExtension("argus_synchro_lib", sourcedir=".")],
     cmdclass={
         "build_ext": CMakeBuild,
     },

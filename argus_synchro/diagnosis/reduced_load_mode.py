@@ -13,8 +13,8 @@ PROC_SPEED_SLOW: int = 2
 class ReducedLoadMode:
     """負荷低減モードクラス"""
 
-    MANY_POINTS_THRESHOLD: int = int(40000 * 0.9)
-    FEW_POINTS_THRESHOLD: int = int(40000 * 0.8)
+    MANY_POINTS_THRESHOLD: int = int(40000 * 0.4)
+    FEW_POINTS_THRESHOLD: int = int(40000 * 0.3)
 
     PCD_ENABLE_THRESHOLD: int = 5
     THERMAL_ENABLE_THRESHOLD: int = 5

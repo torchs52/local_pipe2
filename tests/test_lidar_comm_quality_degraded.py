@@ -1,5 +1,9 @@
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock
+
+import numpy as np
+import pytest
 
 from argus_synchro.device.lidar.mid360_points import MID360Points
 from argus_synchro.diagnosis.error_config import LidarCommQualityDegradedParameters
@@ -23,6 +27,54 @@ def _diagnosis() -> LidarNCommQualityDegradedDiagnosis:
     diagnosis.param = LidarCommQualityDegradedParameters()
     diagnosis.is_enabled = True
     return diagnosis
+
+
+def test_mid360_vectorized_decode_preserves_packet_fields() -> None:
+    point_dtype = np.dtype(
+        [("x", "<i4"), ("y", "<i4"), ("z", "<i4"), ("reflect", "i1"), ("tag", "u1")]
+    )
+    raw_points = np.zeros(96, dtype=point_dtype)
+    raw_points[0] = (1234, -5678, 9000, -1, 17)
+    raw_points[-1] = (-2000, 3000, -4000, 42, 255)
+    packet = bytearray(1500)
+    packet[5:7] = (96).to_bytes(2, "little")
+    packet[7:9] = (1).to_bytes(2, "little")
+    packet[28:36] = (1_250_000_000).to_bytes(8, "little", signed=True)
+    start = 36
+    packet[start : start + raw_points.nbytes] = raw_points.tobytes()
+    device: Any = object.__new__(MID360Points)
+    device._socket = MagicMock()
+    device._logger = MagicMock()
+    device._socket.recvfrom.return_value = (bytes(packet), None)
+    device._prev_udp_cnt = None
+    device._dot_num_low_threshold = 50
+    device._last_quality_degraded = 0.0
+
+    points, timestamp = device.get_points()
+
+    assert points.shape == (96, 4)
+    assert points.dtype == np.float64
+    assert points.flags.c_contiguous
+    assert timestamp == 1.25
+    np.testing.assert_array_equal(points[0], [1.234, -5.678, 9.0, -1.0])
+    np.testing.assert_array_equal(points[-1], [-2.0, 3.0, -4.0, 42.0])
+
+
+def test_mid360_vectorized_decode_rejects_short_packet() -> None:
+    required_size = 36 + 14 * 96
+    device: Any = object.__new__(MID360Points)
+    device._socket = MagicMock()
+    device._logger = MagicMock()
+    device._socket.recvfrom.return_value = (bytes(required_size - 1), None)
+    device._prev_udp_cnt = None
+    device._dot_num_low_threshold = 50
+    device._last_quality_degraded = 0.0
+
+    with pytest.raises(
+        ValueError,
+        match=rf"MID360 point packet is too short: {required_size - 1} < {required_size}",
+    ):
+        device.get_points()
 
 
 def test_mid360_detects_udp_gap_and_low_point_count() -> None:

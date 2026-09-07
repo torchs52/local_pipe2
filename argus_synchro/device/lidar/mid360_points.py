@@ -82,6 +82,19 @@ class MID360PointsFile:
 
 
 class MID360Points:
+    _POINT_HEADER_SIZE: Final[int] = 36
+    _POINT_SIZE: Final[int] = 14
+    _POINT_COUNT: Final[int] = 96
+    _POINT_DTYPE: Final[np.dtype] = np.dtype(
+        [
+            ("x", "<i4"),
+            ("y", "<i4"),
+            ("z", "<i4"),
+            ("reflect", "i1"),
+            ("tag", "u1"),
+        ]
+    )
+
     def __init__(
         self,
         index: int,
@@ -120,50 +133,6 @@ class MID360Points:
         self._logger.info("DISCONNECT: OK")
 
     @staticmethod
-    def _get_x(dst_byte: bytes, init_idx: int, offset: int, i: int) -> float:
-        # xyz[mm]から[m]に変換するために/1000する
-        return (
-            int.from_bytes(
-                dst_byte[init_idx + offset * i : init_idx + 4 + offset * i],
-                "little",
-                signed=True,
-            )
-            / 1e3
-        )
-
-    @staticmethod
-    def _get_y(dst_byte: bytes, init_idx: int, offset: int, i: int) -> float:
-        # xyz[mm]から[m]に変換するために/1000する
-        return (
-            int.from_bytes(
-                dst_byte[init_idx + 4 + offset * i : init_idx + 8 + offset * i],
-                "little",
-                signed=True,
-            )
-            / 1e3
-        )
-
-    @staticmethod
-    def _get_z(dst_byte: bytes, init_idx: int, offset: int, i: int) -> float:
-        # xyz[mm]から[m]に変換するために/1000する
-        return (
-            int.from_bytes(
-                dst_byte[init_idx + 8 + offset * i : init_idx + 12 + offset * i],
-                "little",
-                signed=True,
-            )
-            / 1e3
-        )
-
-    @staticmethod
-    def _get_reflect(dst_byte: bytes, init_idx: int, offset: int, i: int) -> int:
-        return int.from_bytes(
-            dst_byte[init_idx + 4 * 3 + offset * i : init_idx + 4 * 3 + 1 + offset * i],
-            "little",
-            signed=True,
-        )
-
-    @staticmethod
     def _get_timestamp(dst_byte: bytes) -> float:
         # xyz[mm]から[m]に変換するために/1000する
         return (
@@ -196,33 +165,32 @@ class MID360Points:
     def last_quality_degraded(self) -> float:
         return self._last_quality_degraded
 
-    @staticmethod
-    def _get_point(
-        dst_byte: bytes,
-        init_idx: int,
-        offset: int,
-        i: int,
-    ) -> tuple[float, float, float, int]:
-        x: float = MID360Points._get_x(dst_byte, init_idx, offset, i)
-        y: float = MID360Points._get_y(dst_byte, init_idx, offset, i)
-        z: float = MID360Points._get_z(dst_byte, init_idx, offset, i)
-        reflect: int = MID360Points._get_reflect(dst_byte, init_idx, offset, i)
-        return x, y, z, reflect
+    @classmethod
+    def _decode_points(cls, dst_byte: bytes) -> NDArray[np.float64]:
+        expected_size = cls._POINT_HEADER_SIZE + cls._POINT_SIZE * cls._POINT_COUNT
+        if len(dst_byte) < expected_size:
+            raise ValueError(
+                f"MID360 point packet is too short: {len(dst_byte)} < {expected_size}"
+            )
+        raw_points = np.frombuffer(
+            dst_byte,
+            dtype=cls._POINT_DTYPE,
+            count=cls._POINT_COUNT,
+            offset=cls._POINT_HEADER_SIZE,
+        )
+        points = np.empty((cls._POINT_COUNT, 4), dtype=np.float64)
+        points[:, 0] = raw_points["x"] / 1e3
+        points[:, 1] = raw_points["y"] / 1e3
+        points[:, 2] = raw_points["z"] / 1e3
+        points[:, 3] = raw_points["reflect"]
+        return points
 
-    def get_points(self) -> tuple[list[tuple[float, float, float, int]], float]:
+    def get_points(self) -> tuple[NDArray[np.float64], float]:
         # パケットデータを取得 全体1380byteだが、少し多めに
-        init_idx: int = 36  # 先頭から36バイト目以降に点群データが格納されている
-        offset: int = 14  # 1ポイント毎のバイト数
         dst_byte, _ = self._socket.recvfrom(1500)
-        packet_data: list[tuple[float, float, float, int]] = []
 
         if self._check_packet_quality(dst_byte):
             self._last_quality_degraded = time.perf_counter()
 
-        # 1フレームごとに 14*96 byteのデータが送信される(96点分).
-        for i in range(96):
-            x, y, z, reflect = self._get_point(dst_byte, init_idx, offset, i)
-            packet_data.append((x, y, z, reflect))
-
         ts: float = self._get_timestamp(dst_byte)
-        return packet_data, ts
+        return self._decode_points(dst_byte), ts

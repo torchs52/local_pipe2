@@ -70,11 +70,29 @@ void classMMap::end_frame(bool is_initial)
     {
         isRead = (v.value() > 0);
     }
+
+    auto isWriting = ReadInt8(cfg_.proto.IsWriting_ADR).value_or(255);
+    logger_.debug("END   idx=%zu IsW=%u IsR=%u initial=%d", current_index_, static_cast<unsigned>(isWriting),
+                  static_cast<unsigned>(isRead ? 1 : 0), static_cast<int>(is_initial));
+
     if (isRead || is_initial)
     {
+        const size_t next_index = (current_index_ + 1) % mms_.size();
+
+        // 現在のmapの書き込み完了
         WriteInt8(cfg_.proto.IsWriting_ADR, 0);
-        current_index_ = (current_index_ + 1) % mms_.size();
-        this->logger_.info("MMAP Index changed!");
+
+        logger_.debug("CHANGE %zu (%s) -> %zu (%s)", current_index_, cfg_.paths[current_index_].c_str(), next_index,
+                      cfg_.paths[next_index].c_str());
+
+        current_index_ = next_index;
+
+        // 次に書くmapを直ちに予約
+        WriteInt8(cfg_.proto.IsWriting_ADR, 1);
+    }
+    else
+    {
+        logger_.debug("KEEP  idx=%zu (%s) IsReading=0", current_index_, cfg_.paths[current_index_].c_str());
     }
 }
 
