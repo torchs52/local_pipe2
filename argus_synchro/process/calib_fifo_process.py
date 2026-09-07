@@ -25,6 +25,8 @@ from argus_synchro.profiler.prof_mode import ProfCategory
 from argus_synchro.shared_app_config import SharedAppConfig, SharedAppConfigCalibration
 from argus_synchro.shared_excepts import SharedGetDataExcept
 
+ALIVE_LOG_INTERVAL_SEC = 5.0
+
 
 class CalibFIFOProcess(ProcessBase):
     __slots__ = (
@@ -45,6 +47,7 @@ class CalibFIFOProcess(ProcessBase):
         "_input_readdone_ret",
         "_ispass_frame",
         "_last_print_time",
+        "_last_queue_log_mono",
         "_last_updated",
         "_lidar_count",
         "_lidar_datalist",
@@ -127,6 +130,7 @@ class CalibFIFOProcess(ProcessBase):
             self._app_config_calib.dataCapture.Lidar.framethinning_bufferlen_threshold
         )
         self._ispass_frame = False
+        self._last_queue_log_mono = 0.0
         self.create_producer_and_consumer()
 
     def create_producer_and_consumer(self) -> None:
@@ -195,9 +199,14 @@ class CalibFIFOProcess(ProcessBase):
             if qsize is not None and qsize >= self._buffersize_for_file:
                 time.sleep(0.1)
                 continue
-            if not self._debugmesg_sensors:
+            now_mono = time.monotonic()
+            if (
+                not self._debugmesg_sensors
+                and now_mono - self._last_queue_log_mono >= ALIVE_LOG_INTERVAL_SEC
+            ):
+                self._last_queue_log_mono = now_mono
                 self._logger.info(
-                    f"_sensorinput_task, {self._fifo_output.qsize() = }",
+                    f"calibration FIFO alive: qsize={qsize}",
                 )
 
             if not self.fifo_producer.wait():

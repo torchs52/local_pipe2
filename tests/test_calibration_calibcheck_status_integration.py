@@ -127,10 +127,12 @@ values = [2,4,5]
         "normalize_path",
         lambda filename, directory: directory / filename,
     )
-    warnings: list[str] = []
+    logs: list[str] = []
+    now = [100.0]
+    monkeypatch.setattr(facade_module.time, "monotonic", lambda: now[0])
     facade = cast(CalibrationUIGodot, object.__new__(CalibrationUIGodot))
     facade._directory_config = object()
-    facade._logger = SimpleNamespace(warning=warnings.append)
+    facade._logger = SimpleNamespace(info=logs.append, warning=logs.append)
     facade.errorcode_pre = 0
     facade.errors_calibcommon = 0
     facade.yaw_value = expected_yaw
@@ -142,10 +144,24 @@ values = [2,4,5]
         enable_yawangle=True,
         overwrite_checkresult=True,
     )
+    facade.set_dummydata(
+        enable_errorflag=True,
+        enable_yawangle=True,
+        overwrite_checkresult=True,
+    )
 
     assert facade.errors_calibcommon == expected_error
     assert facade.yaw_value == expected_yaw
     assert facade.camera_calibcheck_values == [2, 4, 5]
-    assert len(warnings) == 1
-    assert warnings[0].startswith("** set_dummydata() applied **")
-    assert "self.errors_calibcommon=17" in warnings[0]
+    assert len(logs) == 1
+    assert logs[0].startswith("set_dummydata applied (alive):")
+    assert "self.errors_calibcommon=17" in logs[0]
+
+    now[0] += 5.0
+    facade.set_dummydata(
+        enable_errorflag=True,
+        enable_yawangle=True,
+        overwrite_checkresult=True,
+    )
+
+    assert len(logs) == 2

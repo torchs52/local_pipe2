@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 from configparser import ConfigParser
 from enum import IntEnum
 from pathlib import Path
+import time
 from typing import Any
 
 import matplotlib.pyplot as plt
@@ -38,6 +39,8 @@ from argus_synchro.diagnosis.calibcheck2d3d_result_diagnosis import (
 )
 from argus_synchro.shared_app_config import SharedAppConfig
 from argus_synchro.shared_excepts import SharedExcepts
+
+ALIVE_LOG_INTERVAL_SEC = 5.0
 
 """ dataの値の範囲を[val_min, val_max]に変換する t3daの内容と同じなので避けたいところではある"""
 
@@ -109,6 +112,8 @@ class CalibrationUIGodot(FacadeUIClass_Base):
             output_log=output_log,
         )
         self.output_log = output_log
+        self._last_dummy_log_mono: float = 0.0
+        self._last_dummy_log_state: tuple[object, ...] | None = None
         self.update_configuration(sac=sac)
         self.initialize_internal_values(
             errorcode_pre=0
@@ -511,12 +516,29 @@ class CalibrationUIGodot(FacadeUIClass_Base):
                     # self._logger.info( f"Applying [CalibCheckOverwrite] values -> {self.camera_calibstatus_values}")
 
             if applied:
-                self._logger.warning(
-                    f"** set_dummydata() applied **\n{self.errorcode_pre=}\n"
-                    f"{self.yaw_value=},self.camera_calibcheck_values={[x for x in self.camera_calibcheck_values]}, "
-                    f"self.errors_calibcommon={self.errors_calibcommon}, "
-                    f"self.camera_calibstatus_values={[x for x in self.camera_calibstatus_values]}"
+                state = (
+                    self.errorcode_pre,
+                    self.yaw_value,
+                    tuple(self.camera_calibcheck_values),
+                    self.errors_calibcommon,
+                    tuple(self.camera_calibstatus_values),
                 )
+                now = time.monotonic()
+                last_state = getattr(self, "_last_dummy_log_state", None)
+                last_log_mono = getattr(self, "_last_dummy_log_mono", 0.0)
+                if (
+                    state != last_state
+                    or now - last_log_mono >= ALIVE_LOG_INTERVAL_SEC
+                ):
+                    self._last_dummy_log_state = state
+                    self._last_dummy_log_mono = now
+                    self._logger.info(
+                        f"set_dummydata applied (alive): {self.errorcode_pre=}, "
+                        f"{self.yaw_value=}, "
+                        f"camera_calibcheck_values={self.camera_calibcheck_values}, "
+                        f"self.errors_calibcommon={self.errors_calibcommon}, "
+                        f"camera_calibstatus_values={self.camera_calibstatus_values}"
+                    )
 
         except Exception as ef:
             self._logger.warning(f"Exception: {ef}")

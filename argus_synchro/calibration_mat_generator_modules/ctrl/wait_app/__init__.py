@@ -50,6 +50,8 @@ from argus_synchro.shared_app_config import SharedAppConfig
 from argus_synchro.shared_errors import SharedErrors, StateErrorDIndex
 from argus_synchro.shared_excepts import SharedExcepts
 
+ALIVE_LOG_INTERVAL_SEC = 5.0
+
 
 class wait_app:
     def __init__(
@@ -111,7 +113,7 @@ class wait_app:
 
     def pre_app_loopmain(self) -> None:
         self.input_settings()
-        self.timercount_for_log = 0
+        self._last_alive_log_mono = time.monotonic()
         self._logger.info("app_loopmain start")
 
     def app_loopmain(
@@ -122,13 +124,10 @@ class wait_app:
         sac: SharedAppConfig,
     ) -> None:
         # TODO: 下記構造検討　他のメソッドを下に追いやるか下記をどこかに格納するか？
-        self.timercount_for_log += 1
-
-        if self.timercount_for_log > 10:
-            self.timercount_for_log = 0
-            self._logger.info("========================")
-            self._logger.info("A1: No mode selected, waiting...")
-            self._logger.info("========================")
+        now = time.monotonic()
+        if now - self._last_alive_log_mono >= ALIVE_LOG_INTERVAL_SEC:
+            self._last_alive_log_mono = now
+            self._logger.info("A1: No mode selected, waiting (alive)")
         self.dataproc(readresult_pop, monitor, sec)
         time.sleep(0.01)
         # データが最後まで到達したことは、入力系のプロセスが検知。

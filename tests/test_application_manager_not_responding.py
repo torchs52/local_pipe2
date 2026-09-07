@@ -133,6 +133,19 @@ def test_app_manager_updates_shared_heartbeat(monkeypatch) -> None:
     assert bool(process._ser.AppMan_ex.is_heartbeat_enabled.value) is True
 
 
+def test_app_manager_alive_log_is_periodic() -> None:
+    process = object.__new__(AppManagerProcess)
+    process._last_alive_log_mono = 0.0
+    process._logger = MagicMock()
+
+    process._log_alive_periodically(100.0)
+    process._log_alive_periodically(104.9)
+    process._log_alive_periodically(105.0)
+
+    assert process._logger.info.call_count == 2
+    process._logger.info.assert_called_with("AppManager alive")
+
+
 def test_app_manager_shutdown_disables_heartbeat_monitoring() -> None:
     process = object.__new__(AppManagerProcess)
     process._ser = SimpleNamespace(AppMan_ex=SharedAppManagerExcept())

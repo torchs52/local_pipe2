@@ -36,6 +36,8 @@ if TYPE_CHECKING:
     from argus_synchro.shared_app_config import SharedAppConfig
     from argus_synchro.shared_excepts import SharedExcepts
 
+ALIVE_LOG_INTERVAL_SEC = 5.0
+
 
 @final
 class AppManagerProcess(ProcessBase):
@@ -45,6 +47,7 @@ class AppManagerProcess(ProcessBase):
         "_dt_start",
         "_err_config",
         "_interval",
+        "_last_alive_log_mono",
         "_last_updated",
         "_log_file_path",
         "_log_monitor_enabled",
@@ -89,6 +92,7 @@ class AppManagerProcess(ProcessBase):
         self._log_watch_last_mono: float = 0.0
         self._log_watch_last_mtime: float = 0.0
         self._log_watch_last_size: int = -1
+        self._last_alive_log_mono: float = 0.0
         self._metrics: Metrics | None = None
         self._is_thermal_throttling: bool = False
 
@@ -376,6 +380,12 @@ class AppManagerProcess(ProcessBase):
         self._ser.AppMan_ex.last_heartbeat.value = time.monotonic()
         self._ser.AppMan_ex.is_started.value = True
         self._ser.AppMan_ex.is_heartbeat_enabled.value = True
+
+    def _log_alive_periodically(self, now: float) -> None:
+        if now - self._last_alive_log_mono < ALIVE_LOG_INTERVAL_SEC:
+            return
+        self._last_alive_log_mono = now
+        self._logger.info("AppManager alive")
 
     def _update_log_output_stopped(self) -> None:
         diagnosis = self._ser.state_errors_A_C[StateErrorIndex.LOG_OUTPUT_STOPPED]
@@ -698,7 +708,7 @@ class AppManagerProcess(ProcessBase):
                 try:
                     # 指定秒置きに例外処理のチェックする.
                     time.sleep(self._interval)
-                    self._logger.info("Checked!")
+                    self._log_alive_periodically(time.monotonic())
                     previous_scrut_frame, present_scrut_frame, not_active_count = (
                         self._update(
                             previous_scrut_frame, present_scrut_frame, not_active_count
