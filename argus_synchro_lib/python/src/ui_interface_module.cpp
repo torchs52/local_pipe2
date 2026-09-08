@@ -62,10 +62,12 @@ void bind_ui_interface(py::module& m)
              py::arg("external_guard_offset"), py::arg("status_mmap_path"), py::arg("logfunc"))
         .def("set_cliff_info_by_octreee", &UI_interface::set_cliff_info_by_octreee, py::arg("octotree_obj"))
         .def("preprocess_info", &UI_interface::preprocess_info)
+        .def("octotree_info", &UI_interface::octotree_info, py::arg("octotree_obj"))
         .def("machine_info", &UI_interface::machine_info, py::arg("angle_deg"))
         .def("collision_info", &UI_interface::collision_info)
         .def("zero_padding", &UI_interface::zero_padding, py::arg("n_byte"))
         .def("cliff_info", &UI_interface::cliff_info)
         .def("postprocess_info", &UI_interface::postprocess_info, py::arg("ret_t"), py::arg("process_time_ms"))
-        .def("damp_info", &UI_interface::damp_info);
+        .def("damp_info", &UI_interface::damp_info)
+        .def("close_mmap", &UI_interface::close_mmap);
 }

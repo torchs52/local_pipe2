@@ -370,12 +370,12 @@ SHI側だけで確認されたテスト:
 | M-048 | 負荷低減中の蓄積deque上限保証 | SHI現行 `AccumulatePoints.py` | manual-port | verified | `AccumulatePoints.py`, tests | append後にもmode別上限へtrimし、通常/負荷低減とも最新frameを保持して返却dequeの実効上限を保証 |
 | M-049 | 点群メッセージ上限20,000→40,000 | SHI `2283a0a` | manual-port | verified | Python/C++ PcdData、detect3d、Visual | 認識精度確保のためPython/C++容量を40,000へ統一。40,000点の共有slot往復、一括build、extension import成功 |
 | M-050 | MID360点群復号のNumPyベクトル化 | SHI `5265abb` | manual-port | verified | `device/lidar/mid360_points.py`, tests | structured dtypeと`np.frombuffer()`で96点を一括復号し、M-035の`perf_counter()`と公開property契約を維持。短packetは明示拒否 |
-| M-051 | 新YOLOモデルの機種別既定化 | SHI `9d5c72f` | decision-needed | pending | 機種別settings、性能試験 | モデル実体は同一hashで配置済み。精度・速度承認後に設定だけ変更する |
-| M-052 | SCX3500可視化CAD資産 | SHI `6699794` | decision-needed | pending | `config/crane3d/visualize/SCX3500-3/` | vendorにOBJ/MTL 4ファイルなし。表示側の配置契約を確認して採用する |
+| M-051 | 新YOLOモデルの機種別既定化 | SHI `9d5c72f` | decision-needed | pending | 機種別settings、性能試験 | `settings.ini`と`calib_settings.ini`は新モデルへ変更し、通常AppImage起動でTensorRT cache再利用まで確認済み。残件は機種別settingsへの横展開と精度・FPS・GPU memoryの製品承認 |
+| M-052 | SCX3500可視化CAD資産 | SHI `6699794` | shi-adopt | verified | `config/crane3d/visualize/SCX3500-3/` | 現行manifestでは未参照だが今後の利用に備え、SHIの上部・下部OBJ/MTL 4ファイルを原本どおり取り込み |
 | M-053 | 負荷低減閾値・切替ログ | SHI `2283a0a` | manual-port | verified | reduced load/PointsRefine/tests | 40,000点契約に対して開始40%・復帰30%を採用。現在modeは毎frame、deque詳細はmode変化時だけ出力し、境界と5frame継続を検証 |
-| M-054 | MMAP二重バッファ切替時の次バッファ予約 | SHI `d9ba78b`, `655aaaf` | manual-port | implemented | lib `clsmmap/ClsMMap.cpp`、Godot reader、tests | UI/Error writerがともに2面固定であることを確認し、index切替直後に次mapを`IsWriting=1`へ予約。一括build済み、Godot reader並行試験待ち |
-| M-055 | UI MMAP octotree点数の確定書込み | SHI `d9ba78b` | manual-port | implemented | lib `ui_interface.cpp`, tests | 合計点数の書込みをentity loop外へ移し、全entity空時も0を確定。単一object compile・一括build済み、実MMAP読戻し待ち |
-| M-056 | UI MMAP詳細ログのdebug化 | SHI `d9ba78b` | manual-port | implemented | lib `ui_interface.cpp`, performance tests | フレーム単位のアドレス・座標・画像・点群詳細をdebugへ変更。サマリinfoは維持し、単一object compile・一括build済み、実機ログ量確認待ち |
+| M-054 | MMAP二重バッファ切替時の次バッファ予約 | SHI `d9ba78b`, `655aaaf` | manual-port | verified | lib `clsmmap/ClsMMap.cpp`、Godot reader、tests | index切替直後に次mapを`IsWriting=1`へ予約。実MMAP protocol試験と実AppImage reader並行試験で2面の交互利用を確認 |
+| M-055 | UI MMAP octotree点数の確定書込み | SHI `d9ba78b` | manual-port | verified | lib `ui_interface.cpp`, tests | 合計点数の書込みをentity loop外へ移し、全entity空時も0を確定。非空frame後の空frameを実MMAPから読戻して1→0を確認 |
+| M-056 | UI MMAP詳細ログのdebug化 | SHI `d9ba78b` | manual-port | verified | lib `ui_interface.cpp`, performance tests | フレーム単位のアドレス・座標・画像・点群詳細をdebugへ変更。実機runで対象詳細INFO 0件、サマリINFO 807件を確認 |
 | M-057 | legacy setupのpackage/extension名整合 | SHI `7f34907` | manual-port | verified | lib `setup.py`, package tests | distribution/extension名を`argus_synchro_lib`へ統一。wheel生成・installとextension import、metadata `2026.8.25`を確認 |
 | M-058 | 校正settings/MMAP/FIFO契約固定 | vendor現行 / Godot UI契約 | vendor-keep | verified | config schema, facade, FIFO, contract tests | settings 8項目、mode値、FIFO 4要素順、MMAP header、共通field書込順を固定。関連回帰20件pass |
 | M-059 | 2D-3D校正診断UI結果・設定schema | SHI `7f58643`, `fc7f75e` | manual-port | verified | diagnosis, app config, facade, tests | UI enum・reason code変換、設定schema、facade validationを移植し、新producerとの同時切替を確認 |
@@ -387,6 +387,7 @@ SHI側だけで確認されたテスト:
 | M-065 | 校正エラー処理接続 | `docs/error_list.txt` / 現行SHI | manual-port | verified | calibration process/modules/diagnosis/tests | FILE_IO D有効化とstartup/runtime fallback、3D-3D UI error状態、profiler防御、失敗後post抑止をVendor lifecycleへ接続しthree-way確認済み |
 | M-066 | 校正設定validation・機種別設定 | SHI現行 calibration validator / machine profile | manual-port | verified | calibration config validation/machine profile/file watch/tests | SHI validatorと機種別校正設定を移植。CALIB中も`settings.ini`監視を常時維持し、機種別校正INI監視を追加。関連14件pass |
 | M-067 | 校正三者差分ビューア導入 | `local_pipe` `origin/vendor-20260817-integration:scripts/three_way_review.py` | manual-port | verified | `scripts/three_way_review.py`, tests | vendor/SHIのrepoとrefを個別指定し、統合working treeと比較する。別repo・片側限定ファイルの専用テスト2件pass |
+| M-068 | Vendor/SHI最終残差監査 | SHI `2283a0a` / 統合working tree | vendor-keep | verified | source/config差分、SHI非merge commit、統合台帳 | SHI限定14ファイルを全件分類。実行経路に未分類の機能差分なし。M-051の製品評価とM-054のGodot並行試験だけを残す |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -1007,6 +1008,47 @@ SHI側だけで確認されたテスト:
 - Jetson Orin、ONNX Runtime 1.23.2でTensorRT/CUDA/CPU Execution Providerを認識した。設定の既定モデルパス`/home/nvidia/checkpoints/damoyolo_large.onnx`は存在しなかったため、workspace内の`checkpoints/damoyolo_large.onnx`を明示してbatch 3で実行した。settings swapは失敗時・成功時ともbackupから復元された。
 - モデルSHA-256先頭16桁`9854feaf385602db`、batch 3・現行TensorRT設定のcache key`config-cd14daaf66da`へ、FP16 SM87 engine 86,753,004 byte、profile 22 byte、timing cache 5,336,127 byteを新規生成した。新規buildは約24分を要した。
 - 同じモデル・batchで再実行し、生成物mtimeが変化しないままTensorRT CUDA Graphのcapture/replayとI/O Bindingウォームアップ推論が6.2秒で完了したため、cache再利用を確認した。M-047を`verified`とする。
+
+### 2026-09-08 M-054・M-055 実MMAP試験
+
+- `UI_interface.octotree_info()`と既存public `close_mmap()`をPython bindingへ公開し、製品の書込み処理を実ファイルMMAPに対して直接検証できるようにした。対応するtype stubも更新した。
+- M-055は同じbufferへ非空octotree、空octotreeの順で書き、offset 10のlittle-endian int32を実ファイルから読戻して点数が1から0へ上書きされることを確認した。M-055を`verified`とする。
+- M-054は2面の`ErrorMMapWriter`で初期切替後のcurrent bufferに`IsReading=1`を設定し、`rotate_if_busy()`直後に旧bufferの`IsWriting=0`と次bufferの`IsWriting=1`を実ファイルから確認した。競合窓を閉じるprotocol条件は検証済みだが、Godot reader実processとの並行試験は残す。
+- `tests/test_ui_mmap_octotree_count.py`は2 passed。Ruff、VS Code Python diagnostics、`git diff --check`も成功した。C++ extensionは現在の環境で再buildし、通常wheel install後に新bindingのimportを確認した。
+
+### 2026-09-08 M-052 SCX3500 CAD資産取込み
+
+- SHIコミット`6699794`は`immobile/scx3500_upper.{obj,mtl}`と`mobile/scx3500_bottom.{obj,mtl}`の4ファイルだけを追加しており、manifestや読込コードは変更していない。
+- VendorとSHIの`SCX3500-3/vis_machine_info.jsonc`は同一で、既存の`01_upper_part.obj`～`10_Letters.obj`を参照する。SHI repository全体にも追加4ファイル名の参照は存在しない。
+- ユーザー方針により、現時点では未参照でも今後使用する資産として4ファイルを原本どおり取り込んだ。上部・下部OBJの頂点・面とMTL参照を確認し、SHI原本とのbyte一致も確認した。M-052を`shi-adopt / verified`とする。
+
+### 2026-09-08 M-068 Vendor/SHI最終残差監査
+
+- SHI基準commitまでの非merge commit一覧をM-001～M-067の根拠へ照合し、後半の機能commitに未分類項目がないことを確認した。
+- source/configの相対path一覧を比較した結果、SHI限定は14ファイルだった。`common/settings_validation.py`はVendorの`config/settings_validation.py`、`diagnosis/runtime_policy.py`はVendorの`diagnosis/error_diagnosis.py`へ責務を統合済みである。
+- SHIの`detect2d_cpu.py`と`detect2d_jetson-gpu.py`はVendorの統合`detect2d.py`へ置換済みで、M-047の動的入力名、model/config別cache、provider fallbackを含むため機能欠落ではない。
+- SHIの`jetson_monitor_helper.py`はSHI自身に呼出し元がなく、Vendorは`jetson_monitor/jm/`の新しいmonitor実装をAppManagerへ接続済みのため移植しない。
+- SCX2000専用校正JSON 5件は追加commitに含まれるが、現行SHI・履歴の設定やコードからファイル名参照がない。現行機種別設定はVendorと同じ汎用JSONを参照するため、未使用開発資産として移植しない。
+- 残るSHI限定4ファイルはM-052のSCX3500 CAD資産として取込み済みである。以上から、実行経路に台帳未分類の機能差分は残っていない。
+
+### 2026-09-08 M-051 新YOLOモデルcache確認
+
+- `settings.ini`と`calib_settings.ini`が参照する`new_bench_full_20260625.onnx`、batch 3、現行TensorRT設定に対応する`model-24b037ea4f4323a5/config-cd14daaf66da`へengine、profile、timing cacheが生成された。
+- batch 3のTensorRT実推論テストは1 passed。推論前後で3 artifactのmtimeが変化しなかったため、新規buildではなく既存cache再利用を確認した。
+- 機種別通常settingsへの展開と精度・FPS・GPU memoryの製品評価は引き続きM-051の判断項目とする。
+
+### 2026-09-08 M-056 実機ログ確認
+
+- 2026-09-08 10:58～11:26の実機runログを対象に、camera index・画像size/data・点群member詳細・座標配列などM-056でdebug化したメッセージがINFOへ出ていないことを確認した（対象詳細INFO 0件）。
+- octotree合計点数、frame番号、frame末尾時間など維持対象のサマリINFOは807件記録されていた。C++実行テストでも`member_points_num`がDEBUG、`octotree_pcd_num`がINFOであることを固定した。
+- 詳細抑止とサマリ保持を実ログで確認できたためM-056を`verified`とする。別系統の「クラスタリングの最大最小」INFOは本項目のMMAP詳細ログではなく、必要なら別のログ量改善として扱う。
+
+### 2026-09-08 M-054 Godot reader並行試験
+
+- `argus_bootfig_jetson.sh appimage`でMain、MonitorArgus、`CraneViewer-aarch64.AppImage`を通常起動し、statusがRUNNING、Visual frameが15209以降へ継続する状態で`/dev/shm/map0.dat`と`map1.dat`を観測した。
+- 2秒間に393回flagsを読み、主状態として`map0=(IsWriting=1, IsReading=1), map1=(0,0)`を175回、逆側を169回確認した。reader/writerの切替を12回観測し、両面が交互に予約・読取りされることを確認した。
+- 直接protocol試験の旧buffer `IsWriting=0`、次buffer `IsWriting=1`と合わせ、M-054を`verified`とする。
+- 試験終了時、Godotとworkerは停止したがMainがSHUTDOWN後も`do_wait`で残留したためSIGTERMで終了した。これはMMAP handshakeとは別の終了処理残件として扱う。
 
 ## 10. 次のCopilotへの開始指示
 

@@ -117,7 +117,7 @@ class CalibrationUIGodot(FacadeUIClass_Base):
         self.update_configuration(sac=sac)
         self.initialize_internal_values(
             errorcode_pre=0
-        )  # TODO: エラーコードは初期化して良いのか？
+        )  # TODO: エラーコードは初期化して良いのか?
         self.sac: SharedAppConfig = sac
 
     def apply_config(
@@ -130,7 +130,7 @@ class CalibrationUIGodot(FacadeUIClass_Base):
         self,
         sac: SharedAppConfig,
     ) -> None:
-        # Config読み込み・反映　（後で再起動無しで更新できるものはupdate関数に分ける）
+        # Config読み込み・反映　(後で再起動無しで更新できるものはupdate関数に分ける)
         self.camera_num: int = sac.read().camera.count
 
     def initialize_internal_values(
@@ -173,7 +173,7 @@ class CalibrationUIGodot(FacadeUIClass_Base):
     ) -> None:  # A1突入時呼び出し
         if self.output_log:
             self._logger.info("clear_internal_values called")
-        # 一時self._logger.info(から受け取って共有メモリに書き込みたいが管理上このような形式が合理的？
+        # 一時self._logger.info(から受け取って共有メモリに書き込みたいが管理上このような形式が合理的?
 
         self.is_end_calmode: int = 0
         self.status_calibcommon: int = int(CalibrationCommonStatus(status_calibcommon))
@@ -238,7 +238,7 @@ class CalibrationUIGodot(FacadeUIClass_Base):
         if write_dummydata:
             self.calibGodotInterfaceInst.write_notinit_mesg(
                 self.calibGodotInterfaceInst.ERROR_ADDR
-            )  # デバッグ用：未初期化を示すパターン（0xBAADF00D）で埋める
+            )  # デバッグ用: 未初期化を示すパターン(0xBAADF00D)で埋める
 
         if self.output_log:
             self._logger.debug(
@@ -253,42 +253,42 @@ class CalibrationUIGodot(FacadeUIClass_Base):
             )
         self.calibGodotInterfaceInst.WriteUInt8(is_end_calmode)  # 全体終了フラグ
         if self.output_log:
-            self._logger.debug(
-                f"after CalMatGen_ex-IsFinished, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{sec.CalMatGen_ex.IsFinished.value}",
+            self._logger.info(
+                f"after CalMatGen_ex-IsFinished, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{is_end_calmode}",
             )
 
         self.calibGodotInterfaceInst.WriteUInt8(
             status_calibcommon
-        )  # 稼働状態（各校正共通）
+        )  # 稼働状態(各校正共通)
         if self.output_log:
-            self._logger.debug(
+            self._logger.info(
                 f"after status_calibcommon, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{status_calibcommon}",
             )
 
         self.calibGodotInterfaceInst.WriteUInt8(
             currentmode
-        )  # currentmode（各校正共通）
+        )  # currentmode(各校正共通)
         if self.output_log:
-            self._logger.debug(
+            self._logger.info(
                 f"after currentmode, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{currentmode}",
             )
         self.calibGodotInterfaceInst.WriteUInt8(
             currentcamera
-        )  # currentcamera（各校正共通）
+        )  # currentcamera(各校正共通)
         if self.output_log:
-            self._logger.debug(
+            self._logger.info(
                 f"after currentcamera, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{currentcamera}",
             )
 
         self.calibGodotInterfaceInst.WriteUInt32(
             errors_calibcommon
-        )  # エラー番号（各校正共通）
+        )  # エラー番号(各校正共通)
         if self.output_log:
             self._logger.debug(
                 f"after errors_calibcommon, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{errors_calibcommon}",
             )
 
-        # 画像表示の有無：currentmode値が2（2D3D校正）の時のみ適用。それ以外は常時表示
+        # 画像表示の有無: currentmode値が2(2D3D校正)の時のみ適用。それ以外は常時表示
         if currentmode != 2 or self.sac.read().CalibUI_IF.show_image2d3d:
             for i in range(self.camera_num):
                 self.calibGodotInterfaceInst.camera_img(
@@ -305,12 +305,12 @@ class CalibrationUIGodot(FacadeUIClass_Base):
             )
         self.calibGodotInterfaceInst.WriteFloat32(yaw)  # 上部旋回体回転角度
         if self.output_log:
-            self._logger.debug(
+            self._logger.info(
                 f"after yaw, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{yaw}",
             )
         self._transmit_3dfmat(points)
         if self.output_log:
-            self._logger.debug(
+            self._logger.info(
                 f"after points, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{points.shape}",
             )
 
@@ -338,13 +338,13 @@ class CalibrationUIGodot(FacadeUIClass_Base):
             1 if is_calib_available else 0
         )  # 校正可能フラグ
         if self.output_log:
-            self._logger.debug(
+            self._logger.info(
                 f"after is_calib_available, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{is_calib_available}",
             )
 
         self._transmit_calibcheck_status(calibcheck_status)
         if self.output_log:
-            self._logger.debug(
+            self._logger.info(
                 f"after calibcheck_status, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{calibcheck_status}",
             )
         # self._transmit_calibstatus_list_to_bitlist(mblock_progress_status)
@@ -352,7 +352,7 @@ class CalibrationUIGodot(FacadeUIClass_Base):
         for x in calib_status:
             self.calibGodotInterfaceInst.WriteUInt8(x)
         if self.output_log:
-            self._logger.debug(
+            self._logger.info(
                 f"after calib_status, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{calib_status}",
             )
 
@@ -661,14 +661,14 @@ class CalibrationUIGodot(FacadeUIClass_Base):
 
     def set_2Dbbox(self, camera_id: int, data: NDArray[np.int32]):
         if self.output_log:
-            self._logger.debug(
+            self._logger.info(
                 f"UI value set by set_2Dbbox, camera {camera_id}, {data.shape}"
             )
         self.camera_bbox[camera_id] = data
 
     def set_yaw(self, value: float):
         if self.output_log:
-            self._logger.debug(f"UI value set by set_yaw, value: {value}")
+            self._logger.info(f"UI value set by set_yaw, value: {value}")
         self.yaw_value: float = value
 
     def set_points(self, data: NDArray[np.float32], colordata: NDArray[np.float32]):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sized
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -39,6 +40,31 @@ class _WriterStub:
 
     def WriteUInt8(self, value: int) -> None:
         self.values.append(value)
+
+
+class _TransmitWriterStub:
+    writtenAdr = 0  # noqa: N815 - Matches the production writer API.
+
+    def preprocess_info(self) -> None:
+        self.writtenAdr += 9
+
+    def error_info(self, **_kwargs: object) -> None:
+        self.writtenAdr += 4
+
+    def WriteUInt8(self, _value: int) -> None:
+        self.writtenAdr += 1
+
+    def WriteUInt32(self, _value: int) -> None:
+        self.writtenAdr += 4
+
+    def WriteFloat32(self, _value: float) -> None:
+        self.writtenAdr += 4
+
+    def WriteFloat32Batch(self, values: Sized) -> None:
+        self.writtenAdr += len(values) * 4
+
+    def postprocess_info(self, *_args: object, **_kwargs: object) -> None:
+        self.writtenAdr = 0
 
 
 def test_score_results_are_converted_to_new_ui_statuses() -> None:
@@ -164,10 +190,11 @@ values = [2,4,5]
         overwrite_checkresult=True,
     )
 
-    assert len(logs) == 2
+    expected_log_count_after_interval = 2
+    assert len(logs) == expected_log_count_after_interval
 
 
-def test_facade_uses_debug_for_continuous_values_and_info_for_state() -> None:
+def test_facade_uses_info_for_yaw_and_state_values() -> None:
     debug_logs: list[str] = []
     info_logs: list[str] = []
     facade = cast(CalibrationUIGodot, object.__new__(CalibrationUIGodot))
@@ -180,5 +207,55 @@ def test_facade_uses_debug_for_continuous_values_and_info_for_state() -> None:
     facade.set_yaw(12.5)
     facade.set_currentmode(2)
 
-    assert debug_logs == ["UI value set by set_yaw, value: 12.5"]
-    assert info_logs == ["UI value set by set_currentmode: 2"]
+    assert debug_logs == []
+    assert info_logs == [
+        "UI value set by set_yaw, value: 12.5",
+        "UI value set by set_currentmode: 2",
+    ]
+
+
+def test_transmit_logs_preprocess_address_at_debug_and_written_end_flag_at_info(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    debug_logs: list[str] = []
+    info_logs: list[str] = []
+    facade = cast(CalibrationUIGodot, object.__new__(CalibrationUIGodot))
+    facade.output_log = True
+    facade._logger = SimpleNamespace(debug=debug_logs.append, info=info_logs.append)
+    facade.calibGodotInterfaceInst = _TransmitWriterStub()
+    facade.camera_num = 0
+    facade.sac = SimpleNamespace(
+        read=lambda: SimpleNamespace(
+            CalibUI_IF=SimpleNamespace(show_image2d3d=False, show_trajectory=False)
+        )
+    )
+    monkeypatch.setattr(facade, "_transmit_calibcheck_status", lambda _values: None)
+
+    facade.transmit(
+        sec=SimpleNamespace(CalMatGen_ex=SimpleNamespace(IsFinished=SimpleNamespace(value=99))),  # type: ignore[arg-type]
+        ref_t=1,
+        is_end_calmode=7,
+        status_calibcommon=0,
+        errors_calibcommon=0,
+        currentmode=0,
+        currentcamera=0,
+        frames=[],
+        YOLOresults=[],
+        yaw=0.0,
+        points=facade_module.np.zeros((0, 3), dtype=facade_module.np.float32),
+        corner3d=facade_module.np.zeros((0, 3), dtype=facade_module.np.float32),
+        progress_summary=0.0,
+        is_calib_available=False,
+        calibcheck_status=[],
+        calib_status=[],
+        mblock_progress_status=[],
+        sblock_progress_status=[],
+    )
+
+    assert "after preprocess_info, addr:9" in debug_logs
+    assert not any("after preprocess_info" in message for message in info_logs)
+    assert any(
+        "after CalMatGen_ex-IsFinished" in message and "content:7" in message
+        for message in info_logs
+    )
+    assert not any("content:99" in message for message in info_logs)

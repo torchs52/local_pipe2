@@ -315,7 +315,7 @@ class CalibGodotInterface:
         dsize = len(bboxes_transmit)
 
         if self.output_log:
-            self._logger.debug(
+            self._logger.info(
                 f"Adr(bboxes_transmit): {self.writtenAdr}, len: {len(bboxes_transmit)}, data:{bboxes_transmit}, {dsize}",
             )
         self.clsMMap.WriteInt16(self.writtenAdr, dsize)
@@ -324,7 +324,7 @@ class CalibGodotInterface:
         for d in bboxes_transmit:
             for ix, elem in enumerate(d):
                 if self.output_log:
-                    self._logger.debug(
+                    self._logger.info(
                         f"bboxes_transmit {ix} : {elem} @ {self.writtenAdr}"
                     )
                 self.clsMMap.WriteInt16(self.writtenAdr, elem)
@@ -399,10 +399,10 @@ class CalibGodotInterface:
 
         # 処理フレーム番号をデバッグ用に記述
         if self.output_log:
-            self._logger.debug(f"Adr(frame_num): {self.writtenAdr!s}")
+            self._logger.info(f"Adr(frame_num): {self.writtenAdr!s}")
         self.clsMMap.WriteInt64(self.writtenAdr, ref_t)
         if self.output_log:
-            self._logger.debug(f"{ref_t = }")
+            self._logger.info(f"{ref_t = }")
         self.writtenAdr += BS.INT64
 
         if mmap_erase_rest:
@@ -444,7 +444,7 @@ class CalibGodotInterface:
         MMapdelta: float = (now - self.sTime) * 1000
         Alldelta: float = (now - self.preProcessTime) * 1000
         if self.output_log:
-            self._logger.debug(
+            self._logger.info(
                 f"Adr(last): {self.writtenAdr!s}"
                 f", MMapdelta: {MMapdelta:.2f} msec"
                 f", Alldelta: {Alldelta:.2f} msec",
