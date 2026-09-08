@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from argus_synchro.__main__ import stop_error_monitor
 from argus_synchro.common.app_logger import AppLoggerFactory
 from argus_synchro.common.paths import DirectoryConfig
 from argus_synchro.process.process import ProcessBase, ProcessManager
@@ -96,6 +97,20 @@ def _wait_loop_started(loop_started_count: Synchronized[int], expected: int) -> 
             return
         time.sleep(0.02)
     pytest.fail(f"loop did not start: got {loop_started_count.value}, expected {expected}")
+
+
+def test_stop_error_monitor_forces_shutdown_before_close() -> None:
+    processes = MagicMock(spec=ProcessManager)
+    closables = MagicMock()
+
+    stop_error_monitor(closables, processes)
+
+    processes.graceful_stop_all.assert_called_once_with(
+        t_grace=3.0,
+        t_term=2.0,
+        t_kill=1.0,
+    )
+    closables.close.assert_called_once_with()
 
 
 def test_process_unsubscribe_logs_without_changing_flow_stop() -> None:

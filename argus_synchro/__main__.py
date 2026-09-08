@@ -1037,6 +1037,14 @@ def stop_system_pipeline(
     # TODO リファクタリング後stop_calib_pipeline追加 (NSW)
 
 
+def stop_error_monitor(
+    error_closables: CompositeClosable,
+    error_processes: ProcessManager,
+) -> None:
+    error_processes.graceful_stop_all(t_grace=3.0, t_term=2.0, t_kill=1.0)
+    error_closables.close()
+
+
 def get_current_calibmode(sac: SharedAppConfig) -> CalibMode:
     if sac.read().CalibMode.isRunning3D3Dcalib:
         return CalibMode.IsRunning3D3Dcalib
@@ -1245,12 +1253,6 @@ def main() -> None:
     error_closables = CompositeClosable()
     error_activator: ProcessActivator = ProcessActivator()
     error_activator.enable()
-    setup_signal_handlers(
-        status_obj=status,
-        logger=_logger,
-        name="Main",
-        shutdown_callback=error_activator.disable,
-    )
     p_error: ProcessManager = ProcessManager(
         error_activator, _process_manager_logger
     ).add_to(error_closables)
@@ -1267,6 +1269,12 @@ def main() -> None:
         "ErrorMonitor",
     ).add_to(p_error)
     p_error.start("", directory_config)
+    setup_signal_handlers(
+        status_obj=status,
+        logger=_logger,
+        name="Main",
+        shutdown_callback=lambda: stop_error_monitor(error_closables, p_error),
+    )
     is_restart = True
     while is_restart:
         is_restart = False
@@ -1606,9 +1614,7 @@ def main() -> None:
             ):
                 is_restart = False
 
-    error_activator.disable()
-    p_error.join()
-    error_closables.close()
+    stop_error_monitor(error_closables, p_error)
     del ser
     _logger.info("exited top-level loop")
 

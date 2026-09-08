@@ -14,6 +14,14 @@ echo "$ARGUS3D_DEV"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR" || exit 1
 
+# 子プロセスを含む前回起動が残っている間は、二重起動を拒否する。
+LOCK_FILE="${XDG_RUNTIME_DIR:-/tmp}/argus_bootfig_jetson.lock"
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+    echo "<<run_all>> ERROR: argus_bootfig_jetson.sh は既に起動中です"
+    exit 1
+fi
+
 # 仮想環境（.venv）のPython
 VENV_PYTHON="$SCRIPT_DIR/.venv/bin/python"
 

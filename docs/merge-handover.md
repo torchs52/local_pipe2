@@ -1079,9 +1079,10 @@ SHI側だけで確認されたテスト:
 ### 2026-09-08 M-076 Ctrl+C時のErrorMonitor残留修正
 
 - `argus_bootfig_jetson.sh`のcleanupは別sessionのMainへSIGINTを送るが、Mainのsignal handlerは`sys.exit(0)`で通常ループ末尾を飛び越えるため、ErrorMonitor専用`error_activator.disable()`へ到達せずMainが終了待ちに残っていた。
-- 汎用`setup_signal_handlers()`へ任意の`shutdown_callback`を追加し、MainではErrorMonitor起動前に`error_activator.disable`を登録した。通常終了経路、MonitorArgus、process管理責務は変更していない。
-- 残留Main 5件をSIGKILLで終了した後も、`multiprocessing.spawn_main`として孤児化したErrorMonitor 1件が`/dev/shm/err0.dat`と`err1.dat`を書き続けていた。`fuser`でPIDと`pts/0`へのstdout/stderr接続を特定し、SIGKILL後に両MMAPの利用者なし、`pts/0`はbashだけであることを確認した。
-- signal callback、StatusMMAP、ProcessManagerの関連テストは9 passed。Python 3.12の既存fork警告7件のみ。
+- 汎用`setup_signal_handlers()`へ任意の`shutdown_callback`を追加した。MainではErrorMonitor起動完了後にcallbackを登録し、`ProcessManager.graceful_stop_all()`のdisable、terminate、killと`CompositeClosable.close()`まで完了させる。通常終了も同じhelperを使用する。
+- 残留Mainを終了した後も、`multiprocessing.spawn_main`として孤児化したErrorMonitorがError MMAPを書き続ける事象を確認した。追加調査では過去10起動分のErrorMonitorと`resource_tracker`計20件が孤児化しており、local_pipe2のPython完全pathで限定して全件SIGKILLし、MMAP利用者なしを確認した。
+- `argus_bootfig_jetson.sh`は起動中に保持する`flock`を追加し、前回のスクリプトまたは子プロセスが残る間は2個目を終了コード1で拒否する。外部lockを保持した実動作試験で、MMAP準備前に「既に起動中です」と終了することを確認した。
+- signal callback、StatusMMAP、ProcessManagerの関連テストは10 passed。Python 3.12の既存fork警告7件のみ。シェル構文検査と`git diff --check`も成功した。
 
 ## 10. 次のCopilotへの開始指示
 
