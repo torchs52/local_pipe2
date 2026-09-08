@@ -222,8 +222,8 @@ echo "<<run_all>> status.mmap 初期状態: $STATUS_NAME ($STATUS)"
 # ----------------------------------------------------------------------
 # 起動画像表示監視
 #
-# SHUTDOWN(-1) / REBOOT(1) : 起動画像を表示
-# RUNNING(3)                : 起動画像を非表示
+# RUNNING(3) : 起動画像を非表示
+# その他    : 起動画像を全画面表示
 #
 # MONITOR_STOP_FILE が作成された場合は終了する。
 #
@@ -286,17 +286,17 @@ monitor_boot_img() {
             fi
 
             # ------------------------------------------------------
-            # SHUTDOWN / REBOOT
+            # RUNNING以外は起動中・再起動中・停止中の背景を隠す
             # ------------------------------------------------------
-            if [ "$STATUS" -eq -1 ] || [ "$STATUS" -eq 1 ]; then
+            if [ "$STATUS" -ne 3 ]; then
 
                 if [ -f "$BOOT_IMAGE" ] &&
-                   ! kill -0 "$FEH_PID" 2>/dev/null; then
+                   { [ "$FEH_PID" -eq 0 ] || ! kill -0 "$FEH_PID" 2>/dev/null; }; then
 
-                    echo "<<monitor_status>> 起動画像表示"
+                    echo "<<monitor_status>> 起動画像を全画面表示"
 
-                    # feh -F "$BOOT_IMAGE" &
-                    feh --geometry 1920x1080 "$BOOT_IMAGE" &
+                    feh --fullscreen --auto-zoom --image-bg black --hide-pointer \
+                        "$BOOT_IMAGE" &
                     FEH_PID=$!
                 fi
 
