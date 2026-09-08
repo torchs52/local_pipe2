@@ -404,24 +404,12 @@ void UI_interface::preprocess_info()
     this->writtenAdr += static_cast<int>(ByteSize::INT64);
 }
 
-int UI_interface::generate_error_code(int isslow) const
-{
-    if (isslow == 2)
-    {
-        return 0x200;
-    }
-    if (isslow == 1)
-    {
-        return 0x100;
-    }
-    return 0x00000000;
-}
-
 void UI_interface::error_info(int isslow)
 {
     this->logger_.debug("Adr(error): %d", this->writtenAdr);
-    // int code = this->generate_error_code(isslow);
-    int code = 0; //処理速度低下エラーが頻繁に出るので暫定処理
+    // エラー情報は専用MMAPで通知するため、この旧領域は0固定とする。
+    static_cast<void>(isslow);
+    constexpr int code = 0;
     //  エラー種別
     this->logger_.debug("code = %d", code);
     this->clsMMap.WriteInt32(this->writtenAdr, code);

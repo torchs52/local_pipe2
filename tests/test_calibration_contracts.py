@@ -82,6 +82,9 @@ class _FlagMmap:
     def WriteInt8(self, address: int, value: int) -> None:
         self.values[address] = value
 
+    def WriteInt32(self, address: int, value: int) -> None:
+        self.values[address] = value
+
     def WriteInt64(self, _address: int, _value: int) -> None:
         pass
 
@@ -255,6 +258,24 @@ def test_calibration_mmap_header_layout_is_stable() -> None:
         "ERROR": {"ADDR": 10, "WIDTH": 4},
         "CamImg": {"ADDR": 14, "WIDTH": -1},
     }
+
+
+def test_calibration_mmap_legacy_error_field_is_always_zero() -> None:
+    buffer = _FlagMmap()
+    interface = object.__new__(CalibGodotInterface)
+    interface.output_log = False
+    interface.datPathList = []
+    interface.damp_out = False
+    interface.clsMMap = buffer
+    interface.writtenAdr = 10
+
+    interface.error_info(
+        sec=SimpleNamespace(Scruti_ex=SimpleNamespace(IsSlow=SimpleNamespace(value=2))),
+        errorcode_pre=0xFFFFFFFF,
+    )
+
+    assert buffer.values[10] == 0
+    assert interface.writtenAdr == 14
 
 
 def test_calibration_mmap_rotation_immediately_reserves_next_buffer() -> None:

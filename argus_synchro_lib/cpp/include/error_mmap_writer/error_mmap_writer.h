@@ -16,11 +16,16 @@ class ErrorMMapWriter
     static constexpr int StateError_ADR = 10;        // 16byte
     static constexpr int ActionError_ADR = 26;       // 32byte
     static constexpr int Reserved_ADR = 58;          // 3byte
-    static constexpr int Status_ADR = 61;            // 3byte
-    static constexpr int ReduceLoadMode_ADR = 61;    // 1byte
-    static constexpr int CameraConnections_ADR = 62; // 1byte
-    static constexpr int LidarConnections_ADR = 63;  // 1byte
-    static constexpr int Map_All = 64;               // マップサイズ
+    //static constexpr int Status_ADR = 61;            // 3byte
+    //static constexpr int ReduceLoadMode_ADR = 61;    // 1byte
+    //static constexpr int CameraConnections_ADR = 62; // 1byte
+    //static constexpr int LidarConnections_ADR = 63;  // 1byte
+    //static constexpr int Map_All = 64;               // マップサイズ
+    static constexpr int Status_ADR = 60;            // 3byte
+    static constexpr int ReduceLoadMode_ADR = 60;    // 1byte
+    static constexpr int CameraConnections_ADR = 61; // 1byte
+    static constexpr int LidarConnections_ADR = 62;  // 1byte
+    static constexpr int Map_All = 63;               // マップサイズ
 
     static constexpr int StateError_Size = 16;
     static constexpr int ActionError_Size = 32;

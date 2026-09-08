@@ -1063,6 +1063,19 @@ SHI側だけで確認されたテスト:
 - `shared_err_config.py`はSHIと同一。全error enumと診断tupleの長さは一致する。`ErrorConfig`の62属性に対してJSONは7つのVendor module errorが欠け、11項目がclass既定値へ暗黙依存していたため、既定値を変えず全キー・全fieldを明示して回帰テストを追加した。
 - SHIはLiDAR0/1・IMU0/1 parameterを個別に持つ一方、Vendorは`lidar_n_*`・`imu_n_*`を共有する。個別閾値化は設定schemaと運用を変えるため本単位では移植せず、要判断差分として残す。Vendorのheartbeat/lifecycle拡張とSHIの入力health generationも同様に一括置換しない。
 
+### 2026-09-08 M-074 校正MMAP旧エラー領域の0固定
+
+- 校正MMAPの4 byteエラー領域は、エラー通知を専用Error MMAPへ移行したため常に`0`を書く予約領域とした。
+- `CalibGodotInterface.error_info()`の呼出しsignatureと4 byteのaddress進行は互換性のため維持し、`SharedExcepts`と従来error codeの値には依存しない。
+- 未使用になった`generate_error_code()`を削除した。
+- 非ゼロの旧error codeと負荷状態を渡しても`0`を書き、書込addressが4 byte進むことを契約テストで確認した。校正契約テストは11 passed。
+
+### 2026-09-08 M-075 周辺監視MMAP旧エラー領域の0固定
+
+- 周辺監視MMAPの4 byteエラー領域も、エラー通知を専用Error MMAPへ移行したため常に`0`を書く予約領域とした。
+- `UI_interface.error_info(int isslow)`の呼出しsignatureと4 byteのaddress進行は互換性のため維持し、負荷低減状態には依存しない。旧`generate_error_code()`は削除した。
+- 旧領域へ非ゼロ値を事前設定し、非ゼロの`isslow`を渡しても`0`へ上書きされ、後続の機体角が従来どおりoffset 14へ書かれることを実MMAP契約テストで確認した。周辺監視UI MMAPテストは3 passed。
+
 ## 10. 次のCopilotへの開始指示
 
 次回は、いきなり全体差分を再探索しない。次の順で開始する。

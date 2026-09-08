@@ -205,23 +205,12 @@ class CalibGodotInterface:
             )
         self.writtenAdr += BS.INT64
 
-    def generate_error_code(self, sec: SharedExcepts, errorcode_pre: int) -> int:
-        # code: int = 0x00000000
-        code = errorcode_pre
-        IsSlow: int = sec.Scruti_ex.IsSlow.value
-        if IsSlow == 2:
-            code = code | 0x200
-        elif IsSlow == 1:
-            code = code | 0x100
-
-        return code
-
     def error_info(self, sec: SharedExcepts, errorcode_pre: int) -> None:
         if self.output_log:
             self._logger.debug(f"Adr(error): {self.writtenAdr!s}")
-        code: int = self.generate_error_code(sec, errorcode_pre)
-        # code: int = 0x00000000
-        # エラー種別
+        # エラー情報は専用MMAPで通知するため、この旧領域は0固定とする。
+        _ = sec, errorcode_pre
+        code = 0
         if self.output_log:
             self._logger.debug(f"{code = }")
         self.clsMMap.WriteInt32(self.writtenAdr, code)

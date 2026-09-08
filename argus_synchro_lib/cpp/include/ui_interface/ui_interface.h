@@ -54,7 +54,6 @@ class UI_interface
     void octotree_info(OctoTree& octotree_obj);
     void cliff_info();
     void preprocess_info();
-    int generate_error_code(int isslow) const;
     void error_info(int isslow);
     void write_2d_object_detection_result(const std::tuple<int, int>& frame_shape,
                                           const CameraDetectionData& bb_box_data);
