@@ -1,8 +1,23 @@
+import pytest
+
 from argus_synchro.diagnosis.reduced_load_mode import (
+    FORCE_ENABLED_ENV,
     PROC_SPEED_NORMAL,
     PROC_SPEED_SLOW,
     ReducedLoadMode,
 )
+
+
+def test_force_enabled_environment_keeps_mode_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(FORCE_ENABLED_ENV, "1")
+    mode = ReducedLoadMode()
+
+    for _ in range(ReducedLoadMode.DISABLE_THRESHOLD + 1):
+        mode.update_state()
+
+    assert mode.enabled
 
 
 def test_point_count_thresholds_require_five_consecutive_frames() -> None:

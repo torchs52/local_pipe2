@@ -7,7 +7,7 @@ from argus_synchro.__main__ import _write_status_safe
 from argus_synchro.diagnosis.action_errors import MmapReadWriteErrorDiagnosis
 from argus_synchro.process.error_monitor_process import ErrorMonitorProcess
 from argus_synchro.process.visual_process import VisualProcess
-from argus_synchro.shared_errors import ActionErrorIndex
+from argus_synchro.shared_errors import ActionErrorIndex, StateErrorIndex
 from argus_synchro.SystemMonitor.status_mmap import StatusCode
 
 
@@ -77,6 +77,38 @@ def test_error_monitor_dispatches_mmap_failure_and_continues() -> None:
         "CE011: MMAP_READ_WRITE_ERROR: ErrorMMapWriter transaction failed: "
         "BufferError('busy mmap')",
         exc_info=True,
+    )
+
+
+def test_error_monitor_logs_mmap_error_values_and_changes() -> None:
+    process = object.__new__(ErrorMonitorProcess)
+    process._ser = SimpleNamespace(action_errors=(object(), object()))
+    process._logger = MagicMock()
+    process._last_state_err_value = None
+    process._last_action_err_values = None
+
+    state_bit = 1 << int(StateErrorIndex.LIDAR0_CONNECTION_ERROR)
+    process._debug_log_state_errors(state_bit.to_bytes(16, "little"))
+    process._debug_log_state_errors((0).to_bytes(16, "little"))
+    process._debug_log_action_errors(bytes((0, 1)) + bytes(30))
+    process._debug_log_action_errors(bytes((0, 2)) + bytes(30))
+
+    assert process._logger.debug.call_count == 4
+    process._logger.error.assert_any_call(
+        "state_error %s: bit%d=%s",
+        "ON ",
+        int(StateErrorIndex.LIDAR0_CONNECTION_ERROR),
+        StateErrorIndex.LIDAR0_CONNECTION_ERROR.name,
+    )
+    process._logger.error.assert_any_call(
+        "state_error %s: bit%d=%s",
+        "OFF",
+        int(StateErrorIndex.LIDAR0_CONNECTION_ERROR),
+        StateErrorIndex.LIDAR0_CONNECTION_ERROR.name,
+    )
+    process._logger.error.assert_any_call(
+        "action_error counters: %s",
+        "index1=SENSOR_CALIBRATION_REQUIRED:1->2",
     )
 
 

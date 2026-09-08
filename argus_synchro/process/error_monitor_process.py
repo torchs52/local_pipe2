@@ -12,7 +12,6 @@ from argus_synchro.common.paths import normalize_path
 from argus_synchro.diagnosis.error_config import ErrorConfig
 from argus_synchro.process import ProcessBase
 from argus_synchro.process.synchronizer import ProcessActivator
-from argus_synchro.shared_data import create_shared_single_data
 from argus_synchro.shared_errors import ActionErrorIndex, SharedErrors, StateErrorIndex
 
 
@@ -26,6 +25,8 @@ class ErrorMonitorProcess(ProcessBase):
         "_cycle",
         "_err_config",
         "_is_last_app_manager_diag_enabled",
+        "_last_action_err_values",
+        "_last_state_err_value",
         "_paths",
         "_ser",
         "_system_activator",
@@ -44,7 +45,10 @@ class ErrorMonitorProcess(ProcessBase):
         self._ser: SharedErrors = ser
         self._system_activator: ProcessActivator = system_activator
         self._cycle: float = cycle  # fpsの逆数(秒)
+        self._err_config: ErrorConfig
         self._is_last_app_manager_diag_enabled = False
+        self._last_state_err_value: int | None = None
+        self._last_action_err_values: tuple[int, ...] | None = None
         log_dir: Path = paths.get_mmap_dir(self._directory_config)
         err0_path: Path = normalize_path("./err0.dat", log_dir)
         err1_path: Path = normalize_path("./err1.dat", log_dir)
@@ -114,8 +118,10 @@ class ErrorMonitorProcess(ProcessBase):
         try:
             self._mmap.start_write()
             state_err: bytes = self._make_state_error_bits(self._ser.state_errors)
+            self._debug_log_state_errors(state_err)
             self._mmap.write_state_error(state_err)
             action_err: bytes = self._make_action_error_bits(self._ser.action_errors)
+            self._debug_log_action_errors(action_err)
             self._mmap.write_action_error(action_err)
 
             camera_connected: tuple[bool, ...] = self._ser.get_cameras_connected()
@@ -169,6 +175,71 @@ class ErrorMonitorProcess(ProcessBase):
         err_bits: int = sum((err.value << (i * 8)) for i, err in enumerate(error_list))
         err_bits &= (1 << (num_bytes * 8)) - 1
         return err_bits.to_bytes(num_bytes, byteorder)
+
+    def _debug_log_state_errors(self, state_err: bytes) -> None:
+        state_err_value = int.from_bytes(state_err, byteorder="little")
+        self._logger.debug("state_error: hex=0x%032X", state_err_value)
+
+        previous_value = getattr(self, "_last_state_err_value", None)
+        if previous_value is None:
+            changed_bits = state_err_value
+        elif state_err_value == previous_value:
+            return
+        else:
+            changed_bits = state_err_value ^ previous_value
+
+        for error_index in StateErrorIndex:
+            if error_index is StateErrorIndex.INDEX_MAX or error_index.name.startswith(
+                "RESERVED_"
+            ):
+                continue
+            bit_no = int(error_index)
+            if ((changed_bits >> bit_no) & 1) == 0:
+                continue
+            is_on = (state_err_value >> bit_no) & 1
+            self._logger.error(
+                "state_error %s: bit%d=%s",
+                "ON " if is_on else "OFF",
+                bit_no,
+                error_index.name,
+            )
+
+        self._last_state_err_value = state_err_value
+
+    def _debug_log_action_errors(self, action_err: bytes) -> None:
+        current_values = tuple(
+            action_err[index] for index in range(len(self._ser.action_errors))
+        )
+        action_err_value = int.from_bytes(action_err, byteorder="little")
+        self._logger.debug("action_error: hex=0x%064X", action_err_value)
+
+        previous_values = getattr(self, "_last_action_err_values", None)
+        changed_errors: list[str] = []
+        for error_index in ActionErrorIndex:
+            if error_index is ActionErrorIndex.INDEX_MAX or error_index.name.startswith(
+                "RESERVED_"
+            ):
+                continue
+            index = int(error_index)
+            if index >= len(current_values):
+                continue
+            current_value = current_values[index]
+            if previous_values is None:
+                changed_errors.append(
+                    f"index{index}={error_index.name}:{current_value}"
+                )
+            elif current_value != previous_values[index]:
+                changed_errors.append(
+                    f"index{index}={error_index.name}:"
+                    f"{previous_values[index]}->{current_value}"
+                )
+
+        if changed_errors:
+            self._logger.error(
+                "action_error counters: %s",
+                ", ".join(changed_errors),
+            )
+        self._last_action_err_values = current_values
 
     def _make_status_bits(
         self,

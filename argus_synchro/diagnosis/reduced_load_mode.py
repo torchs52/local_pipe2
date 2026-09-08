@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from multiprocessing.sharedctypes import Synchronized
 
 from argus_synchro.common.app_logger import AppLogger, AppLoggerFactory
@@ -11,6 +12,7 @@ PROC_SPEED_SLOW: int = 2
 DEFAULT_POINT_CAPACITY: int = 40_000
 DEFAULT_MANY_POINTS_RATIO: float = 0.4
 DEFAULT_FEW_POINTS_RATIO: float = 0.3
+FORCE_ENABLED_ENV: str = "ARGUS_FORCE_REDUCED_LOAD_MODE"
 
 
 class ReducedLoadMode:
@@ -22,6 +24,8 @@ class ReducedLoadMode:
 
     def __init__(self) -> None:
         self._logger: AppLogger = AppLoggerFactory.from_type(self.__class__)
+        self._force_enabled = os.getenv(FORCE_ENABLED_ENV) == "1"
+        self._force_enabled_logged = False
         self.many_points_threshold = int(
             DEFAULT_POINT_CAPACITY * DEFAULT_MANY_POINTS_RATIO
         )
@@ -77,6 +81,15 @@ class ReducedLoadMode:
 
     def update_state(self) -> None:
         """負荷低減モードの状態を更新するメソッド"""
+
+        if self._force_enabled:
+            self._enabled.value = True
+            if not self._force_enabled_logged:
+                self._logger.warning(
+                    f"{FORCE_ENABLED_ENV}=1により負荷低減モードを強制有効化します。"
+                )
+                self._force_enabled_logged = True
+            return
 
         # 負荷低減モードの開始条件の判定
         if not self._enabled.value and self._should_enable():

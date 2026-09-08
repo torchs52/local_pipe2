@@ -890,7 +890,7 @@ class VisualProcess(ProcessBase):
                     ] and isinstance(octonodes, dict):
                         vox_coords = np.array(list(octonodes.keys()))
 
-                        self._logger.info(
+                        self._logger.debug(
                             "クラスタリングの最大最小:%s %s %s",
                             key.cluster_id,
                             vox_coords.min(axis=0),

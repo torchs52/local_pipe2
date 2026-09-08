@@ -264,7 +264,7 @@ class AppLoggerFactory:
     __DEFAULT_TO_CONSOLE = True
     __DEFAULT_TO_FILE = None
     #__DEFAULT_LEVEL: int = logging.WARNING
-    __DEFAULT_LEVEL: int = logging.INFO
+    __DEFAULT_LEVEL: int = logging.DEBUG
     __DEFAULT_INCLUDE_TIME = True
     __DEFAULT_ROTATE_SIZE: int = 300 * 1024 * 1024
     __DEFAULT_BACKUP_COUNT: int = 1
