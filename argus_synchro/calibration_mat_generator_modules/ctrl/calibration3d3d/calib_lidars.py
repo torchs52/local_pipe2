@@ -180,6 +180,24 @@ def translate_points(
     return utils.np_to_pcd(points).transform(trans_mat)
 
 
+def _write_calibration_csv(
+    savepath: str,
+    transform: np.ndarray,
+    file_io_error_reporter: Callable[[str, str, Exception], None] | None,
+) -> None:
+    try:
+        Path(savepath).parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(transform).to_csv(savepath, header=False, index=False)
+    except OSError as error:
+        if file_io_error_reporter is not None:
+            file_io_error_reporter(
+                savepath,
+                "write 3D-3D calibration result matrix CSV",
+                error,
+            )
+        raise
+
+
 def calibrateLidars2Crane(
     lidar_np_list: list[np.ndarray],
     lidar_raw_pcd_list: list[o3d.geometry.PointCloud],
@@ -363,8 +381,7 @@ def calibrateLidars2Crane(
 
     # ファイル保存
     for idx, T in enumerate(LiDARi2Crane_list):
-        Path(savepaths[idx]).parent.mkdir(parents=True, exist_ok=True)
-        pd.DataFrame(T).to_csv(savepaths[idx], header=False, index=False)
+        _write_calibration_csv(savepaths[idx], T, file_io_error_reporter)
 
     # 可視化
     merged_pcd_crane = utils.np_to_pcd(sim_pts)

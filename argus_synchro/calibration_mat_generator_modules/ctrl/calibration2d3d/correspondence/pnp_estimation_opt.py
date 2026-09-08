@@ -6,6 +6,7 @@
 # 2D-3D対応点を読み込み変換行列出力
 
 import os
+from collections.abc import Callable
 from typing import Any
 
 import cv2
@@ -37,6 +38,7 @@ class PnpEstimationCalculator:  # FusionSensorProcessor互換インターフェ�
         lambda_axis_t: NDArray[np.float64] | None = None,
         normalize_imagesize: NDArray[np.int32] | None = None,
         verbose: bool = True,
+        file_io_error_reporter: Callable[[str, str, Exception], None] | None = None,
     ):
         """複数センサ間の座標合わせに関連する処理をまとめたクラス
         共通して使う変数もあるように感じたので、クラスとして管理する
@@ -54,6 +56,7 @@ class PnpEstimationCalculator:  # FusionSensorProcessor互換インターフェ�
         self.lambda_axis_r = lambda_axis_r
         self.lambda_axis_t = lambda_axis_t
         self.normalize_imagesize = normalize_imagesize
+        self.file_io_error_reporter = file_io_error_reporter
 
     def fit(
         self,
@@ -134,6 +137,7 @@ class PnpEstimationCalculator:  # FusionSensorProcessor互換インターフェ�
     ):
         """校正結果を保存"""
 
+        output_path = savedir
         try:
             assert self.rotation_matrix is not None
             assert self.rotation_vector is not None
@@ -153,10 +157,14 @@ class PnpEstimationCalculator:  # FusionSensorProcessor互換インターフェ�
                 savedir, "3dcorrpoints_calib" + suffix + ".npy"
             )
 
+            output_path = rotation_vector_filename
             np.save(rotation_vector_filename, np.array(self.rotation_vector))
+            output_path = translation_vector_filename
             np.save(translation_vector_filename, np.array(self.translation_vector))
 
+            output_path = corner2dsave_filename
             np.save(corner2dsave_filename, self.corner2d_save)
+            output_path = corner3dsave_filename
             np.save(corner3dsave_filename, self.corner3d_save)
 
             rotation_mat_filename = os.path.join(
@@ -167,7 +175,14 @@ class PnpEstimationCalculator:  # FusionSensorProcessor互換インターフェ�
             if postprocess_mat is not None:
                 transmat = transmat @ postprocess_mat
 
+            output_path = rotation_mat_filename
             np.savetxt(rotation_mat_filename, transmat, delimiter=",")
 
         except Exception as e:
+            if isinstance(e, OSError) and self.file_io_error_reporter is not None:
+                self.file_io_error_reporter(
+                    output_path,
+                    "write 2D-3D PnP calibration artifact",
+                    e,
+                )
             self._logger.warning(f"Exception: {e} at PnpEstimationCalculator.save()")

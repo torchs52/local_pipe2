@@ -2,10 +2,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 
 from argus_synchro.calibration_mat_generator_modules.ctrl.calibration3d3d import (
     calibration3d3d_class,
+)
+from argus_synchro.calibration_mat_generator_modules.ctrl.calibration3d3d.calib_lidars import (
+    _write_calibration_csv,
 )
 from argus_synchro.calibration_mat_generator_modules.ctrl.calibration3d3d.simulate_lidar_points import (
     _read_angles_deg,
@@ -82,3 +86,32 @@ def test_calibration3d3d_file_io_reporter_uses_shared_diagnosis() -> None:
         "read 3D-3D matrix CSV",
         "OSError: read failed",
     )
+
+
+def test_3d3d_result_write_error_is_reported_and_reraised(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reports: list[tuple[str, str, Exception]] = []
+    output_path = tmp_path / "result.csv"
+    write_error = OSError("write failed")
+    monkeypatch.setattr(
+        "argus_synchro.calibration_mat_generator_modules.ctrl.calibration3d3d.calib_lidars.pd.DataFrame.to_csv",
+        MagicMock(side_effect=write_error),
+    )
+
+    with pytest.raises(OSError, match="write failed"):
+        _write_calibration_csv(
+            str(output_path),
+            np.eye(4),
+            lambda path, operation, error: reports.append(
+                (path, operation, error)
+            ),
+        )
+
+    assert reports == [
+        (
+            str(output_path),
+            "write 3D-3D calibration result matrix CSV",
+            write_error,
+        )
+    ]

@@ -91,6 +91,20 @@ class calibration2d3d_class:
             f"{type(error).__name__}: {error}",
         )
 
+    def _write_result_matrix(
+        self, resultmat_path: str, transmat: Any
+    ) -> None:
+        try:
+            Path(resultmat_path).parent.mkdir(parents=True, exist_ok=True)
+            np.savetxt(resultmat_path, transmat, delimiter=",")
+        except OSError as error:
+            self._report_file_io_error(
+                resultmat_path,
+                "write 2D-3D calibration result matrix CSV",
+                error,
+            )
+            raise
+
     def __init__(
         self,
         app_config_calib: AppConfigCalibration,
@@ -253,9 +267,20 @@ class calibration2d3d_class:
         with open(fpath, "wb") as wbf:
             pickle.dump(data, wbf)
 
+    def _save_pickle_with_diagnosis(self, fpath: str, data: Any) -> None:
+        try:
+            self.save_pickle(fpath, data)
+        except OSError as error:
+            self._report_file_io_error(
+                fpath,
+                "write 2D-3D sensor data pickle",
+                error,
+            )
+            raise
+
     def fire_and_forget_writedata(self, fpath: str, data: Any) -> None:
         loop = asyncio.get_event_loop()
-        loop.run_in_executor(None, self.save_pickle, fpath, data)
+        loop.run_in_executor(None, self._save_pickle_with_diagnosis, fpath, data)
         try:
             if self.verbose:
                 _logger.info(f"saved: {str(data)[:30]}")
@@ -371,8 +396,7 @@ class calibration2d3d_class:
         _logger.info(
             "** debug - calibration evaluation mode, Accuracy check disabled **"
         )
-        Path(resultmat_path).parent.mkdir(parents=True, exist_ok=True)
-        np.savetxt(resultmat_path, transmat, delimiter=",")
+        self._write_result_matrix(resultmat_path, transmat)
         _logger.info(
             f"Accuracy Check OK ({accvalue}), result written: {resultmat_path} end"
         )
@@ -782,10 +806,7 @@ class calibration2d3d_class:
                                 _logger.info(
                                     "** debug - calibration evaluation mode, Accuracy check disabled **",
                                 )
-                            Path(resultmat_path).parent.mkdir(
-                                parents=True, exist_ok=True
-                            )
-                            np.savetxt(resultmat_path, transmat, delimiter=",")
+                            self._write_result_matrix(resultmat_path, transmat)
                             _logger.info(
                                 f"Accuracy Check OK ({accvalue}), result written: {resultmat_path} end",
                             )

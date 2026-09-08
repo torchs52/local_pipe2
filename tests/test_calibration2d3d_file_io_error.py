@@ -145,6 +145,39 @@ def test_correspondence_reports_initial_vector_read_error(
     assert isinstance(reports[0][2], OSError)
 
 
+def test_pnp_artifact_write_error_is_reported_and_absorbed(
+    tmp_path, monkeypatch
+) -> None:
+    reports: list[tuple[str, str, Exception]] = []
+    logger_factory = MagicMock()
+    logger_factory.register_from_type.return_value = MagicMock()
+    calculator = pnp_estimation_opt.PnpEstimationCalculator(
+        dist_coeffs=np.zeros((1, 5)),
+        camera_matrix=np.eye(3),
+        app_logger_factory=logger_factory,
+        file_io_error_reporter=lambda path, operation, error: reports.append(
+            (path, operation, error)
+        ),
+    )
+    calculator.rotation_matrix = np.eye(3)
+    calculator.rotation_vector = np.zeros(3)
+    calculator.translation_vector = np.zeros(3)
+    calculator.corner2d_save = np.zeros((1, 2))
+    calculator.corner3d_save = np.zeros((1, 3))
+    write_error = OSError("write failed")
+    monkeypatch.setattr(np, "save", MagicMock(side_effect=write_error))
+
+    calculator.save(savedir=str(tmp_path))
+
+    assert reports == [
+        (
+            str(tmp_path / "rotation_vector.npy"),
+            "write 2D-3D PnP calibration artifact",
+            write_error,
+        )
+    ]
+
+
 @pytest.mark.parametrize(
     ("reader", "expected_operation"),
     (
@@ -245,6 +278,49 @@ def test_fileend_autoexit_calculates_and_writes_result_once(tmp_path) -> None:
     monitor.set_camera_calibration_status.assert_called_once_with(
         camera_id=1, value=1
     )
+
+
+def test_result_matrix_write_error_is_reported_and_reraised(
+    tmp_path, monkeypatch
+) -> None:
+    calibration = object.__new__(calibration2d3d_class)
+    reports: list[tuple[str, str, Exception]] = []
+    calibration._report_file_io_error = (
+        lambda path, operation, error: reports.append((path, operation, error))
+    )
+    result_path = tmp_path / "result.csv"
+    write_error = OSError("write failed")
+    monkeypatch.setattr(np, "savetxt", MagicMock(side_effect=write_error))
+
+    with pytest.raises(OSError, match="write failed"):
+        calibration._write_result_matrix(str(result_path), np.eye(4))
+
+    assert reports == [
+        (
+            str(result_path),
+            "write 2D-3D calibration result matrix CSV",
+            write_error,
+        )
+    ]
+
+
+def test_async_pickle_write_error_is_reported_and_reraised(tmp_path) -> None:
+    calibration = object.__new__(calibration2d3d_class)
+    reports: list[tuple[str, str, Exception]] = []
+    calibration._report_file_io_error = (
+        lambda path, operation, error: reports.append((path, operation, error))
+    )
+    output_path = tmp_path / "missing" / "sensor.pickle"
+
+    with pytest.raises(OSError):
+        calibration._save_pickle_with_diagnosis(str(output_path), {"frame": 1})
+
+    assert len(reports) == 1
+    assert reports[0][:2] == (
+        str(output_path),
+        "write 2D-3D sensor data pickle",
+    )
+    assert isinstance(reports[0][2], OSError)
 
 
 def test_calibration2d3d_ui_diagnosis_codes_default_without_invented_rules() -> None:

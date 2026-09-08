@@ -307,6 +307,7 @@ class correspondence_class_optmethod(correspondence_class_base):
                 ]
             ),
             verbose=True,
+            file_io_error_reporter=self.file_io_error_reporter,
         )
 
         initial_vectors_path = (

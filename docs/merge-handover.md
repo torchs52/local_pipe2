@@ -1092,6 +1092,15 @@ SHI側だけで確認されたテスト:
 - `FEH_PID=0`に対する`kill -0`は現在のprocess groupを検査して成功するため、未起動判定として使えなかった。PID 0を明示的に未起動として扱う条件へ修正した。
 - cleanupではMainとMonitorArgusを先に停止し、起動画像監視とfehを最後に終了する。停止処理中もdesktopを露出させない。
 
+### 2026-09-09 FILE_IO_ERRORイベント・校正書込み診断
+
+- 重要度Dはシステムを停止させないため、共通`StateErrorDiagnosisD`の`DETECTION`、`KEEPING`、`RECOVERY`契約を維持した。FILE_IOを発生ごとに常に`DETECTION`とする案は、同じ欠損ファイルを周期的に読む経路でログ洪水になるため採用しない。
+- `FileIoError`もD共通状態遷移を使用し、最初の障害だけ`DETECTION`としてwarningへ記録し、正常復帰までの後続障害は`KEEPING`としてログを抑止する。正常入力または`reset_error()`後の再発は再度`DETECTION`となる。
+- ログレベル、文面、詳細情報は`diagnosis`配下の`FileIoError`が所有する。各I/O所有箇所はpath、operation、元例外を渡すだけとし、ログ出力判断を重複実装しない。
+- 2D-3D結果行列のdirectory作成・CSV保存、非同期sensor data pickle保存、PnPのNPY/TXT成果物保存、3D-3D結果行列のdirectory作成・CSV保存を、それぞれpathと`write ...`操作名が分かる所有境界でD診断へ接続した。
+- 2D-3D・3D-3D結果保存と非同期pickle wrapperは診断後に元の`OSError`を再送出する。PnP保存は既存どおり例外をwarningへ記録して吸収し、校正制御と停止条件を変更していない。PnP reporterは省略可能引数として追加し、既存呼出しAPIを維持した。
+- FILE_IOの初回検出、継続KEEPING、復帰後再発、モジュールログ間引き、2D-3D、3D-3D、data capture、校正process error handlingの関連テストを実行した。変更ファイルのVS Code診断と`git diff --check`も確認した。
+
 ## 10. 次のCopilotへの開始指示
 
 次回は、いきなり全体差分を再探索しない。次の順で開始する。
