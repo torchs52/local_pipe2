@@ -1,6 +1,6 @@
 # Vendor/SHI 統合作業 引継ぎ
 
-最終更新: 2026-09-07
+最終更新: 2026-09-08
 
 この文書は、別PCまたは別のCopilotチャットで統合作業を再開するための入口である。
 作業を始める前に本書を読み、判断・実装・検証が進んだら同じ作業内で更新すること。
@@ -366,7 +366,7 @@ SHI側だけで確認されたテスト:
 | M-041 | 自動校正ファイル入力の軽量終了制御 | 現行SHI `__main__.py` / ユーザー要件 | manual-port | verified | main/ProcessActivator/closables/tests | CALIBかつFile Inputの反復評価だけActivator停止と通信資源解放を行い、実機CALIBとSCRUTは量産向け停止・強制終了診断を維持する |
 | M-042 | 起動時ログ診断parameter初期化 | 実機起動ログ / vendor起動順 | vendor-fix | verified | main/log diagnosis/tests | logger callback登録前にログ圧縮・時刻逆転診断を初期化し、起動直後のAttributeErrorを防ぐ |
 | M-046 | エラーMMAP更新停止 | 実機起動ログ / SHI parameter定義 | manual-port | verified | error config/SE039/SE042/tests | 欠落していた診断閾値を復元し、ErrorMonitorのAttributeError終了とAppManagerの反復例外を防ぐ |
-| M-047 | TensorRT cache・入力名・provider選択の堅牢化 | SHI `ecbc79f` / 現行 `detect2d.py` | manual-port | pending | `detect2d.py`, tests | モデル固有入力名、モデル/config別cache、provider fallbackを小単位で移植する。Jetson検証必須 |
+| M-047 | TensorRT cache・入力名・provider選択の堅牢化 | SHI `ecbc79f` / 現行 `detect2d.py` | manual-port | verified | `detect2d.py`, tests | モデル固有入力名、モデル/config別cache、provider fallbackを移植。Jetson Orinでbatch 3 engine新規生成、cache再利用、CUDA Graph・I/O Binding推論を確認 |
 | M-048 | 負荷低減中の蓄積deque上限保証 | SHI現行 `AccumulatePoints.py` | manual-port | verified | `AccumulatePoints.py`, tests | append後にもmode別上限へtrimし、通常/負荷低減とも最新frameを保持して返却dequeの実効上限を保証 |
 | M-049 | 点群メッセージ上限20,000→40,000 | SHI `2283a0a` | manual-port | verified | Python/C++ PcdData、detect3d、Visual | 認識精度確保のためPython/C++容量を40,000へ統一。40,000点の共有slot往復、一括build、extension import成功 |
 | M-050 | MID360点群復号のNumPyベクトル化 | SHI `5265abb` | manual-port | verified | `device/lidar/mid360_points.py`, tests | structured dtypeと`np.frombuffer()`で96点を一括復号し、M-035の`perf_counter()`と公開property契約を維持。短packetは明示拒否 |
@@ -1001,6 +1001,12 @@ SHI側だけで確認されたテスト:
 - M-056はフレームごとのアドレス、座標配列、画像バイト列、点群詳細を`info`から`debug`へ変更した。起動情報、件数、総点数、frame末尾時間などのサマリは`info`に維持した。M-055を含む`ui_interface.cpp`単一objectと一括buildは成功した。実機でのログ量確認は残す。
 - M-057は`argus_synchro_lib-2026.8.25-cp312-cp312-linux_aarch64.whl`の生成、install、`argus_synchro_lib.controller` import、distribution metadataを確認して`verified`とした。
 - `make install`は成功し、C++ extensionとwheelを再生成した。MMAP例外・校正MMAP ABI・負荷低減を含む関連34件と、M-053専用7件がpassした。M-055の実MMAP読戻し、M-054のGodot reader並行試験、M-056の実機ログ量確認は引き続き残件とする。
+
+### 2026-09-08 M-047 TensorRT実機cache生成
+
+- Jetson Orin、ONNX Runtime 1.23.2でTensorRT/CUDA/CPU Execution Providerを認識した。設定の既定モデルパス`/home/nvidia/checkpoints/damoyolo_large.onnx`は存在しなかったため、workspace内の`checkpoints/damoyolo_large.onnx`を明示してbatch 3で実行した。settings swapは失敗時・成功時ともbackupから復元された。
+- モデルSHA-256先頭16桁`9854feaf385602db`、batch 3・現行TensorRT設定のcache key`config-cd14daaf66da`へ、FP16 SM87 engine 86,753,004 byte、profile 22 byte、timing cache 5,336,127 byteを新規生成した。新規buildは約24分を要した。
+- 同じモデル・batchで再実行し、生成物mtimeが変化しないままTensorRT CUDA Graphのcapture/replayとI/O Bindingウォームアップ推論が6.2秒で完了したため、cache再利用を確認した。M-047を`verified`とする。
 
 ## 10. 次のCopilotへの開始指示
 

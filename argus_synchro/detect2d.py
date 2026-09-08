@@ -60,7 +60,7 @@ def _trt_cache_directory(onnx_file: str, batch_size: int) -> Path:
     settings_digest = hashlib.sha256(settings_json.encode()).hexdigest()[:12]
     cache_dir = (
         model_path.parent
-        / ".trt_cache"
+        / "trt_cache"
         / f"model-{model_digest}"
         / f"config-{settings_digest}"
     )

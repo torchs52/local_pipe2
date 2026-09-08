@@ -141,7 +141,7 @@ def test_trt_ep_options_reflects_performance_settings(
     assert options["trt_builder_optimization_level"] == 5
     assert options["trt_cuda_graph_enable"] is True
     cache_path = Path(options["trt_engine_cache_path"])
-    assert cache_path.parent.parent == tmp_path / ".trt_cache"
+    assert cache_path.parent.parent == tmp_path / "trt_cache"
     assert cache_path.name.startswith("config-")
     assert cache_path.parent.name.startswith("model-")
     assert options["trt_timing_cache_path"] == str(cache_path)
