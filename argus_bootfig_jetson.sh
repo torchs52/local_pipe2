@@ -66,14 +66,28 @@ RUN_GROUP="$(id -gn)"
 #
 # engine   : Godot Engine + project_dir
 # appimage : AppImage 単体起動
+#
+# 起動画像モード
+# production  : 全画面表示し、Godotの背面に常駐
+# development : 1920x1080で表示し、RUNNING時に終了
 # ----------------------------------------------------------------------
 UI_MODE="${1:-appimage}"
+BOOT_IMAGE_MODE="${2:-development}"
 
 case "$UI_MODE" in
     engine|appimage)
         ;;
     *)
-        echo "Usage: $0 [engine|appimage]"
+        echo "Usage: $0 [engine|appimage] [production|development]"
+        exit 1
+        ;;
+esac
+
+case "$BOOT_IMAGE_MODE" in
+    production|development)
+        ;;
+    *)
+        echo "Usage: $0 [engine|appimage] [production|development]"
         exit 1
         ;;
 esac
@@ -143,11 +157,6 @@ cleanup() {
     echo "<<run_all>> cleanup start"
 
     # --------------------------------------------------------------
-    # 起動画像監視に終了を通知
-    # --------------------------------------------------------------
-    touch "$MONITOR_STOP_FILE" 2>/dev/null || true
-
-    # --------------------------------------------------------------
     # Main停止
     # --------------------------------------------------------------
     if [ -n "${MAIN_PID:-}" ]; then
@@ -160,6 +169,9 @@ cleanup() {
     if [ -n "${MONITOR_PID:-}" ]; then
         stop_service "$MONITOR_PID" "MonitorArgus"
     fi
+
+    # UI停止中も背景を隠すため、起動画像監視は最後に終了する。
+    touch "$MONITOR_STOP_FILE" 2>/dev/null || true
 
     # --------------------------------------------------------------
     # 起動画像監視停止
@@ -222,8 +234,9 @@ echo "<<run_all>> status.mmap 初期状態: $STATUS_NAME ($STATUS)"
 # ----------------------------------------------------------------------
 # 起動画像表示監視
 #
-# RUNNING(3) : 起動画像を非表示
-# その他    : 起動画像を全画面表示
+# productionでは起動画像をGodotの背面に常時表示する。
+# developmentではRUNNINGになるまでサイズ指定で表示する。
+# 表示中のfehが予期せず終了した場合は再起動する。
 #
 # MONITOR_STOP_FILE が作成された場合は終了する。
 #
@@ -285,35 +298,31 @@ monitor_boot_img() {
                 LAST_STATUS="$STATUS"
             fi
 
-            # ------------------------------------------------------
-            # RUNNING以外は起動中・再起動中・停止中の背景を隠す
-            # ------------------------------------------------------
-            if [ "$STATUS" -ne 3 ]; then
+            if { [ "$BOOT_IMAGE_MODE" = "production" ] || [ "$STATUS" -ne 3 ]; } &&
+               [ -f "$BOOT_IMAGE" ] &&
+               { [ "$FEH_PID" -eq 0 ] || ! kill -0 "$FEH_PID" 2>/dev/null; }; then
 
-                if [ -f "$BOOT_IMAGE" ] &&
-                   { [ "$FEH_PID" -eq 0 ] || ! kill -0 "$FEH_PID" 2>/dev/null; }; then
-
-                    echo "<<monitor_status>> 起動画像を全画面表示"
-
+                if [ "$BOOT_IMAGE_MODE" = "production" ]; then
+                    echo "<<monitor_status>> 起動画像を全画面表示 (production)"
                     feh --fullscreen --auto-zoom --image-bg black --hide-pointer \
                         "$BOOT_IMAGE" &
-                    FEH_PID=$!
+                else
+                    echo "<<monitor_status>> 起動画像をサイズ指定表示 (development)"
+                    feh --geometry 1920x1080 "$BOOT_IMAGE" &
                 fi
 
-            # ------------------------------------------------------
-            # RUNNING
-            # ------------------------------------------------------
-            elif [ "$STATUS" -eq 3 ]; then
+                FEH_PID=$!
+            fi
 
-                if [ "$FEH_PID" -ne 0 ] &&
-                   kill -0 "$FEH_PID" 2>/dev/null; then
+            if [ "$BOOT_IMAGE_MODE" = "development" ] &&
+               [ "$STATUS" -eq 3 ] &&
+               [ "$FEH_PID" -ne 0 ] &&
+               kill -0 "$FEH_PID" 2>/dev/null; then
 
-                    echo "<<monitor_status>> 起動画像を非表示"
-
-                    kill -INT "$FEH_PID" 2>/dev/null || true
-                    wait "$FEH_PID" 2>/dev/null || true
-                    FEH_PID=0
-                fi
+                echo "<<monitor_status>> 起動画像を非表示 (development)"
+                kill -INT "$FEH_PID" 2>/dev/null || true
+                wait "$FEH_PID" 2>/dev/null || true
+                FEH_PID=0
             fi
         fi
 
@@ -329,7 +338,7 @@ monitor_boot_img() {
 monitor_boot_img &
 BOOT_IMAGE_PID=$!
 
-echo "<<run_all>> 起動画像監視開始 (PID=$BOOT_IMAGE_PID)"
+echo "<<run_all>> 起動画像監視開始 (PID=$BOOT_IMAGE_PID, MODE=$BOOT_IMAGE_MODE)"
 
 # ----------------------------------------------------------------------
 # MonitorArgus 起動 (taskset指定あり)

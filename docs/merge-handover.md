@@ -1084,12 +1084,13 @@ SHI側だけで確認されたテスト:
 - `argus_bootfig_jetson.sh`は起動中に保持する`flock`を追加し、前回のスクリプトまたは子プロセスが残る間は2個目を終了コード1で拒否する。外部lockを保持した実動作試験で、MMAP準備前に「既に起動中です」と終了することを確認した。
 - signal callback、StatusMMAP、ProcessManagerの関連テストは10 passed。Python 3.12の既存fork警告7件のみ。シェル構文検査と`git diff --check`も成功した。
 
-### 2026-09-08 M-077 起動画像の全画面status表示復元
+### 2026-09-08 M-077 起動画像のstatus表示復元
 
-- `argus_bootfig_jetson.sh`の起動画像監視を、`RUNNING(3)`では非表示、それ以外の有効statusでは表示する契約へ戻した。監視開始時点で既にINITまたはBOOTINGでも画像を表示する。
+- `argus_bootfig_jetson.sh`の第2引数で`production|development`を選択する。省略時は従来互換の`development`とする。量産用の`production`はGodotの背面にfehを常時表示し、RUNNING遷移時にも終了しないため、Godotとの切替時にdesktopやfehの縮小animationが露出せず、Godotが異常終了した場合も既に表示済みの起動画面が間断なく現れる。
+- `development`は画面操作を妨げないよう1920x1080のサイズ指定で表示し、従来どおりRUNNING遷移時にfehを終了する。起動例は量産が`./argus_bootfig_jetson.sh appimage production`、開発が`./argus_bootfig_jetson.sh appimage development`。
 - 1280x800の起動画像を1920x1080画面へ通常windowで表示していた`--geometry`を廃止し、fehのfullscreen、auto-zoom、black image background、hide-pointerを使用する。縦横比の余白を黒で埋め、PC背景とmouse pointerを露出させない。
 - `FEH_PID=0`に対する`kill -0`は現在のprocess groupを検査して成功するため、未起動判定として使えなかった。PID 0を明示的に未起動として扱う条件へ修正した。
-- 実機起動でINIT直後の「起動画像を全画面表示」を確認し、RUNNING遷移後はfeh processとX11 windowが残らないことを確認した。Ctrl+C後は全processが終了し、起動lockも解放された。`bash -n`、feh引数解析、`git diff --check`にも成功した。
+- cleanupではMainとMonitorArgusを先に停止し、起動画像監視とfehを最後に終了する。停止処理中もdesktopを露出させない。
 
 ## 10. 次のCopilotへの開始指示
 
