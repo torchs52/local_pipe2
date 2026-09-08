@@ -85,10 +85,14 @@ def setup_signal_handlers(
     logger: AppLogger,
     name: str = "Process",
     godot_proc_getter: Callable[[], Popen[bytes] | None] | None = None,
+    shutdown_callback: Callable[[], None] | None = None,
 ) -> None:
     def shutdown_handler(signum: int, frame: types.FrameType | None) -> None:
         logger.info(f"[{name}] シャットダウン検知: signal={signum}")
         status_obj.write_status(StatusCode.SHUTDOWN)
+
+        if shutdown_callback is not None:
+            shutdown_callback()
 
         if godot_proc_getter is not None:
             proc = godot_proc_getter()

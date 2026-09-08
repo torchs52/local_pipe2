@@ -1076,6 +1076,13 @@ SHI側だけで確認されたテスト:
 - `UI_interface.error_info(int isslow)`の呼出しsignatureと4 byteのaddress進行は互換性のため維持し、負荷低減状態には依存しない。旧`generate_error_code()`は削除した。
 - 旧領域へ非ゼロ値を事前設定し、非ゼロの`isslow`を渡しても`0`へ上書きされ、後続の機体角が従来どおりoffset 14へ書かれることを実MMAP契約テストで確認した。周辺監視UI MMAPテストは3 passed。
 
+### 2026-09-08 M-076 Ctrl+C時のErrorMonitor残留修正
+
+- `argus_bootfig_jetson.sh`のcleanupは別sessionのMainへSIGINTを送るが、Mainのsignal handlerは`sys.exit(0)`で通常ループ末尾を飛び越えるため、ErrorMonitor専用`error_activator.disable()`へ到達せずMainが終了待ちに残っていた。
+- 汎用`setup_signal_handlers()`へ任意の`shutdown_callback`を追加し、MainではErrorMonitor起動前に`error_activator.disable`を登録した。通常終了経路、MonitorArgus、process管理責務は変更していない。
+- 残留Main 5件をSIGKILLで終了した後も、`multiprocessing.spawn_main`として孤児化したErrorMonitor 1件が`/dev/shm/err0.dat`と`err1.dat`を書き続けていた。`fuser`でPIDと`pts/0`へのstdout/stderr接続を特定し、SIGKILL後に両MMAPの利用者なし、`pts/0`はbashだけであることを確認した。
+- signal callback、StatusMMAP、ProcessManagerの関連テストは9 passed。Python 3.12の既存fork警告7件のみ。
+
 ## 10. 次のCopilotへの開始指示
 
 次回は、いきなり全体差分を再探索しない。次の順で開始する。

@@ -31,16 +31,23 @@ def test_setup_signal_handlers_exits_after_shutdown(monkeypatch: pytest.MonkeyPa
     handlers: dict[int, Any] = {}
     fake_status = FakeStatus()
     logger = AppLoggerFactory.from_name("StatusMMAPTest", to_console=False)
+    shutdown_calls: list[None] = []
 
     monkeypatch.setattr(signal, "signal", handlers.__setitem__)
 
-    setup_signal_handlers(fake_status, logger=logger, name="Test")
+    setup_signal_handlers(
+        fake_status,
+        logger=logger,
+        name="Test",
+        shutdown_callback=lambda: shutdown_calls.append(None),
+    )
 
     with pytest.raises(SystemExit) as exc_info:
         handlers[signal.SIGINT](signal.SIGINT, None)
 
     assert exc_info.value.code == 0
     assert fake_status.writes == [StatusCode.SHUTDOWN]
+    assert shutdown_calls == [None]
     assert fake_status.close_count == 1
 
 

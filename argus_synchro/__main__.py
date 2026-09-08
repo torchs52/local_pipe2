@@ -1240,12 +1240,17 @@ def main() -> None:
         create=False,
         directory_config=directory_config,
     )
-    setup_signal_handlers(status_obj=status, logger=_logger, name="Main")
 
     # ErrorMonitor プロセス
     error_closables = CompositeClosable()
     error_activator: ProcessActivator = ProcessActivator()
     error_activator.enable()
+    setup_signal_handlers(
+        status_obj=status,
+        logger=_logger,
+        name="Main",
+        shutdown_callback=error_activator.disable,
+    )
     p_error: ProcessManager = ProcessManager(
         error_activator, _process_manager_logger
     ).add_to(error_closables)
