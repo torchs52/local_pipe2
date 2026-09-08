@@ -1,16 +1,32 @@
 from __future__ import annotations
 
 import json
+from dataclasses import fields, is_dataclass
 from pathlib import Path
 
 import pytest
 
+from argus_synchro.diagnosis.error_config import ErrorConfig
 from argus_synchro.shared_err_config import SharedErrorConfig
 
 INITIAL_ERROR_THRESHOLD_SEC = 10.0
 UPDATED_ERROR_THRESHOLD_SEC = 20.0
 INITIAL_REQUIRED_LENGTH = 40
 UPDATED_REQUIRED_LENGTH = 80
+
+
+def test_repository_error_config_covers_all_parameter_fields() -> None:
+    json_path = Path(__file__).parents[1] / "config" / "error_config.json"
+    json_data = json.loads(json_path.read_text(encoding="utf-8"))
+    error_config = ErrorConfig()
+
+    assert set(json_data) == set(vars(error_config))
+    for name, parameter_data in json_data.items():
+        parameters = getattr(error_config, name)
+        if is_dataclass(parameters):
+            assert set(parameter_data) == {
+                field.name for field in fields(parameters)
+            }, name
 
 
 def _write_error_config_json(

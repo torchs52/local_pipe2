@@ -14,9 +14,17 @@ def _event_handler(write_side_effect: object) -> tuple[
 ]:
     shared_app_config = MagicMock()
     shared_app_config.write.side_effect = write_side_effect
+    shared_app_config.read.return_value = SimpleNamespace(
+        ReducedLoadMode=SimpleNamespace(
+            many_points_ratio=0.4,
+            few_points_ratio=0.3,
+        )
+    )
     diagnosis = MagicMock()
+    reduced_load_mode = MagicMock()
     shared_errors = SimpleNamespace(
-        action_errors_A_C={ActionErrorIndex.CONFIG_FILE_MISSING: diagnosis}
+        action_errors_A_C={ActionErrorIndex.CONFIG_FILE_MISSING: diagnosis},
+        reduced_load_mode=reduced_load_mode,
     )
     logger = MagicMock()
     handler = DebouncedEventHandler(
@@ -41,6 +49,7 @@ def test_reload_retry_absorbs_transient_atomic_save_failure() -> None:
     assert shared_app_config.write.call_count == 3
     assert sleep.call_args_list == [call(0.2), call(0.2)]
     diagnosis.excepts_diagnosis.assert_not_called()
+    handler._ser.reduced_load_mode.configure.assert_called_once_with(0.4, 0.3)
     logger.error.assert_not_called()
     assert path not in handler.events
 

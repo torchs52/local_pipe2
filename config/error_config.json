@@ -214,7 +214,8 @@
         "is_enabled": true
     },
     "surround_monitor_module_not_responding": {
-        "is_enabled": true
+        "is_enabled": true,
+        "error_threshold_sec": 5.0
     },
     "lidar_position_misalignment_not_responding": {
         "is_enabled": true,
@@ -224,7 +225,8 @@
         "failsafe_recovery_confirm_duration_sec": 5.0
     },
     "application_manager_not_responding": {
-        "is_enabled": true
+        "is_enabled": true,
+        "error_threshold_sec": 5.0
     },
     "imu_n_connection_error": {
         "is_enabled": true,
@@ -234,7 +236,11 @@
         "recovery_receive_interval_sec": 1.0
     },
     "log_output_stopped": {
-        "is_enabled": true
+        "is_enabled": true,
+        "error_threshold_sec": 5.0,
+        "error_recovery_confirm_duration_sec": 5.0,
+        "failsafe_recovery_confirm_duration_sec": 5.0,
+        "recovery_receive_interval_sec": 1.0
     },
     "internal_temperature_rise": {
         "is_enabled": true,
@@ -274,10 +280,23 @@
         "check_lidar2lidar": false,
         "check_lidar2crane": true,
         "enforce_shape_4x4": true,
-        "finite_value_only": true
+        "finite_value_only": true,
+        "enable_reference_diff_check": true,
+        "translation_threshold_m": 0.5,
+        "rotation_threshold_deg": 10.0,
+        "max_xy_displacement_threshold_m": 1.0,
+        "grid_radius_m": 5.0,
+        "grid_spacing_m": 1.0,
+        "comparison_atol": 1e-12
     },
     "camera_n_calib_data_invalid": {
-        "is_enabled": true
+        "is_enabled": true,
+        "enforce_shape_4x4": true,
+        "finite_value_only": true,
+        "check_fisheye_intrinsics": true,
+        "enable_reference_diff_check": false,
+        "reference_data_path": "",
+        "diff_threshold": 0.0
     },
     "mmap_read_write_error": {
         "is_enabled": true
@@ -438,33 +457,71 @@
         "is_enabled": true
     },
     "log_time_reversal": {
-        "is_enabled": true
+        "is_enabled": true,
+        "allowed_backward_sec": 0.0
     },
     "lidar_module_error": {
-        "is_enabled": true
+        "is_enabled": true,
+        "ongoing_log_interval_sec": 60.0
     },
     "camera_module_error": {
-        "is_enabled": true
+        "is_enabled": true,
+        "ongoing_log_interval_sec": 60.0
     },
     "storage_module_error": {
-        "is_enabled": true
+        "is_enabled": true,
+        "ongoing_log_interval_sec": 60.0
     },
     "can_module_error": {
-        "is_enabled": true
+        "is_enabled": true,
+        "ongoing_log_interval_sec": 60.0
     },
     "linkage_2d3d_module_error": {
-        "is_enabled": true
+        "is_enabled": true,
+        "ongoing_log_interval_sec": 60.0
     },
     "object3_d_detection_module_error": {
-        "is_enabled": true
+        "is_enabled": true,
+        "ongoing_log_interval_sec": 60.0
     },
     "camera_human_detection_module_error": {
-        "is_enabled": true
+        "is_enabled": true,
+        "ongoing_log_interval_sec": 60.0
     },
     "collision_judgment_module_error": {
-        "is_enabled": true
+        "is_enabled": true,
+        "ongoing_log_interval_sec": 60.0
     },
     "calibration_module_error": {
-        "is_enabled": true
+        "is_enabled": true,
+        "ongoing_log_interval_sec": 60.0
+    },
+    "imu_module_error": {
+        "is_enabled": true,
+        "ongoing_log_interval_sec": 60.0
+    },
+    "app_manager_module_error": {
+        "is_enabled": true,
+        "ongoing_log_interval_sec": 60.0
+    },
+    "main_module_error": {
+        "is_enabled": true,
+        "ongoing_log_interval_sec": 60.0
+    },
+    "points_refine_module_error": {
+        "is_enabled": true,
+        "ongoing_log_interval_sec": 60.0
+    },
+    "visual_module_error": {
+        "is_enabled": true,
+        "ongoing_log_interval_sec": 60.0
+    },
+    "lidar_shift_monitor_module_error": {
+        "is_enabled": true,
+        "ongoing_log_interval_sec": 60.0
+    },
+    "get_data_module_error": {
+        "is_enabled": true,
+        "ongoing_log_interval_sec": 60.0
     }
 }

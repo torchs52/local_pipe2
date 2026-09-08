@@ -83,6 +83,8 @@ _RULES: tuple[SettingRule, ...] = (
     SettingRule("StateEstimator", "delta_db", float, 0.05, 0.0, 1.0),
     SettingRule("StateEstimator", "p_on", float, 0.1, 0.0, 1.0),
     SettingRule("StateEstimator", "p_off", float, 0.05, 0.0, 1.0),
+    SettingRule("ReducedLoadMode", "many_points_ratio", float, 0.4, 0.0, 1.0),
+    SettingRule("ReducedLoadMode", "few_points_ratio", float, 0.3, 0.0, 1.0),
     SettingRule("JetsonMonitor", "interval", float, 5.0, 0.01, 3_600.0),
     SettingRule("JetsonMonitor", "write_interval", float, 1.0, 0.01, 3_600.0),
     SettingRule("JetsonMonitor", "window_sec", int, 600, 1, 86_400),

@@ -18,6 +18,8 @@ from numpy.typing import NDArray
 import argus_synchro.diagnosis.error_config as err_conf
 from argus_synchro.config.app_config import CalibrationConf
 from argus_synchro.diagnosis.calib_matrix_validator import (
+    CameraCalibValidationIssue,
+    CameraCalibValidator,
     LidarCalibValidationIssue,
     LidarCalibValidator,
 )
@@ -365,11 +367,16 @@ class SensorCalibDataInvalidDiagnosis(ActionErrorDiagnosisB):
         self.is_enabled = self.param.is_enabled
 
     def validate_calibration_matrices(
-        self, calibration_conf: CalibrationConf
+        self,
+        calibration_conf: CalibrationConf,
+        lidar2crane_reference_paths: list[str] | None = None,
     ) -> tuple[LidarCalibValidationIssue, ...]:
         if not self.is_enabled:
             return ()
-        issues = LidarCalibValidator(self.param).validate(calibration_conf)
+        issues = LidarCalibValidator(self.param).validate(
+            calibration_conf,
+            lidar2crane_reference_paths=lidar2crane_reference_paths,
+        )
         if issues:
             self.increment_counter()
         return issues
@@ -396,8 +403,19 @@ class SensorCalibDataInvalidDiagnosis(ActionErrorDiagnosisB):
         matrices: list[NDArray[np.float64]] | NDArray[np.float64],
         err_idx: int,
         matrix_paths: list[str] | None = None,
+        reference_matrix_paths: list[str] | None = None,
     ) -> tuple[LidarCalibValidationIssue, ...]:
-        issues = self.validate_matrices(matrices, matrix_paths=matrix_paths)
+        if not self.is_enabled:
+            return ()
+        issues = tuple(
+            LidarCalibValidator(self.param).validate_matrices(
+                matrices,
+                matrix_paths=matrix_paths,
+                reference_matrix_paths=reference_matrix_paths,
+            )
+        )
+        if issues:
+            self.increment_counter()
         self.log_output(bool(issues), False, err_idx, issues)
         return issues
 
@@ -443,6 +461,39 @@ class CameraXCalibDataInvalidDiagnosis(ActionErrorDiagnosisB):
 
     def __init__(self) -> None:
         super().__init__()
+        self.param = err_conf.CameraNCalibDataInvalidParameters()
+
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.camera_n_calib_data_invalid
+        self.is_enabled = self.param.is_enabled
+
+    def validate_calibration_data(
+        self, camera_index: int, calibration_conf: CalibrationConf
+    ) -> tuple[CameraCalibValidationIssue, ...]:
+        if not self.is_enabled:
+            return ()
+        issues = CameraCalibValidator(self.param).validate(
+            camera_index, calibration_conf
+        )
+        if issues:
+            self.increment_counter()
+        return issues
+
+    def diagnose_calibration_data(
+        self,
+        camera_index: int,
+        calibration_conf: CalibrationConf,
+        err_idx: int,
+    ) -> tuple[CameraCalibValidationIssue, ...]:
+        issues = self.validate_calibration_data(camera_index, calibration_conf)
+        self.log_output(bool(issues), False, err_idx, issues)
+        return issues
+
+    def excepts_diagnosis(self, e: Exception) -> bool:
+        is_target = isinstance(e, (OSError, UnicodeError, ValueError))
+        if is_target:
+            self.increment_counter()
+        return is_target
 
     def detect_error(self, *args: object) -> bool:
         return False
@@ -452,6 +503,27 @@ class CameraXCalibDataInvalidDiagnosis(ActionErrorDiagnosisB):
 
     def detect_recovery_fail_safe(self, *args: object) -> bool:
         return True
+
+    def log_output(self, err: bool, recover: bool, err_idx: int, *args: object) -> None:
+        if err:
+            self._error_log_output(err_idx, *args)
+
+    def _error_log_output(self, err_idx: int, *args: object) -> None:
+        if len(args) != 1 or not isinstance(args[0], tuple):
+            raise ValueError("args must be (tuple[CameraCalibValidationIssue, ...],)")
+        issue_args = cast(tuple[object, ...], args[0])
+        if not issue_args or not all(
+            isinstance(issue, CameraCalibValidationIssue) for issue in issue_args
+        ):
+            raise ValueError("args must be (tuple[CameraCalibValidationIssue, ...],)")
+        issues = cast(tuple[CameraCalibValidationIssue, ...], issue_args)
+        first = issues[0]
+        self._logger.error(
+            self.get_error_no(err_idx)
+            + ": CAMERA_CALIB_DATA_INVALID: "
+            + f"camera={first.camera_index} kind={first.kind} path={first.path} "
+            + f"detail={first.detail} issues={len(issues)}"
+        )
 
 
 class MmapReadWriteErrorDiagnosis(ActionErrorDiagnosisB):

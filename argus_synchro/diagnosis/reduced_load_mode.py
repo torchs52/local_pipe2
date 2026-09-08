@@ -8,13 +8,13 @@ from argus_synchro.shared_data import create_shared_single_data
 PROC_SPEED_NORMAL: int = 0
 PROC_SPEED_SLOWDOWN_TREND: int = 1
 PROC_SPEED_SLOW: int = 2
+DEFAULT_POINT_CAPACITY: int = 40_000
+DEFAULT_MANY_POINTS_RATIO: float = 0.4
+DEFAULT_FEW_POINTS_RATIO: float = 0.3
 
 
 class ReducedLoadMode:
     """負荷低減モードクラス"""
-
-    MANY_POINTS_THRESHOLD: int = int(40000 * 0.4)
-    FEW_POINTS_THRESHOLD: int = int(40000 * 0.3)
 
     PCD_ENABLE_THRESHOLD: int = 5
     THERMAL_ENABLE_THRESHOLD: int = 5
@@ -22,6 +22,12 @@ class ReducedLoadMode:
 
     def __init__(self) -> None:
         self._logger: AppLogger = AppLoggerFactory.from_type(self.__class__)
+        self.many_points_threshold = int(
+            DEFAULT_POINT_CAPACITY * DEFAULT_MANY_POINTS_RATIO
+        )
+        self.few_points_threshold = int(
+            DEFAULT_POINT_CAPACITY * DEFAULT_FEW_POINTS_RATIO
+        )
 
         self._enabled: Synchronized[bool] = create_shared_single_data(False)
         self._proc_speed: Synchronized[int] = create_shared_single_data(
@@ -38,6 +44,22 @@ class ReducedLoadMode:
     def log_register(self, app_logger_factory: AppLoggerFactory) -> None:
         self._app_logger_factory: AppLoggerFactory = app_logger_factory
         app_logger_factory.append_logger(self._logger)
+
+    def configure(
+        self,
+        many_points_ratio: float,
+        few_points_ratio: float,
+        point_capacity: int = DEFAULT_POINT_CAPACITY,
+    ) -> None:
+        if not 0.0 <= few_points_ratio < many_points_ratio <= 1.0:
+            raise ValueError(
+                "reduced-load ratios must satisfy "
+                "0 <= few_points_ratio < many_points_ratio <= 1"
+            )
+        if point_capacity <= 0:
+            raise ValueError("point_capacity must be greater than zero")
+        self.many_points_threshold = int(point_capacity * many_points_ratio)
+        self.few_points_threshold = int(point_capacity * few_points_ratio)
 
     def update_proc_speed(self, proc_speed: int) -> None:
         self._proc_speed.value = proc_speed
@@ -73,7 +95,7 @@ class ReducedLoadMode:
         # 処理速度が落ちているかの判定
         is_slow: bool = self._proc_speed.value == PROC_SPEED_SLOW
         # 点群数が多い環境に連続して存在するかの判定
-        is_many_points: bool = self._pcd_nums.value > self.MANY_POINTS_THRESHOLD
+        is_many_points: bool = self._pcd_nums.value > self.many_points_threshold
         # ECUがサーマルスロットリング状態かの判定
         is_thermal_throttling: bool = self._is_thermal_throttling.value
 
@@ -110,7 +132,7 @@ class ReducedLoadMode:
         # 処理速度が通常範囲かの判定
         is_not_slow: bool = self._proc_speed.value == PROC_SPEED_NORMAL
         # 点群数が多い環境に連続して存在しないかの判定
-        is_not_many_points: bool = self._pcd_nums.value < self.FEW_POINTS_THRESHOLD
+        is_not_many_points: bool = self._pcd_nums.value < self.few_points_threshold
         # ECUがサーマルスロットリング状態でないかの判定
         is_not_thermal_throttling: bool = not self._is_thermal_throttling.value
 

@@ -433,6 +433,7 @@ class CalibGodotInterface:
             self.clsMMap.WriteInt8(self.IsWriting_ADR, 0)
             self.mapIndex = (self.mapIndex + 1) % len(self.clsMMap_list)
             self.clsMMap = self.clsMMap_list[self.mapIndex]
+            self.clsMMap.WriteInt8(self.IsWriting_ADR, 1)
             if self.output_log:
                 self._logger.debug("MMAP Index changed!")
 

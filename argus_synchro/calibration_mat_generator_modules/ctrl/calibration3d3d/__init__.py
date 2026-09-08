@@ -375,6 +375,9 @@ class calibration3d3d_class:
             T_i2C,
             ActionErrorIndex.SENSOR_CALIB_DATA_INVALID,
             matrix_paths=resultmat_paths,
+            reference_matrix_paths=(
+                app_config_calib.Calib3d3d_CalibParams.lidars_calib_path
+            ),
         )
         result_is_invalid = bool(validation_issues)
         if result_is_invalid:

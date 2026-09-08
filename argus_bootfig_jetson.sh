@@ -3,15 +3,18 @@ set -e
 source ~/.profile
 
 # ARGUS3D開発者モード
-# Godot UIにて画面ログの記録時間の上限がなくなる. (製品仕様は30分で強制終了)
+# Godot UIにて画面ログの記録時間の上限がなくなる
+# （製品仕様は30分で強制終了）
 export ARGUS3D_DEV=1
-echo $ARGUS3D_DEV
+echo "$ARGUS3D_DEV"
 
+# ----------------------------------------------------------------------
 # プロジェクトディレクトリに移動
+# ----------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR" || exit 1
 
-# 仮想環境（.venv）のPythonのパスを動的に定義（ベタ書き回避）
+# 仮想環境（.venv）のPython
 VENV_PYTHON="$SCRIPT_DIR/.venv/bin/python"
 
 ############### 要設定 ##################
@@ -20,50 +23,42 @@ VENV_PYTHON="$SCRIPT_DIR/.venv/bin/python"
 source .venv/bin/activate
 ###########################################
 
+# ----------------------------------------------------------------------
+# データディレクトリ
+# ----------------------------------------------------------------------
 # settings.ini のデータパスの書き換えをここで行う場合
-DATA_DIR=/mnt/nvme
+#DATA_DIR=/mnt/nvme
+DATA_DIR=../data
+
 #DATA_DIR=/home/matsuoka/data/X6T304
-CAL_DATA_DIR=/mnt/nvme
+
+#CAL_DATA_DIR=/mnt/nvme
+CAL_DATA_DIR=../data
+
 #CAL_DATA_DIR=/home/matsuoka
 
-sed -i "s|^data_dir *=.*|data_dir = ${DATA_DIR}|g" config/settings.ini
-sed -i "s|^data_dir *=.*|data_dir = ${CAL_DATA_DIR}|g" config/calib_settings.ini
+#sed -i "s|^data_dir *=.*|data_dir = ${DATA_DIR}|g" config/settings.ini
+#sed -i "s|^data_dir *=.*|data_dir = ${CAL_DATA_DIR}|g" config/calib_settings.ini
 
+# ----------------------------------------------------------------------
+# 各種ディレクトリ
+# ----------------------------------------------------------------------
 CONFIG_DIR="./config"
 LOG_DIR="./log"
 MMAP_DIR="/dev/shm"
 
-# ステータスMMAPのパス
+# ステータスMMAP
 MMAP_FILE="${MMAP_DIR}/status.mmap"
 
 RUN_USER="$(id -un)"
 RUN_GROUP="$(id -gn)"
 
-# ----------------------------
-# status.mmap の状態取得
-#
-# get_status.py に config-dir / log-dir / mmap-dir を必ず渡す。
-# 引数省略時に /opt/argus3d/config/core/settings.ini を
-# 読んでしまうことを防止する。
-# ----------------------------
-get_argus_status() {
-    "$VENV_PYTHON" ./argus_synchro/SystemMonitor/get_status.py \
-        --config-dir "$CONFIG_DIR" \
-        --log-dir "$LOG_DIR" \
-        --mmap-dir "$MMAP_DIR"
-}
-
-# RAM領域にMMAP作成
-"$VENV_PYTHON" ./scripts/prepare_argus.py \
-    --config-dir "$CONFIG_DIR" \
-    --log-dir "$LOG_DIR" \
-    --mmap-dir "$MMAP_DIR" \
-    --user "$RUN_USER" \
-    --group "$RUN_GROUP"
-
+# ----------------------------------------------------------------------
 # 起動モード
+#
 # engine   : Godot Engine + project_dir
 # appimage : AppImage 単体起動
+# ----------------------------------------------------------------------
 UI_MODE="${1:-appimage}"
 
 case "$UI_MODE" in
@@ -80,9 +75,27 @@ export ARGUS_UI_MODE="$UI_MODE"
 # PYTHONPATHを設定（相対import対策）
 export PYTHONPATH="$PWD"
 
-# 起動時画像のパス
+# 起動時画像
 BOOT_IMAGE="./config/fig/Splash_booting.png"
 
+# ----------------------------------------------------------------------
+# monitor_boot_img 終了通知用ファイル
+#
+# monitor_boot_img はバックグラウンドのサブシェルで動くため、
+# 親シェルの変数変更だけでは終了通知できない。
+# そのため一時ファイルを終了フラグとして使用する。
+# ----------------------------------------------------------------------
+MONITOR_STOP_FILE="/tmp/argus_bootfig_monitor_stop_$$"
+rm -f "$MONITOR_STOP_FILE"
+
+# PID初期化
+MAIN_PID=""
+MONITOR_PID=""
+BOOT_IMAGE_PID=""
+
+# ----------------------------------------------------------------------
+# プロセス停止
+# ----------------------------------------------------------------------
 stop_service() {
     local pid="$1"
     local name="$2"
@@ -104,50 +117,174 @@ stop_service() {
     done
 
     echo "<<run_all>> WARN: ${name} が停止しないためプロセスグループを終了"
+
     kill -TERM -- "-${pid}" 2>/dev/null || true
     sleep 3
+
     kill -KILL -- "-${pid}" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
 }
 
+# ----------------------------------------------------------------------
+# cleanup
+# ----------------------------------------------------------------------
 cleanup() {
+    # cleanup自身から再度trapが呼ばれないようにする
     trap - EXIT INT TERM
 
     echo "<<run_all>> cleanup start"
 
-    [ -n "$MAIN_PID" ] && stop_service "$MAIN_PID" "Main"
-    [ -n "$MONITOR_PID" ] && stop_service "$MONITOR_PID" "MonitorArgus"
+    # --------------------------------------------------------------
+    # 起動画像監視に終了を通知
+    # --------------------------------------------------------------
+    touch "$MONITOR_STOP_FILE" 2>/dev/null || true
 
-    [ -n "$BOOT_IMAGE_PID" ] && pkill -TERM -P "$BOOT_IMAGE_PID" 2>/dev/null || true
-    [ -n "$BOOT_IMAGE_PID" ] && kill -TERM "$BOOT_IMAGE_PID" 2>/dev/null || true
-    [ -n "$BOOT_IMAGE_PID" ] && wait "$BOOT_IMAGE_PID" 2>/dev/null || true
+    # --------------------------------------------------------------
+    # Main停止
+    # --------------------------------------------------------------
+    if [ -n "${MAIN_PID:-}" ]; then
+        stop_service "$MAIN_PID" "Main"
+    fi
+
+    # --------------------------------------------------------------
+    # MonitorArgus停止
+    # --------------------------------------------------------------
+    if [ -n "${MONITOR_PID:-}" ]; then
+        stop_service "$MONITOR_PID" "MonitorArgus"
+    fi
+
+    # --------------------------------------------------------------
+    # 起動画像監視停止
+    #
+    # monitor_boot_img の子として feh が存在する可能性があるため、
+    # 子プロセスも先に停止する。
+    # --------------------------------------------------------------
+    if [ -n "${BOOT_IMAGE_PID:-}" ]; then
+        pkill -TERM -P "$BOOT_IMAGE_PID" 2>/dev/null || true
+        kill -TERM "$BOOT_IMAGE_PID" 2>/dev/null || true
+        wait "$BOOT_IMAGE_PID" 2>/dev/null || true
+    fi
+
+    rm -f "$MONITOR_STOP_FILE"
 
     echo "<<run_all>> cleanup end"
 }
 
 trap cleanup EXIT INT TERM
 
-# ----------------------------
-# 起動画像の表示監視関数
-# SHUTDOWN or REBOOT 時に表示、RUNNING で非表示
-# ----------------------------
+# ----------------------------------------------------------------------
+# RAM領域にMMAPを準備
+#
+# /dev/shm は一般ユーザーがファイルを作成可能。
+# status.mmap は Argus 実行ユーザー所有で使用するため、
+# sudo は付けない。
+#
+# fs.protected_regular=2 環境では、
+# sudo(root) から一般ユーザー所有の /dev/shm/status.mmap を
+# write_bytes("wb") で開き直すと PermissionError になる場合がある。
+# ----------------------------------------------------------------------
+"$VENV_PYTHON" ./scripts/prepare_argus.py \
+    --config-dir "$CONFIG_DIR" \
+    --log-dir "$LOG_DIR" \
+    --mmap-dir "$MMAP_DIR" \
+    --user "$RUN_USER" \
+    --group "$RUN_GROUP"
+
+# ----------------------------------------------------------------------
+# status.mmap 初期確認
+#
+# monitor_boot_img を起動する前に1回確認しておく。
+# ----------------------------------------------------------------------
+STATUS_OUTPUT="$(
+    "$VENV_PYTHON" ./argus_synchro/SystemMonitor/get_status.py \
+        --config-dir "$CONFIG_DIR" \
+        --log-dir "$LOG_DIR" \
+        --mmap-dir "$MMAP_DIR"
+)"
+
+read STATUS STATUS_NAME <<< "$STATUS_OUTPUT"
+
+if ! [[ "$STATUS" =~ ^-?[0-9]+$ ]]; then
+    echo "<<run_all>> ERROR: status.mmap の初期確認に失敗: $STATUS_OUTPUT"
+    exit 1
+fi
+
+echo "<<run_all>> status.mmap 初期状態: $STATUS_NAME ($STATUS)"
+
+# ----------------------------------------------------------------------
+# 起動画像表示監視
+#
+# SHUTDOWN(-1) / REBOOT(1) : 起動画像を表示
+# RUNNING(3)                : 起動画像を非表示
+#
+# MONITOR_STOP_FILE が作成された場合は終了する。
+#
+# また、同じステータスを0.5秒ごとにログへ出さないよう、
+# 状態が変化した時だけ present status を表示する。
+# ----------------------------------------------------------------------
 monitor_boot_img() {
-    FEH_PID=0
+    local FEH_PID=0
+    local LAST_STATUS="__UNSET__"
+    local STATUS=""
+    local STATUS_NAME=""
+    local STATUS_OUTPUT=""
 
-    while true; do
+    # --------------------------------------------------------------
+    # monitor_boot_img 自身が終了するとき feh も停止
+    # --------------------------------------------------------------
+    monitor_boot_img_cleanup() {
+        if [ "$FEH_PID" -ne 0 ] && kill -0 "$FEH_PID" 2>/dev/null; then
+            kill -TERM "$FEH_PID" 2>/dev/null || true
+            wait "$FEH_PID" 2>/dev/null || true
+        fi
+    }
+
+    trap monitor_boot_img_cleanup EXIT INT TERM
+
+    while [ ! -e "$MONITOR_STOP_FILE" ]; do
+
         if [ -f "$MMAP_FILE" ]; then
-            read STATUS STATUS_NAME <<< "$(get_argus_status)"
 
+            STATUS_OUTPUT="$(
+                "$VENV_PYTHON" ./argus_synchro/SystemMonitor/get_status.py \
+                    --config-dir "$CONFIG_DIR" \
+                    --log-dir "$LOG_DIR" \
+                    --mmap-dir "$MMAP_DIR"
+            )"
+
+            read STATUS STATUS_NAME <<< "$STATUS_OUTPUT"
+
+            # ------------------------------------------------------
+            # 不正値
+            #
+            # 同じ異常を0.5秒ごとに出さない。
+            # ------------------------------------------------------
             if ! [[ "$STATUS" =~ ^-?[0-9]+$ ]]; then
-                echo "<<monitor_status>> invalid status: $STATUS $STATUS_NAME"
+                if [ "$LAST_STATUS" != "__INVALID__" ]; then
+                    echo "<<monitor_status>> ERROR: invalid status: $STATUS_OUTPUT"
+                    LAST_STATUS="__INVALID__"
+                fi
+
                 sleep 0.5
                 continue
             fi
 
-            echo "<<monitor_status>> present status: $STATUS_NAME ($STATUS)"
+            # ------------------------------------------------------
+            # ステータスが変化した時だけログ出力
+            # ------------------------------------------------------
+            if [ "$STATUS" != "$LAST_STATUS" ]; then
+                echo "<<monitor_status>> present status: $STATUS_NAME ($STATUS)"
+                LAST_STATUS="$STATUS"
+            fi
 
+            # ------------------------------------------------------
+            # SHUTDOWN / REBOOT
+            # ------------------------------------------------------
             if [ "$STATUS" -eq -1 ] || [ "$STATUS" -eq 1 ]; then
-                if [ -f "$BOOT_IMAGE" ] && ! ps -p "$FEH_PID" > /dev/null 2>&1; then
+
+                if [ -f "$BOOT_IMAGE" ] &&
+                   ! kill -0 "$FEH_PID" 2>/dev/null; then
+
                     echo "<<monitor_status>> 起動画像表示"
 
                     # feh -F "$BOOT_IMAGE" &
@@ -155,12 +292,18 @@ monitor_boot_img() {
                     FEH_PID=$!
                 fi
 
+            # ------------------------------------------------------
+            # RUNNING
+            # ------------------------------------------------------
             elif [ "$STATUS" -eq 3 ]; then
-                # RUNNING
-                if ps -p "$FEH_PID" > /dev/null 2>&1; then
+
+                if [ "$FEH_PID" -ne 0 ] &&
+                   kill -0 "$FEH_PID" 2>/dev/null; then
+
                     echo "<<monitor_status>> 起動画像を非表示"
-                    kill -INT "$FEH_PID"
-                    wait "$FEH_PID" 2>/dev/null
+
+                    kill -INT "$FEH_PID" 2>/dev/null || true
+                    wait "$FEH_PID" 2>/dev/null || true
                     FEH_PID=0
                 fi
             fi
@@ -168,18 +311,21 @@ monitor_boot_img() {
 
         sleep 0.5
     done
+
+    echo "<<monitor_status>> 監視終了"
 }
 
-# ----------------------------
-# 画像監視をバックグラウンド実行
-# ----------------------------
+# ----------------------------------------------------------------------
+# 起動画像監視をバックグラウンド実行
+# ----------------------------------------------------------------------
 monitor_boot_img &
 BOOT_IMAGE_PID=$!
 
-# ----------------------------
-# MonitorArgus を taskset で core 9-11 に割り当てて
-# バックグラウンド起動
-# ----------------------------
+echo "<<run_all>> 起動画像監視開始 (PID=$BOOT_IMAGE_PID)"
+
+# ----------------------------------------------------------------------
+# MonitorArgus 起動 (taskset指定あり)
+# ----------------------------------------------------------------------
 setsid taskset -c 9-11 "$VENV_PYTHON" -m argus_synchro.SystemMonitor.MonitorArgus \
     --config-dir "$CONFIG_DIR" \
     --log-dir "$LOG_DIR" \
@@ -188,19 +334,29 @@ MONITOR_PID=$!
 
 echo "<<run_all>> MonitorArgus 起動 (PID=$MONITOR_PID, UI_MODE=$ARGUS_UI_MODE)"
 
+# ----------------------------------------------------------------------
+# MonitorArgus が起動直後に落ちていないか確認
+#
+# AppImage不存在などの場合、MonitorArgus は sys.exit(1) する。
+# この場合、親スクリプトも終了し cleanup へ進む。
+# ----------------------------------------------------------------------
 sleep 1
 
-if ! ps -p "$MONITOR_PID" > /dev/null 2>&1; then
+if ! kill -0 "$MONITOR_PID" 2>/dev/null; then
+    wait "$MONITOR_PID" 2>/dev/null || true
     echo "<<run_all>> ERROR: MonitorArgus が起動直後に終了しました"
     exit 1
 fi
 
-# ----------------------------
+# ----------------------------------------------------------------------
 # mmapファイルが作成されるまで最大10秒待機
-# ----------------------------
+# ----------------------------------------------------------------------
+MMAP_FOUND=0
+
 for i in {1..10}; do
     if [ -f "$MMAP_FILE" ]; then
         echo "<<run_all>> status.mmap 検出"
+        MMAP_FOUND=1
         break
     fi
 
@@ -208,9 +364,14 @@ for i in {1..10}; do
     sleep 1
 done
 
-# ----------------------------
-# Main.py をバックグラウンド起動
-# ----------------------------
+if [ "$MMAP_FOUND" -ne 1 ]; then
+    echo "<<run_all>> ERROR: status.mmap が見つかりません: $MMAP_FILE"
+    exit 1
+fi
+
+# ----------------------------------------------------------------------
+# Main.py 起動
+# ----------------------------------------------------------------------
 setsid "$VENV_PYTHON" -m argus_synchro \
     --config-dir "$CONFIG_DIR" \
     --log-dir "$LOG_DIR" \
@@ -219,20 +380,31 @@ MAIN_PID=$!
 
 echo "<<run_all>> Main.py 起動 (PID=$MAIN_PID)"
 
-# ----------------------------
+# ----------------------------------------------------------------------
 # BOOTING 状態になるまで最大10秒待機
-# ----------------------------
+# ----------------------------------------------------------------------
+BOOTING_FOUND=0
+
 for i in {1..10}; do
-    read STATUS STATUS_NAME <<< "$(get_argus_status)"
+
+    STATUS_OUTPUT="$(
+        "$VENV_PYTHON" ./argus_synchro/SystemMonitor/get_status.py \
+            --config-dir "$CONFIG_DIR" \
+            --log-dir "$LOG_DIR" \
+            --mmap-dir "$MMAP_DIR"
+    )"
+
+    read STATUS STATUS_NAME <<< "$STATUS_OUTPUT"
 
     if ! [[ "$STATUS" =~ ^-?[0-9]+$ ]]; then
-        echo "<<run_all>> invalid status: $STATUS $STATUS_NAME"
+        echo "<<run_all>> invalid status: $STATUS_OUTPUT"
         sleep 1
         continue
     fi
 
     if [ "$STATUS" -eq 2 ]; then
         echo "<<run_all>> ステータスが BOOTING に遷移"
+        BOOTING_FOUND=1
         break
     fi
 
@@ -240,21 +412,48 @@ for i in {1..10}; do
     sleep 1
 done
 
-# ----------------------------
+if [ "$BOOTING_FOUND" -ne 1 ]; then
+    echo "<<run_all>> WARN: 10秒以内にBOOTINGを確認できませんでした"
+fi
+
+# ----------------------------------------------------------------------
 # Main.py の終了待ち
-# ----------------------------
+# ----------------------------------------------------------------------
+set +e
 wait "$MAIN_PID"
+MAIN_EXIT_CODE=$?
+set -e
 
-echo "<<run_all>> Main.py 終了、MonitorArgus を停止"
+echo "<<run_all>> Main.py 終了 (exit=$MAIN_EXIT_CODE)"
 
-# MonitorArgus を終了（SIGINT）
-stop_service "$MONITOR_PID" "MonitorArgus"
+# ----------------------------------------------------------------------
+# MonitorArgus停止
+# ----------------------------------------------------------------------
+if [ -n "${MONITOR_PID:-}" ]; then
+    stop_service "$MONITOR_PID" "MonitorArgus"
+    MONITOR_PID=""
+fi
 
-# スプラッシュ監視を終了
-pkill -TERM -P "$BOOT_IMAGE_PID" 2>/dev/null || true
-kill -INT "$BOOT_IMAGE_PID" 2>/dev/null || true
-wait "$BOOT_IMAGE_PID" 2>/dev/null || true
+# ----------------------------------------------------------------------
+# 起動画像監視停止
+# ----------------------------------------------------------------------
+touch "$MONITOR_STOP_FILE" 2>/dev/null || true
 
+if [ -n "${BOOT_IMAGE_PID:-}" ]; then
+    pkill -TERM -P "$BOOT_IMAGE_PID" 2>/dev/null || true
+    kill -TERM "$BOOT_IMAGE_PID" 2>/dev/null || true
+    wait "$BOOT_IMAGE_PID" 2>/dev/null || true
+    BOOT_IMAGE_PID=""
+fi
+
+rm -f "$MONITOR_STOP_FILE"
+
+# Main はすでに wait 済み
+MAIN_PID=""
+
+# 正常終了部分まで来たのでEXIT trapを解除
 trap - EXIT INT TERM
 
 echo "<<run_all>> 全プロセス終了"
+
+exit "$MAIN_EXIT_CODE"

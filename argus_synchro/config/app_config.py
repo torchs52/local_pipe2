@@ -123,6 +123,19 @@ class StateEstimatorConf:
 
 
 @dataclass(frozen=True, slots=True)
+class ReducedLoadModeConf:
+    many_points_ratio: float
+    few_points_ratio: float
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.few_points_ratio < self.many_points_ratio <= 1.0:
+            raise ValueError(
+                "ReducedLoadMode ratios must satisfy "
+                "0 <= few_points_ratio < many_points_ratio <= 1"
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class LidarConf:
     count: int
     path: str
@@ -549,6 +562,13 @@ class AppConfig:
             delta_db=ini.getfloat("StateEstimator", "delta_db"),
             p_on=ini.getfloat("StateEstimator", "p_on"),
             p_off=ini.getfloat("StateEstimator", "p_off"),
+        )
+
+        self.ReducedLoadMode = ReducedLoadModeConf(
+            many_points_ratio=ini.getfloat(
+                "ReducedLoadMode", "many_points_ratio"
+            ),
+            few_points_ratio=ini.getfloat("ReducedLoadMode", "few_points_ratio"),
         )
 
         self.Lidar = LidarConf(

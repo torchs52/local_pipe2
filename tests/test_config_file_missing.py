@@ -118,6 +118,7 @@ def test_load_config_dispatches_target_exception_to_diagnosis(monkeypatch) -> No
     sensor_calib_diagnosis = SensorCalibDataInvalidDiagnosis()
     main_logger = MagicMock()
     app_manager_ex = object()
+    reduced_load_mode = MagicMock()
     shared_errors = SimpleNamespace(
         action_errors_A_C={
             ActionErrorIndex.CONFIG_FILE_MISSING: diagnosis,
@@ -126,15 +127,24 @@ def test_load_config_dispatches_target_exception_to_diagnosis(monkeypatch) -> No
         AppMan_ex=app_manager_ex,
         shared_err_conf=SimpleNamespace(read=ErrorConfig),
         diagnosis_runtime_policy=DiagnosisRuntimePolicy(in_factory=True),
+        reduced_load_mode=reduced_load_mode,
     )
     app_config = SimpleNamespace(
         General=SimpleNamespace(in_factory=False),
-        calibration=SimpleNamespace(BothLidars="", Lidar_calib_files=[])
+        ReducedLoadMode=SimpleNamespace(
+            many_points_ratio=0.4,
+            few_points_ratio=0.3,
+        ),
+        calibration=SimpleNamespace(BothLidars="", Lidar_calib_files=[]),
+        camera=SimpleNamespace(count=0),
     )
     shared_app_config = MagicMock()
     shared_app_config.read.return_value = app_config
     shared_excepts = object()
-    shared_calibration = object()
+    shared_calibration = MagicMock()
+    shared_calibration.read.return_value = SimpleNamespace(
+        Calib3d3d_CalibParams=SimpleNamespace(lidars_calib_path=[])
+    )
     profile_handler = MagicMock()
     profile_handler.apply_model_specific_config.side_effect = (
         FileNotFoundError("settings.ini"),
@@ -172,6 +182,7 @@ def test_load_config_dispatches_target_exception_to_diagnosis(monkeypatch) -> No
     )
     assert diagnosis.err_cnt.value == 1
     assert shared_errors.diagnosis_runtime_policy.in_factory is False
+    reduced_load_mode.configure.assert_called_once_with(0.4, 0.3)
     diagnosis._logger.error.assert_called_once_with(
         "CE005: CONFIG_FILE_MISSING: FileNotFoundError: settings.ini",
         exc_info=True,
@@ -189,6 +200,7 @@ def test_load_config_reports_ce006_without_ce005_retry(
     config_diagnosis = ConfigFileMissingDiagnosis()
     sensor_calib_diagnosis = SensorCalibDataInvalidDiagnosis()
     sensor_calib_diagnosis._logger = MagicMock()
+    reduced_load_mode = MagicMock()
     shared_errors = SimpleNamespace(
         action_errors_A_C={
             ActionErrorIndex.CONFIG_FILE_MISSING: config_diagnosis,
@@ -197,18 +209,29 @@ def test_load_config_reports_ce006_without_ce005_retry(
         AppMan_ex=object(),
         shared_err_conf=SimpleNamespace(read=ErrorConfig),
         diagnosis_runtime_policy=DiagnosisRuntimePolicy(),
+        reduced_load_mode=reduced_load_mode,
     )
     app_config = SimpleNamespace(
         General=SimpleNamespace(in_factory=True),
+        ReducedLoadMode=SimpleNamespace(
+            many_points_ratio=0.4,
+            few_points_ratio=0.3,
+        ),
         calibration=SimpleNamespace(
             BothLidars=str(tmp_path / "missing_both.csv"),
             Lidar_calib_files=[str(tmp_path / "missing_lidar0.csv")],
-        )
+        ),
+        camera=SimpleNamespace(count=0),
     )
     shared_app_config = MagicMock()
     shared_app_config.read.return_value = app_config
     shared_excepts = object()
-    shared_calibration = object()
+    shared_calibration = MagicMock()
+    shared_calibration.read.return_value = SimpleNamespace(
+        Calib3d3d_CalibParams=SimpleNamespace(
+            lidars_calib_path=[str(tmp_path / "reference_lidar0.csv")]
+        )
+    )
     profile_handler = MagicMock()
 
     monkeypatch.setattr(

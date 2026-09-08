@@ -67,6 +67,11 @@ class DebouncedEventHandler(RegexMatchingEventHandler):
             for attempt in range(self._RELOAD_RETRY_COUNT):
                 try:
                     self.sac.write(sec=self._sec)
+                    reduced_load_config = self.sac.read().ReducedLoadMode
+                    self._ser.reduced_load_mode.configure(
+                        reduced_load_config.many_points_ratio,
+                        reduced_load_config.few_points_ratio,
+                    )
                     return
                 except Exception:
                     if attempt == self._RELOAD_RETRY_COUNT - 1:

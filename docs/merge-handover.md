@@ -353,14 +353,14 @@ SHI側だけで確認されたテスト:
 | M-028 | CE004 機体モデルファイル欠損/破損 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | action diagnosis/PointsRefine/Visual/tests | SHIの例外分類を維持し、ログは診断クラスへ委譲、vendorの起動失敗制御へ元例外を再送出する |
 | M-029 | CE011 MMAP read/writeエラー | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | action diagnosis/ErrorMonitor/Visual/main/tests | SHIの例外分類と境界別の継続・再送出を維持し、ログは診断クラスへ委譲する |
 | M-030 | CE012 再起動ループ検出 | SHI `4b4674c` / `docs/error_list.txt` | manual-port | verified | action diagnosis/error config/main/FILE_IO_ERROR/tests | `uptime_state.json` の直近5回を600秒窓で評価し、履歴異常はFILE_IO_ERRORへ委譲する |
-| M-031 | SHI担当だが未実装のCE003・CE007～CE010・SE036 | ユーザー確認 / 現行SHI | decision-needed | deferred | なし | 共通スケルトンから推測実装せず、SHI側で仕様・実装が確定するまで移植対象外とする |
+| M-031 | SHI担当だが未実装のCE003・CE007～CE010・SE036 | ユーザー確認 / 当時のSHI | decision-needed | verified | M-070へCE007～CE010を移管 | 後日のSHI再監査でCE007～CE010の基本検証実装を確認したためM-070で導入。CE003・SE036は引き続きdeferred |
 | M-032 | SE040・SE041 IMU接続エラー | 現行SHI / `docs/error_list.txt` | manual-port | verified | state diagnosis/shared heartbeat/IMU/AppManager/tests | 実データheartbeatを5秒監視し、1秒以内の連続受信を5秒確認して復帰する |
 | M-033 | SE001・SE002 LiDAR接続エラー | 現行SHI / `docs/error_list.txt` | manual-port | verified | state diagnosis/Points/AppManager/tests | 実点群heartbeatを5秒監視し、1秒以内の連続受信を5秒確認して復帰する |
 | M-034 | 死活・経過時間クロック監査 | vendor通常運転経路 | vendor-keep | verified | sensor/process heartbeat/StatusMMAP/停止deadline/tests | 絶対時刻依存を除去し、書込側と比較側のclock APIを統一する |
 | M-035 | SE008・SE009 LiDAR通信品質低下 | 現行SHI / `docs/error_list.txt` | manual-port | verified | MID360 device/provider/shared/Points/AppManager/state diagnosis/tests | packet連番欠落・点数低下イベントの3秒継続で検出し、正常5秒で復帰する |
 | M-036 | SE014・SE015 LiDAR通信品質エラー | 現行SHI / `docs/error_list.txt` | manual-port | verified | state diagnosis/AppManager/tests | SE008/009 ONを30秒確認して検出し、OFFを30秒/60秒確認してerror/failsafe復帰する |
 | M-037 | SE020・SE021 LiDARデータ不正 | 現行SHI / `docs/error_list.txt` | manual-port | verified | MID360 provider/shared/Points/AppManager/state diagnosis/tests | filter前のXYZ原点点割合70%以上を3秒確認して検出し、30%未満を3秒/5秒確認してerror/failsafe復帰する |
-| M-038 | CE006 センサ校正データ不正（基本健全性） | 現行SHI / `docs/error_list.txt` | manual-port | verified | action diagnosis/validator/load_config/tests | CSVの存在・読込・4x4形状・有限値を起動時に検査。参照差分・校正生成結果判定はM-005と一緒に保留する |
+| M-038 | CE006 センサ校正データ不正（基本健全性） | 現行SHI / `docs/error_list.txt` | manual-port | verified | action diagnosis/validator/load_config/tests | CSVの存在・読込・4x4形状・有限値を起動時に検査。参照差分・校正生成結果判定はM-069で追加 |
 | M-039 | メンテナンスモード中の指定エラー抑制 | 現行SHI `in_factory` / ユーザー要件 | manual-port | verified | runtime policy/対象診断/AppManager・起動経路/tests | SHI指定のCE001/002/012、SE001/002/007/026/035/037/039だけを抑制し、重要度A全体へは適用しない |
 | M-040 | File watch設定再読込の一時失敗リトライ | 現行SHI `file_watch.py` / ユーザー要件 | manual-port | verified | file watch/CE005/tests | atomic save中の一時欠損・書込み途中を3回、0.2秒間隔で再試行し、全失敗時だけCE005へ渡す。起動時の無限再試行は維持する |
 | M-041 | 自動校正ファイル入力の軽量終了制御 | 現行SHI `__main__.py` / ユーザー要件 | manual-port | verified | main/ProcessActivator/closables/tests | CALIBかつFile Inputの反復評価だけActivator停止と通信資源解放を行い、実機CALIBとSCRUTは量産向け停止・強制終了診断を維持する |
@@ -381,13 +381,18 @@ SHI側だけで確認されたテスト:
 | M-059 | 2D-3D校正診断UI結果・設定schema | SHI `7f58643`, `fc7f75e` | manual-port | verified | diagnosis, app config, facade, tests | UI enum・reason code変換、設定schema、facade validationを移植し、新producerとの同時切替を確認 |
 | M-060 | 2D-3D校正診断アルゴリズム | SHI `d60c83d` ほか / 現行SHI | manual-port | verified | `calibcheck2d3d`, `SceneDesc`, `YOLOadapter`, tracking, tests | scene/tracking/score診断とcamera slotを保持するactive YOLO adapterをvendor lifecycleへ接続し、three-way確認済み |
 | M-061 | 通常2D-3D校正アルゴリズム | 現行SHI | manual-port | verified | calibration2d3d, progress/correspondence/tracking, tests | FILE_IO、file-end一回完了、100点gate、進捗再計算、camera別center-Z補正、UI/AI診断を接続し、three-way確認済み |
-| M-062 | 3D-3D校正アルゴリズム・エラー完了 | SHI `b64f6f9` / 現行SHI | manual-port | verified | calibration3d3d, lidar calibration, tests | 生成行列のCE006簡易検証、UI error/status/yaw、matrix/profile/angle FILE_IOを接続。高度な参照差分はdeferredとしてthree-way確認済み |
+| M-062 | 3D-3D校正アルゴリズム・エラー完了 | SHI `b64f6f9` / 現行SHI | manual-port | verified | calibration3d3d, lidar calibration, tests | 生成行列のCE006検証、UI error/status/yaw、matrix/profile/angle FILE_IOを接続。高度な参照差分はM-069で追加 |
 | M-063 | 校正capture・厳密同期 | vendor / 現行SHI | vendor-keep | verified | calib FIFO/data capture, tests | `MessageFlow`は単一consumerのためCALIB/SCRUT専用flowを維持。同期成立frameだけをcamera/LiDAR/CAN/ref_t順で渡す契約を確認 |
 | M-064 | 校正wait・facade・MMAP接続 | vendor / SHI `fc7f75e`, `d9edbc0` | manual-port | verified | wait app, facade, mmap contract tests | enum・校正要否status直書きとSHIのwait dummy設定・送信を移植し、Vendor lifecycleとMMAP ABIを維持してthree-way確認済み |
 | M-065 | 校正エラー処理接続 | `docs/error_list.txt` / 現行SHI | manual-port | verified | calibration process/modules/diagnosis/tests | FILE_IO D有効化とstartup/runtime fallback、3D-3D UI error状態、profiler防御、失敗後post抑止をVendor lifecycleへ接続しthree-way確認済み |
 | M-066 | 校正設定validation・機種別設定 | SHI現行 calibration validator / machine profile | manual-port | verified | calibration config validation/machine profile/file watch/tests | SHI validatorと機種別校正設定を移植。CALIB中も`settings.ini`監視を常時維持し、機種別校正INI監視を追加。関連14件pass |
 | M-067 | 校正三者差分ビューア導入 | `local_pipe` `origin/vendor-20260817-integration:scripts/three_way_review.py` | manual-port | verified | `scripts/three_way_review.py`, tests | vendor/SHIのrepoとrefを個別指定し、統合working treeと比較する。別repo・片側限定ファイルの専用テスト2件pass |
 | M-068 | Vendor/SHI最終残差監査 | SHI `2283a0a` / 統合working tree | vendor-keep | verified | source/config差分、SHI非merge commit、統合台帳 | SHI限定14ファイルを全件分類。実行経路に未分類の機能差分なし。M-051の製品評価とM-054のGodot並行試験だけを残す |
+| M-069 | CE006 理想行列差分判定 | 現行SHI / ユーザー要件 | manual-port | verified | calibration validator/action diagnosis/startup/3D-3D/tests | 並進・回転・円形grid上の最大XY変位を理想行列と比較。対象・参照件数を明示検証し、SHIの`zip()`による切捨ては不採用 |
+| M-070 | CE007～CE010 カメラ校正データ診断枠 | 現行SHI / ユーザー要件 | manual-port | verified | camera validator/action diagnosis/startup/error config/tests | fisheye JSONと外部行列の構造・形状・有限値を共通診断化。理想差分parameterはstub。camera 3はpath契約未定義をCE010として明示発報 |
+| M-071 | 校正MMAP次バッファ予約 | M-054 / ユーザー要件 | manual-port | verified | calibration facade/contract tests | 校正modeでもindex切替直後に次mapを`IsWriting=1`へ予約し、通常UI MMAPと同じ競合窓対策を適用 |
+| M-072 | 負荷低減閾値ratio設定化 | ユーザー要件 / M-053 | manual-port | verified | AppConfig/settings/file watch/reduced load/tests | 40,000点capacityを維持し、開始0.4・復帰0.3を共通settingsへ追加。起動時と設定再読込成功時に16,000/12,000へ反映 |
+| M-073 | エラー構造・全JSON schema監査 | 現行Vendor/SHI | vendor-keep | verified | shared errors/error config/JSON/tests | enum/tuple整合を固定し、ErrorConfig全62キー・全dataclass fieldをJSONへ明示。LiDAR/IMUのSHI個別parameter対Vendor N共有は要判断差分として維持 |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -1049,6 +1054,14 @@ SHI側だけで確認されたテスト:
 - 2秒間に393回flagsを読み、主状態として`map0=(IsWriting=1, IsReading=1), map1=(0,0)`を175回、逆側を169回確認した。reader/writerの切替を12回観測し、両面が交互に予約・読取りされることを確認した。
 - 直接protocol試験の旧buffer `IsWriting=0`、次buffer `IsWriting=1`と合わせ、M-054を`verified`とする。
 - 試験終了時、Godotとworkerは停止したがMainがSHUTDOWN後も`do_wait`で残留したためSIGTERMで終了した。これはMMAP handshakeとは別の終了処理残件として扱う。
+
+### 2026-09-08 M-069～M-073実施記録
+
+- CE006は理想行列との差を`solve(reference, estimated)`で求め、並進norm、回転角、円形grid上の最大XY変位を設定閾値と比較する。対象と参照の件数不一致もCE006 issueとし、`zip()`の暗黙切捨ては採用しない。
+- CE007～CE010はfisheye内部parameterとcamera-LiDAR外部行列の存在、読込、構造、形状、有限値を共通validatorで診断する。camera理想差分はSHI同様stubとし、4台目のpath schemaがない現状ではcamera 3をunsupportedとしてCE010へ発報する。
+- 校正MMAPにもM-054と同じ切替直後予約を追加した。負荷低減は40,000点capacityと5frame継続・strict境界を維持し、開始・復帰ratioを共通settings 5種から起動時と再読込時に反映する。機種別parameterには追加しない。
+- `shared_err_config.py`はSHIと同一。全error enumと診断tupleの長さは一致する。`ErrorConfig`の62属性に対してJSONは7つのVendor module errorが欠け、11項目がclass既定値へ暗黙依存していたため、既定値を変えず全キー・全fieldを明示して回帰テストを追加した。
+- SHIはLiDAR0/1・IMU0/1 parameterを個別に持つ一方、Vendorは`lidar_n_*`・`imu_n_*`を共有する。個別閾値化は設定schemaと運用を変えるため本単位では移植せず、要判断差分として残す。Vendorのheartbeat/lifecycle拡張とSHIの入力health generationも同様に一括置換しない。
 
 ## 10. 次のCopilotへの開始指示
 

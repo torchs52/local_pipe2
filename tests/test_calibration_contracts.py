@@ -15,6 +15,9 @@ import numpy as np
 
 from argus_synchro.calibration_mat_generator_modules.ctrl.wait_app import wait_app
 from argus_synchro.calibration_mat_generator_modules.facade import CalibrationUIGodot
+from argus_synchro.calibration_mat_generator_modules.facade.calib_godot_interface import (
+    CalibGodotInterface,
+)
 from argus_synchro.config.app_config import CalibrationModeSwitchConf, GeneralConf
 from argus_synchro.message.calib_fifo_message import FIFOData
 from argus_synchro.message.input_message import CameraData, CanData, PointCloudData
@@ -64,6 +67,23 @@ class _MmapWriterRecorder:
 
     def postprocess_info(self, ref_t: int | None, **kwargs: object) -> None:
         self.events.append(("postprocess_info", (ref_t, kwargs)))
+
+
+class _FlagMmap:
+    def __init__(self) -> None:
+        self.values: dict[int, int] = {0: 0, 1: 0}
+
+    def ReadInt8(self, address: int) -> int:
+        return self.values[address]
+
+    def ReadInt64(self, _address: int) -> int:
+        return 0
+
+    def WriteInt8(self, address: int, value: int) -> None:
+        self.values[address] = value
+
+    def WriteInt64(self, _address: int, _value: int) -> None:
+        pass
 
 
 def test_calibration_mode_setting_schema_and_values_are_stable() -> None:
@@ -235,6 +255,33 @@ def test_calibration_mmap_header_layout_is_stable() -> None:
         "ERROR": {"ADDR": 10, "WIDTH": 4},
         "CamImg": {"ADDR": 14, "WIDTH": -1},
     }
+
+
+def test_calibration_mmap_rotation_immediately_reserves_next_buffer() -> None:
+    buffers = [_FlagMmap(), _FlagMmap()]
+    interface = object.__new__(CalibGodotInterface)
+    interface.output_log = False
+    interface.s_frame = 1
+    interface.ref_t_count = None
+    interface.mapIndex = 0
+    interface.datPathList = []
+    interface.damp_out = False
+    interface.clsMMap_list = buffers
+    interface.clsMMap = buffers[0]
+    interface.IsReading_ADR = 1
+    interface.IsWriting_ADR = 0
+    interface.UNIX_TIME_ADDR = 2
+    interface.Start_ADR = 0
+    interface.writtenAdr = 10
+    interface.sTime = 0.0
+    interface.preProcessTime = 0.0
+
+    interface.postprocess_info(1, is_firstframe=True)
+
+    assert interface.mapIndex == 1
+    assert buffers[0].values[interface.IsWriting_ADR] == 0
+    assert buffers[1].values[interface.IsWriting_ADR] == 1
+    assert interface.writtenAdr == interface.Start_ADR
 
 
 def test_calibration_common_fields_are_written_in_ui_contract_order() -> None:

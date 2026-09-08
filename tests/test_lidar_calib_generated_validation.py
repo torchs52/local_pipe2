@@ -45,6 +45,27 @@ def test_generated_lidar_calibration_rejects_mismatched_metadata_lengths() -> No
         raise AssertionError("expected matrix path length validation")
 
 
+def test_generated_lidar_calibration_detects_reference_pose_difference() -> None:
+    params = SensorCalibDataInvalidParameters(
+        translation_threshold_m=0.5,
+        rotation_threshold_deg=10.0,
+        max_xy_displacement_threshold_m=1.0,
+    )
+    estimated = np.eye(4, dtype=np.float64)
+    estimated[0, 3] = 1.1
+
+    issues = LidarCalibValidator(params).validate_matrices(
+        [estimated],
+        matrix_paths=["lidar0.csv"],
+        reference_matrices=[np.eye(4, dtype=np.float64)],
+    )
+
+    assert [issue.detail.split(":", maxsplit=1)[0] for issue in issues] == [
+        "translation error exceeds threshold",
+        "max XY displacement exceeds threshold",
+    ]
+
+
 def test_generated_validation_uses_sensor_calibration_diagnosis_policy() -> None:
     diagnosis = SensorCalibDataInvalidDiagnosis()
     diagnosis.param = SensorCalibDataInvalidParameters()
@@ -82,18 +103,23 @@ def test_calibration3d3d_reports_generated_matrix_validation_result(
         "argus_synchro.calibration_mat_generator_modules.ctrl.calibration3d3d.calibrateLidars2Crane",
         lambda **kwargs: (MagicMock(), [], [matrix], MagicMock()),
     )
+    reference_paths = ["reference-lidar0.csv"]
+    app_config_calib = SimpleNamespace(
+        Calib3d3d_CalibParams=SimpleNamespace(lidars_calib_path=reference_paths)
+    )
 
     assert calibration.calib3d3d_once(
         lidar_pts=[np.empty((0, 3), dtype=np.float64)],
         angle_data=0.0,
         resultmat_paths=["lidar0.csv"],
         app_config=MagicMock(),
-        app_config_calib=MagicMock(),
+        app_config_calib=app_config_calib,
     )
     diagnosis.diagnose_matrices.assert_called_once_with(
         [matrix],
         ActionErrorIndex.SENSOR_CALIB_DATA_INVALID,
         matrix_paths=["lidar0.csv"],
+        reference_matrix_paths=reference_paths,
     )
 
 

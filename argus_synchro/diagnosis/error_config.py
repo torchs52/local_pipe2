@@ -469,11 +469,25 @@ class SensorCalibDataInvalidParameters(ErrorParameterBase):
     check_lidar2crane: bool = True
     enforce_shape_4x4: bool = True
     finite_value_only: bool = True
+    enable_reference_diff_check: bool = True
+    translation_threshold_m: float = 0.5
+    rotation_threshold_deg: float = 10.0
+    max_xy_displacement_threshold_m: float = 1.0
+    grid_radius_m: float = 5.0
+    grid_spacing_m: float = 1.0
+    comparison_atol: float = 1e-12
 
 
 @dataclass(frozen=False, slots=True)
 class CameraNCalibDataInvalidParameters(ErrorParameterBase):
     """カメラN校正データ不正用パラメータ"""
+
+    enforce_shape_4x4: bool = True
+    finite_value_only: bool = True
+    check_fisheye_intrinsics: bool = True
+    enable_reference_diff_check: bool = False
+    reference_data_path: str = ""
+    diff_threshold: float = 0.0
 
 
 @dataclass(frozen=False, slots=True)

@@ -16,6 +16,10 @@ from argus_synchro.common import paths
 from argus_synchro.common.app_logger import AppLogger, AppLoggerFactory
 from argus_synchro.config.app_config import AppConfig
 from argus_synchro.core.closable import CompositeClosable
+from argus_synchro.diagnosis.action_errors import (
+    CameraXCalibDataInvalidDiagnosis,
+    SensorCalibDataInvalidDiagnosis,
+)
 from argus_synchro.diagnosis.error_config import ErrorConfig
 from argus_synchro.diagnosis.error_diagnosis import (
     ResultDiagnosis,
@@ -1064,23 +1068,11 @@ def load_config(
             ser.diagnosis_runtime_policy.update_in_factory(
                 app_config.General.in_factory
             )
+            ser.reduced_load_mode.configure(
+                app_config.ReducedLoadMode.many_points_ratio,
+                app_config.ReducedLoadMode.few_points_ratio,
+            )
             sec = SharedExcepts(app_config=app_config, app_manager_ex=ser.AppMan_ex)
-
-            sensor_calib_diagnosis = ser.action_errors_A_C[
-                ActionErrorIndex.SENSOR_CALIB_DATA_INVALID
-            ]
-            sensor_calib_diagnosis.update(ser.shared_err_conf.read())
-            calibration_issues = (
-                sensor_calib_diagnosis.validate_calibration_matrices(
-                    app_config.calibration
-                )
-            )
-            sensor_calib_diagnosis.log_output(
-                bool(calibration_issues),
-                False,
-                ActionErrorIndex.SENSOR_CALIB_DATA_INVALID,
-                calibration_issues,
-            )
 
             calib_settings_path = str(
                 paths.normalize_path("calib_settings.ini", directory_config.config_dir)
@@ -1090,6 +1082,50 @@ def load_config(
                 inifilepath=calib_settings_path,
                 directory_config=directory_config,
             )
+
+            sensor_calib_diagnosis = ser.action_errors_A_C[
+                ActionErrorIndex.SENSOR_CALIB_DATA_INVALID
+            ]
+            sensor_calib_diagnosis = cast(
+                SensorCalibDataInvalidDiagnosis, sensor_calib_diagnosis
+            )
+            sensor_calib_diagnosis.update(ser.shared_err_conf.read())
+            calibration_issues = (
+                sensor_calib_diagnosis.validate_calibration_matrices(
+                    app_config.calibration,
+                    lidar2crane_reference_paths=(
+                        sac_calib.read().Calib3d3d_CalibParams.lidars_calib_path
+                    ),
+                )
+            )
+            sensor_calib_diagnosis.log_output(
+                bool(calibration_issues),
+                False,
+                ActionErrorIndex.SENSOR_CALIB_DATA_INVALID,
+                calibration_issues,
+            )
+
+            camera_calib_error_indices = (
+                ActionErrorIndex.CAMERA0_CALIB_DATA_INVALID,
+                ActionErrorIndex.CAMERA1_CALIB_DATA_INVALID,
+                ActionErrorIndex.CAMERA2_CALIB_DATA_INVALID,
+                ActionErrorIndex.CAMERA3_CALIB_DATA_INVALID,
+            )
+            for camera_index in range(
+                min(app_config.camera.count, len(camera_calib_error_indices))
+            ):
+                error_index = camera_calib_error_indices[camera_index]
+                diagnosis = cast(
+                    CameraXCalibDataInvalidDiagnosis,
+                    ser.action_errors_A_C[error_index],
+                )
+                diagnosis.update(ser.shared_err_conf.read())
+                diagnosis.diagnose_calibration_data(
+                    camera_index,
+                    app_config.calibration,
+                    error_index,
+                )
+
             return sac, sec, app_config, sac_calib
         except Exception as e:
             # クリティカルエラー時は一旦再起動して復帰を試みる
