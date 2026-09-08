@@ -575,12 +575,14 @@ def exe_accumulation(
             f"取得された点群数: {xyz.shape[0]} が少ないのでaccumulationをスキップします。",
         )
         return (
-            counter,
-            None,
-            None,
-            accum_points,
-            accum_ground_points,
-            accum_counter,
+            (
+                counter,
+                None,
+                None,
+                accum_points,
+                accum_ground_points,
+                accum_counter,
+            ),
             init_source_to_target,
         )
     crane_state = False
