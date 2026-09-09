@@ -91,7 +91,20 @@ class wait_app:
     def _close(self) -> None:
         pass
 
-    def input_settings(self):
+    def _report_file_io_error(
+        self, path: str, operation: str, error: Exception
+    ) -> None:
+        file_io_error = self._ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR]
+        result = file_io_error.errors_diagnosis(True)
+        file_io_error.log_output(
+            *result,
+            StateErrorDIndex.FILE_IO_ERROR,
+            path,
+            operation,
+            f"{type(error).__name__}: {error}",
+        )
+
+    def input_settings(self) -> None:
         # TODO: 同期入力別プロセスのモジュールに入替
 
         self.trans_mat3D3D_eachlidar = []
@@ -99,17 +112,36 @@ class wait_app:
             sac=self.sac, app_config_calib=self.app_config_calib
         ):
             self._logger.info(f"[input_settings] path:{path}")
-            self._logger.info(f"loadtxt: {np.loadtxt(path, delimiter=',')}")
-            self.trans_mat3D3D_eachlidar.append(np.loadtxt(path, delimiter=","))
+            try:
+                transform = np.loadtxt(path, delimiter=",")
+            except (OSError, UnicodeError, ValueError) as error:
+                self._report_file_io_error(
+                    path, "read wait_app LiDAR calibration CSV", error
+                )
+                raise
+            self._logger.info(f"loadtxt: {transform}")
+            self.trans_mat3D3D_eachlidar.append(transform)
 
-        self.rtvec_mat = [
-            read_rtvec(
-                rvec_convmat_path=p,
-                new_axis_mode=self.calibcheck2d3d_conf.new_axis_mode,
-                points_inverted=True,
-            )
-            for p in self.calibcheck2d3d_conf.camera_calib_files
-        ]
+        self.rtvec_mat = []
+        for path in self.calibcheck2d3d_conf.camera_calib_files:
+            try:
+                rtvec = read_rtvec(
+                    rvec_convmat_path=path,
+                    new_axis_mode=self.calibcheck2d3d_conf.new_axis_mode,
+                    points_inverted=True,
+                )
+            except (
+                OSError,
+                UnicodeError,
+                ValueError,
+                RuntimeError,
+                EOFError,
+            ) as error:
+                self._report_file_io_error(
+                    path, "read wait_app camera calibration", error
+                )
+                raise
+            self.rtvec_mat.append(rtvec)
 
     def pre_app_loopmain(self) -> None:
         self.input_settings()

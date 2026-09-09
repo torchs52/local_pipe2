@@ -402,6 +402,7 @@ SHI側だけで確認されたテスト:
 | M-082 | PointsRefine初期変換CSV I/O | SHI `2283a0a` | manual-port | verified | PointsRefine/FILE_IO/tests | initial transform CSVのI/O・文字コード・値・型エラーをFILE_IOへ接続して再送出し、成功時に復帰入力を渡す。SHIで欠けていた復帰処理を補完 |
 | M-083 | CPU affinity JSON検証 | SHI `2283a0a` | manual-port | verified | ProcessManager/tests | JSON読込み失敗、root型、process entryの欠損・空・型不正を専用例外へ統一。core IDは`bool`を除く整数だけを許可し、psutil適用時の実行時検証は維持 |
 | M-084 | SHI担当エラー設定接続監査 | SHI `2283a0a` / 統合版監査 | manual-port | verified | CE005/CE013/CE015/process初期化/tests | ErrorConfigの`is_enabled`が未反映だったCE005・CE013・CE015へ`update()`と無効化gateを追加し、main・AppManager・CAN・ObjectDetect・Calibの所有境界へ接続。SE036、CE003、Dレベルのモニタ接続・検知対象・連続リトライは未実装のまま維持 |
+| M-085 | 校正rvec/tvec・wait入力FILE_IO | SHI `2283a0a` / 統合版監査 | manual-port | verified | calibcheck2d3d/wait app/FILE_IO/tests | reader callbackによる二重報告は採用せず、意味的な読込操作を知るcallerで1回だけ報告して元例外を再送出。NumPy EOFとLiDAR CSV読込も対象化 |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -1161,6 +1162,13 @@ SHI側だけで確認されたテスト:
 - CE005 `CONFIG_FILE_MISSING`、CE013 `AI_MODEL_LOAD_FAILED`、CE015 `LOG_FILE_IO_ERROR`はruntime利用とJSONの`is_enabled`設定がある一方、診断クラスに`update()`と無効化gateがなく、設定値を無視していた。各診断へ設定反映を追加し、共通起動、AppManager、CAN、ObjectDetect、Calibの所有境界へ接続した。
 - SE036、CE003、Dレベルのモニタ接続エラー・検知対象エラー・連続リトライ上限超過は、SHI固定commitでも判定またはruntime接続が完成していない。ユーザー判断により今回そのまま維持する。
 - 設定OFF時に対象例外を計上しないこと、共通起動と各processの更新接続を回帰テストへ追加した。関連テストは117 passed。`compileall`と`git diff --check`は成功した。対象ファイル全体のRuffはlegacy TODO、private access、型注釈などの既存違反を報告するため、この単位では変更していない。
+
+### 2026-09-09 M-085 校正rvec/tvec・wait入力FILE_IO
+
+- 固定SHI `2283a0a`の`read_rtvec()` callback方式は、内側と外側の例外handlerが同じ失敗を二重報告し、tvec失敗時の外側報告pathがrvec側になるため、そのまま移植しない。
+- `read_rtvec()`は純粋なreaderのまま維持し、ファイルの意味と操作名を所有する`calibcheck2d3d`と`wait_app`が`FILE_IO_ERROR`を1回だけ記録して元例外を再送出する。切断されたNumPyファイルの`EOFError`も対象へ追加した。
+- `wait_app`のLiDAR変換CSVは従来の二重`loadtxt()`を1回へ整理し、LiDAR CSVとcamera rvec/tvecの両読込失敗をFILE_IOへ接続した。
+- 新規3件を含む関連テストは17 passed。対象の`compileall`、新規テストのRuff、`git diff --check`は成功した。VS Code診断では`wait_app`と新規テストに問題はなく、`calibcheck2d3d`には今回の変更と無関係な既存型指摘が残る。
 
 ## 10. 次のCopilotへの開始指示
 

@@ -858,7 +858,13 @@ class calibcheck2d3d:
                     new_axis_mode=self.calibcheck2d3d_conf.new_axis_mode,
                     points_inverted=True,
                 )
-            except (OSError, UnicodeError, ValueError, RuntimeError) as error:
+            except (
+                OSError,
+                UnicodeError,
+                ValueError,
+                RuntimeError,
+                EOFError,
+            ) as error:
                 self._report_file_io_error(
                     path, "read calibcheck2d3d camera calibration", error
                 )
