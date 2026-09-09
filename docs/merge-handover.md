@@ -365,7 +365,7 @@ SHI側だけで確認されたテスト:
 | M-038 | CE006 センサ校正データ不正（基本健全性） | 現行SHI / `docs/error_list.txt` | manual-port | verified | action diagnosis/validator/load_config/tests | CSVの存在・読込・4x4形状・有限値を起動時に検査。参照差分・校正生成結果判定はM-069で追加 |
 | M-039 | メンテナンスモード中の指定エラー抑制 | 現行SHI `in_factory` / ユーザー要件 | manual-port | verified | runtime policy/対象診断/AppManager・起動経路/tests | SHI指定のCE001/002/012、SE001/002/007/026/035/037/039だけを抑制し、重要度A全体へは適用しない |
 | M-040 | File watch設定再読込の一時失敗リトライ | 現行SHI `file_watch.py` / ユーザー要件 | manual-port | verified | file watch/CE005/tests | atomic save中の一時欠損・書込み途中を3回、0.2秒間隔で再試行し、全失敗時だけCE005へ渡す。起動時の無限再試行は維持する |
-| M-041 | 自動校正ファイル入力の軽量終了制御 | 現行SHI `__main__.py` / ユーザー要件 | manual-port | verified | main/ProcessActivator/closables/tests | CALIBかつFile Inputの反復評価だけActivator停止と通信資源解放を行い、実機CALIBとSCRUTは量産向け停止・強制終了診断を維持する |
+| M-041 | 自動校正ファイル入力の軽量終了制御 | SHI `2283a0a` / ユーザー要件 | vendor-fix | verified | main/ProcessManager/tests | `File_Input=True`かつ`operation_mode=1`の完了時にjoin前の軽量停止と有限時間shutdownを行い、既存起動scriptを1試行1processで逐次実行可能にする |
 | M-042 | 起動時ログ診断parameter初期化 | 実機起動ログ / vendor起動順 | vendor-fix | verified | main/log diagnosis/tests | logger callback登録前にログ圧縮・時刻逆転診断を初期化し、起動直後のAttributeErrorを防ぐ |
 | M-046 | エラーMMAP更新停止 | 実機起動ログ / SHI parameter定義 | manual-port | verified | error config/SE039/SE042/tests | 欠落していた診断閾値を復元し、ErrorMonitorのAttributeError終了とAppManagerの反復例外を防ぐ |
 | M-047 | TensorRT cache・入力名・provider選択の堅牢化 | SHI `ecbc79f` / 現行 `detect2d.py` | manual-port | verified | `detect2d.py`, tests | モデル固有入力名、モデル/config別cache、provider fallbackを移植。Jetson Orinでbatch 3 engine新規生成、cache再利用、CUDA Graph・I/O Binding推論を確認 |
@@ -863,6 +863,17 @@ SHI側だけで確認されたテスト:
 - 適用箇所は自動校正パイプラインの起動失敗、SCRUTからファイル入力CALIBへの遷移、ファイル入力CALIBからSCRUTへの遷移である。また、CALIB処理完了時は共有`CalMatGen_ex.IsFinished`を確認してsystem loopを抜け、既存の`ProcessManager.join()`へ進む。その他の終了・再起動制御は変更していない。
 - `__main__.py`には、校正条件を変えながら外部スクリプトで無人反復する用途、量産向け`graceful_stop_all()`を避ける理由、軽量停止と`join()`の責務分担、`IsFinished`が実機CALIBと共通の完了通知であることを設計コメントとして残した。終了処理を変更する際は、この用途説明と量産経路の分離を維持する。
 - `tests/test_automated_calibration_shutdown.py`でFile Inputとモードの全4組合せ、および軽量停止がActivator停止・通信資源解放だけを行うことを確認し5 passed。量産向け停止基盤を含む集中回帰は10 passed、`test_detect2d.py`を除く全体回帰は294 passed、7 xfailed、通常失敗0件。`compileall`とCRLFを考慮したdiff checkも成功した。
+
+### 2026-09-09 M-041再評価
+
+- 固定SHI `2283a0a`と現行のmain、CalibProcess、ProcessManager、auto-exit設定を再確認した。SHIと現行はいずれも校正完了を内部`CalMatGen_ex.IsFinished`で伝えるが、汎用的なバッチ実行の完了・成否契約は持たない。既存の`calib2d3d_fileend_autoexit`と一時flag fileは2D-3D専用のdebug機構で、正常完了と例外終了の区別、試行ID、結果path、timeoutを外部へ返さない。
+- 現行mainは`IsFinished`検出時に`system_activator`だけを無効化し、その後に`processes.join()`を無期限で呼ぶ。M-041で追加した`stop_automated_calibration_pipeline()`は起動失敗とモード遷移には使われるが、通常の校正完了経路には接続されていない。校正以外の子processが自律終了しない場合、外部runnerは次のparameter setへ進めない。既存テストは停止helper単体だけで、この順序やtop-level終了を検証しない。
+- パラメータ掃引は同一process内のhot reloadではなく、外部runnerが不変のconfig snapshotとrun IDを渡して1試行ずつ新規processを起動する方式を採用する。これにより前試行の共有状態、診断counter、logger、model、FIFOを次試行へ持ち越さず、再現性と障害分離を確保する。
+- アプリ側には通常の`File_Input && CALIB`から推測しない明示的batch modeを追加する。batch完了時は、入力停止、通信資源close、全子processの有限時間wait、必要時のterminate/killをこの用途専用の結果として扱い、量産向け`PROCESS_FORCED_TERMINATION`診断とは分離する。停止要求より前の無期限`join()`は禁止する。
+- mainが出力flushと子process終了を確認した後、run ID、config/input hash、開始・終了時刻、`success`/`calibration_failed`/`infrastructure_failed`/`timeout`、結果path、子exit codeを含む結果manifestを一時fileからatomic renameで確定する。外部runnerはprocess exit、timeout、manifestを組み合わせて次試行へ進み、試行ごとに独立output directoryを使う。
+- 最小修正として、通常完了時にも軽量停止をjoin前へ接続した。ファイル入力CALIB完了時は入力pipelineと通信資源を先に停止し、通常の無期限`join()`に代えて既存`graceful_stop_all()`の10秒grace、2秒terminate、1秒killを使用する。AppManager等のsystem processにも3秒grace、2秒terminate、1秒killを適用するが、量産向け`PROCESS_FORCED_TERMINATION`診断には接続しない。実機CALIBとSCRUTは従来のjoin経路を維持する。
+- 実運用の起動入口は`run_argus.py`ではなく`argus_start_simple.sh`または`argus_bootfig.sh`とする。前者はPython Mainをforeground実行し、後者もMain終了を待ってMonitorArgusと起動画像を停止した後にMainの終了codeを返すため、いずれも1試行1processの外部反復に利用できる。最小案では起動引数を追加せず、既存の`File_Input=True`かつ`operation_mode=1`を自動校正終了の適用条件とする。外部runnerは各parameter setを設定へ反映して同じ起動scriptを逐次実行する。config snapshotや結果manifestを導入する完成形では、両scriptが固定している`./config`、`./log`、`/dev/shm`を環境変数で上書き可能にする。
+- `tests/test_automated_calibration_shutdown.py`へ完了時の軽量停止、実機CALIB非適用、自動校正の有限時間shutdown、通常経路のjoin維持を追加した。ProcessManagerとmain設定再読込みを含む関連回帰は25 passed。`IsFinished`だけでは正常完了と内部例外を区別できないため、結果manifestは将来の成否自動集計拡張として残す。
 
 ### 2026-09-04 M-042実施記録
 

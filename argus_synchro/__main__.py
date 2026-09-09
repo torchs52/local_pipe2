@@ -883,15 +883,51 @@ def stop_automated_calibration_pipeline(
     この経路で量産向けの強制終了診断や待機を行うと、実害のない試行結果でも
     エラー処理へ入り、無人バッチが次の実行へ進めなくなることがある。
 
-    そのため、この関数はActivatorを停止して通信資源を解放するだけとし、
-    terminate/killと強制終了診断は行わない。子プロセスの終了待ちは呼出し側の
-    既存``ProcessManager.join()``へ委ねる。実機CALIBとSCRUTでは使用しない。
+    そのため、この関数はまずActivatorを停止して通信資源を解放する。
+    子プロセスの有限時間停止は呼出し側の``wait_for_pipeline_shutdown()``へ
+    委ね、そこでterminate/killが必要になっても量産向け強制終了診断には
+    接続しない。実機CALIBとSCRUTでは使用しない。
     """
     process_activator.disable()
     closables.close()
     new_process_activator = ProcessActivator()
     new_process_activator.disable()
     return CompositeClosable(), new_process_activator
+
+
+def stop_completed_calibration_pipeline(
+    app_config: AppConfig,
+    closables: CompositeClosable,
+    process_activator: ProcessActivator,
+) -> tuple[CompositeClosable, ProcessActivator]:
+    """完了したファイル入力CALIBを、後続の終了待ちより先に停止する。
+
+    ``File_Input=True``かつCALIBの場合だけ自動反復用の停止を選ぶ。
+    実機CALIBでは量産向け停止処理を維持するため、受け取った資源を変更しない。
+    """
+    if not is_automated_calibration_run(app_config, "CALIB"):
+        return closables, process_activator
+    return stop_automated_calibration_pipeline(closables, process_activator)
+
+
+def wait_for_pipeline_shutdown(
+    processes: ProcessManager,
+    system_processes: ProcessManager,
+    automated_calibration_completed: bool,
+) -> None:
+    """自動校正完了時だけ、無期限joinを避けて有限時間で停止する。
+
+    外部scriptが次のparameter setへ必ず進めるよう、grace期間後も残る
+    processはterminate、killの順で停止する。このfallbackは試験運用上の
+    終了保証であり、量産向け``PROCESS_FORCED_TERMINATION``診断は行わない。
+    通常運転では従来のjoin契約を変更しない。
+    """
+    if automated_calibration_completed:
+        processes.graceful_stop_all(t_grace=10.0, t_term=2.0, t_kill=1.0)
+        system_processes.graceful_stop_all(t_grace=3.0, t_term=2.0, t_kill=1.0)
+        return
+    processes.join()
+    system_processes.join()
 
 
 def start_scrut_pipeline(
@@ -1423,6 +1459,7 @@ def main() -> None:
                 # TODO AppManagerの起動に時間がかかっているが、プロセスが使用するCPUを固定することで、解消見込み (NSW)
                 p0.start(app_config.DEFAULT.debug_log, directory_config, app_config)
 
+            automated_calibration_completed = False
             while system_activator.value:
                 # 暫定：毎回読み込まないと、モード切替のタイミングが上手く拾えない.
                 # app_config = sac.read()
@@ -1565,10 +1602,18 @@ def main() -> None:
                     system_activator.disable()
                 if current_mode == "CALIB" and sec.CalMatGen_ex.IsFinished.value:
                     # CalibProcessが共有完了フラグを立てたらmain loopを抜ける。
-                    # ファイル入力の自動反復では、この後のjoinとfinallyを経て
-                    # プロセス・共有資源を閉じ、外部スクリプトへ制御を返す。
-                    # 実機CALIBでも完了通知として同じフラグを使うため、ここでは
-                    # File_Inputだけに限定せず、終了方法の選択を停止関数側に委ねる。
+                    # ファイル入力の自動反復では、先に入力processと通信資源を
+                    # 停止する。これを終了待ちより後へ移すと、入力processが
+                    # 自律終了せず外部scriptが次の試行へ進めない場合がある。
+                    closables, process_activator = stop_completed_calibration_pipeline(
+                        app_config,
+                        closables,
+                        process_activator,
+                    )
+                    automated_calibration_completed = is_automated_calibration_run(
+                        app_config,
+                        current_mode,
+                    )
                     system_activator.disable()
                 time.sleep(0.2)
 
@@ -1577,8 +1622,13 @@ def main() -> None:
                     _logger.info("is_restart_required detected -> restart")
                     break
 
-            processes.join()
-            p0.join()
+            # 自動校正だけ有限時間で収束させる。実機CALIBとSCRUTは従来どおり
+            # 各processの自律終了をjoinで待ち、量産時の停止契約を維持する。
+            wait_for_pipeline_shutdown(
+                processes,
+                p0,
+                automated_calibration_completed,
+            )
 
         except Exception as e:
             if not ser.is_state_error_d_exception(e, _logger):
