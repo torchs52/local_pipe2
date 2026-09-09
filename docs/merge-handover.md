@@ -1101,6 +1101,12 @@ SHI側だけで確認されたテスト:
 - 2D-3D・3D-3D結果保存と非同期pickle wrapperは診断後に元の`OSError`を再送出する。PnP保存は既存どおり例外をwarningへ記録して吸収し、校正制御と停止条件を変更していない。PnP reporterは省略可能引数として追加し、既存呼出しAPIを維持した。
 - FILE_IOの初回検出、継続KEEPING、復帰後再発、モジュールログ間引き、2D-3D、3D-3D、data capture、校正process error handlingの関連テストを実行した。変更ファイルのVS Code診断と`git diff --check`も確認した。
 
+### 2026-09-09 M-028 CE004設定配線補完
+
+- SHIの`load_err_config()`は`CRANE_MODEL_FILE_MISSING`を起動時に更新していたが、Vendorのprocess別設定更新へ移した際、実際にCE004を使用するPointsRefineとVisualの`_err_config_load()`から更新が漏れていた。
+- 両processで共有設定をCE004診断へ反映し、`CraneModelFileMissingDiagnosis.excepts_diagnosis()`も`is_enabled`を確認するようにした。設定OFFでは対象例外をcounterへ加算・ログ出力せず、元例外を再送出する既存process制御は維持する。
+- 専用テストで対象10例外、非対象例外、既定OFF、設定更新、PointsRefine/Visualの設定配線、診断所有ログ、元例外再送出を確認した。
+
 ## 10. 次のCopilotへの開始指示
 
 次回は、いきなり全体差分を再探索しない。次の順で開始する。

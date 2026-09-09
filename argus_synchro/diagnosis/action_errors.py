@@ -207,6 +207,8 @@ class CraneModelFileMissingDiagnosis(ActionErrorDiagnosisA):
         self.is_enabled = self.param.is_enabled
 
     def excepts_diagnosis(self, e: Exception) -> bool:
+        if not self.is_enabled:
+            return False
         is_target = isinstance(
             e,
             (
