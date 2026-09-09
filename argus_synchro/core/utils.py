@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Final
 
 import cv2
@@ -7,11 +8,19 @@ import numpy as np
 from numpy.typing import NDArray
 
 
-def read_class_names(class_file_name: str) -> dict[int, str]:
+def read_class_names(
+    class_file_name: str,
+    on_error: Callable[[str, Exception], None] | None = None,
+) -> dict[int, str]:
     names: dict[int, str] = {}
-    with open(class_file_name) as data:
-        for id_, name in enumerate(data):
-            names[id_] = name.strip("\n")
+    try:
+        with open(class_file_name) as data:
+            for id_, name in enumerate(data):
+                names[id_] = name.strip("\n")
+    except (OSError, UnicodeError) as error:
+        if on_error is not None:
+            on_error(class_file_name, error)
+        raise
     return names
 
 

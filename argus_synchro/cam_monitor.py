@@ -1,6 +1,8 @@
 # 標準系
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import cv2
 import numpy as np
 from numpy.typing import NDArray
@@ -19,14 +21,23 @@ class Monitoring:
         show_cam: list[int],
         detect2d_conf: Detect2dConf,
         app_logger_factory: AppLoggerFactory,
+        file_io_error_callback: Callable[[str, Exception], None] | None = None,
+        file_io_recovery_callback: Callable[[], None] | None = None,
     ) -> None:
         self._logger: AppLogger = app_logger_factory.register_from_type(self.__class__)
+        self._file_io_error_callback = file_io_error_callback
+        self._file_io_recovery_callback = file_io_recovery_callback
         # どのカメラ映像を表示するか
         self.update(show_cam, detect2d_conf)
 
     def update(self, show_cam: list[int], detect2d_conf: Detect2dConf) -> None:
         self.show_cam: list[int] = show_cam
-        self.classes: dict[int, str] = utils.read_class_names(detect2d_conf.yolo_class)
+        self.classes: dict[int, str] = utils.read_class_names(
+            detect2d_conf.yolo_class,
+            on_error=self._file_io_error_callback,
+        )
+        if self._file_io_recovery_callback is not None:
+            self._file_io_recovery_callback()
 
     def draw_collision(
         self,

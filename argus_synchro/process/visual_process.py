@@ -229,6 +229,9 @@ class VisualProcess(ProcessBase):
         self._ser.state_errors_D[StateErrorDIndex.ARRAY_SHAPE_ERROR].update(
             self._err_config
         )
+        self._ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR].update(
+            self._err_config
+        )
         self._ser.action_errors_A_C[
             ActionErrorIndex.CRANE_MODEL_FILE_MISSING
         ].update(self._err_config)
@@ -247,6 +250,22 @@ class VisualProcess(ProcessBase):
         self._ser.module_errors[
             ModuleErrorIndex.OBJECT_3D_DETECTION_MODULE_ERROR
         ].update(self._err_config)
+
+    def _report_file_io_error(self, path: str, error: Exception) -> None:
+        file_io_error = self._ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR]
+        result = file_io_error.errors_diagnosis(True)
+        file_io_error.log_output(
+            *result,
+            StateErrorDIndex.FILE_IO_ERROR,
+            path,
+            "read class name text file",
+            f"{type(error).__name__}: {error}",
+        )
+
+    def _recover_file_io_error(self) -> None:
+        self._ser.state_errors_D[
+            StateErrorDIndex.FILE_IO_ERROR
+        ].errors_diagnosis(False)
 
     def _input_data_diagnosis(
         self,
@@ -564,6 +583,8 @@ class VisualProcess(ProcessBase):
             show_cam=self._app_config.Monitor.show_cam,
             detect2d_conf=self._app_config.detect2d,
             app_logger_factory=self._app_logger_factory,
+            file_io_error_callback=self._report_file_io_error,
+            file_io_recovery_callback=self._recover_file_io_error,
         )
 
         self._TimeMonitor = ProcessTimeMonitor.ProcessTimeMonitor(
