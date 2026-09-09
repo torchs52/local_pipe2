@@ -1124,6 +1124,12 @@ SHI側だけで確認されたテスト:
 - 通常のmain loopと、CALIB mode変更による`processes.restart()`直後の両方で同じhelperを使用する。後者は再起動中に設定が更新された場合、同一loop内で最新設定を取り直す。
 - 専用テストで、read中に更新時刻が進んだ場合の次回再読込と、更新なしの場合のread抑止を確認した。
 
+### 2026-09-09 M-070 起動時校正診断の責務整理
+
+- `load_config()`に展開されていたCE006～CE010のdiagnosis型cast、error index対応、設定注入、検証後のログ呼出しをdiagnosis層へ集約した。mainは起動時に校正設定、参照path、camera数、error設定を渡して一括診断を要求するだけとする。
+- `SensorCalibDataInvalidDiagnosis`へ検証・counter・ログを完結する`diagnose_calibration_matrices()`を追加した。複数診断の選択とcamera slot対応は、indexと診断collectionを所有する`shared_errors.py`のmodule-level関数へ置き、`SharedErrors`の公開APIと初期化構造は変更しない。
+- camera countは従来どおり0～4件へ制限し、負数でcamera診断を誤実行しない。CE006～CE010の判定条件、counter、ログ文面、設定ON/OFF契約は変更していない。
+
 ## 10. 次のCopilotへの開始指示
 
 次回は、いきなり全体差分を再探索しない。次の順で開始する。

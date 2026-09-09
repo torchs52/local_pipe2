@@ -96,6 +96,8 @@ from argus_synchro.shared_err_config import SharedErrorConfig
 from argus_synchro.shared_excepts import SharedAppManagerExcept, SharedProcessExcept
 
 if TYPE_CHECKING:
+    from argus_synchro.config.app_config import CalibrationConf
+    from argus_synchro.diagnosis.error_config import ErrorConfig
     from argus_synchro.diagnosis.error_diagnosis import (
         StateErrorDiagnosisA,
         StateErrorDiagnosisB,
@@ -566,3 +568,43 @@ class SharedErrors:
         for diag in self.module_errors:
             diag.log_register(app_logger_factory)
         self.reduced_load_mode.log_register(app_logger_factory)
+
+
+def diagnose_startup_calibration_data(
+    shared_errors: SharedErrors,
+    calibration_conf: "CalibrationConf",
+    lidar2crane_reference_paths: list[str],
+    camera_count: int,
+    error_config: "ErrorConfig",
+) -> None:
+    sensor_diagnosis = shared_errors.action_errors_A_C[
+        ActionErrorIndex.SENSOR_CALIB_DATA_INVALID
+    ]
+    if not isinstance(sensor_diagnosis, SensorCalibDataInvalidDiagnosis):
+        raise TypeError("SENSOR_CALIB_DATA_INVALID diagnosis type mismatch")
+    sensor_diagnosis.update(error_config)
+    sensor_diagnosis.diagnose_calibration_matrices(
+        calibration_conf,
+        ActionErrorIndex.SENSOR_CALIB_DATA_INVALID,
+        lidar2crane_reference_paths=lidar2crane_reference_paths,
+    )
+
+    camera_error_indices = (
+        ActionErrorIndex.CAMERA0_CALIB_DATA_INVALID,
+        ActionErrorIndex.CAMERA1_CALIB_DATA_INVALID,
+        ActionErrorIndex.CAMERA2_CALIB_DATA_INVALID,
+        ActionErrorIndex.CAMERA3_CALIB_DATA_INVALID,
+    )
+    enabled_camera_count = max(0, min(camera_count, len(camera_error_indices)))
+    for camera_index, error_index in enumerate(
+        camera_error_indices[:enabled_camera_count]
+    ):
+        diagnosis = shared_errors.action_errors_A_C[error_index]
+        if not isinstance(diagnosis, CameraXCalibDataInvalidDiagnosis):
+            raise TypeError(f"{error_index.name} diagnosis type mismatch")
+        diagnosis.update(error_config)
+        diagnosis.diagnose_calibration_data(
+            camera_index,
+            calibration_conf,
+            error_index,
+        )

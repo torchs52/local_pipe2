@@ -383,6 +383,19 @@ class SensorCalibDataInvalidDiagnosis(ActionErrorDiagnosisB):
             self.increment_counter()
         return issues
 
+    def diagnose_calibration_matrices(
+        self,
+        calibration_conf: CalibrationConf,
+        err_idx: int,
+        lidar2crane_reference_paths: list[str] | None = None,
+    ) -> tuple[LidarCalibValidationIssue, ...]:
+        issues = self.validate_calibration_matrices(
+            calibration_conf,
+            lidar2crane_reference_paths=lidar2crane_reference_paths,
+        )
+        self.log_output(bool(issues), False, err_idx, issues)
+        return issues
+
     def validate_matrices(
         self,
         matrices: list[NDArray[np.float64]] | NDArray[np.float64],
