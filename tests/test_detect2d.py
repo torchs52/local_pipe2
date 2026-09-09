@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -15,6 +16,7 @@ from argus_synchro.detect2d import (
     _onnx_input_name,
     _onnx_session_providers,
     _trt_cache_directory,
+    create_onnx_inference_session,
     trt_ep_options,
     trt_profile_shape,
 )
@@ -107,6 +109,28 @@ def test_onnx_input_name_reads_model_metadata(monkeypatch: pytest.MonkeyPatch) -
     )
 
     assert _onnx_input_name("model.onnx") == "input_tensor"
+
+
+def test_onnx_session_failure_includes_model_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "argus_synchro.detect2d._onnx_session_providers",
+        lambda *args, **kwargs: ["CPUExecutionProvider"],
+    )
+    original_error = OSError("invalid model")
+    monkeypatch.setattr(
+        "argus_synchro.detect2d.onnxruntime.InferenceSession",
+        MagicMock(side_effect=original_error),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match=r"failed to initialize ONNX session: missing\.onnx",
+    ) as exc_info:
+        create_onnx_inference_session("missing.onnx", batch_size=1)
+
+    assert exc_info.value.__cause__ is original_error
 
 
 def test_tensorrt_provider_uses_model_input_name(

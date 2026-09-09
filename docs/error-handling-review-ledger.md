@@ -183,7 +183,7 @@
   - 検証: `python -m py_compile argus_synchro/device/lidar/mid360_points.py` はpass。最小パケットでフレーム境界、連番、欠番、低点数を検証し、期待どおり品質低下を判定することを確認。Pylanceエラーなし。
 - `detect2d.py` をレビュー。
   - ユーザー方針により、TensorRT I/O binding・エンジン/タイミングキャッシュ・グラフ最適化を含むvendor実装を採用した。モデル初期化のCE013分類と推論時の空検出フォールバックは、既レビューの `object_detect_process.py` が担う。
-  - main側で追加したモデルパス存在確認と、セッション初期化失敗を文脈付き `RuntimeError` として再送出する処理だけをvendor版へ加えた。これにより呼び出し側でモデル読込失敗をCE013として記録できる。
+  - 明示的なモデルパス存在確認は追加せず、ONNX Runtimeのセッション初期化失敗をモデルpath付きの `RuntimeError` として再送出する処理をvendor版へ加えた。これにより呼び出し側でモデル読込失敗をCE013として記録できる。
   - `Detect2dDamoYoloOnnx` と `create_onnx_inference_session` の呼び出し契約は維持され、ワークスペース内の呼び出し箇所に破綻はない。`trt_ep_options` はONNXファイルパスを追加で受け取るvendor署名へ変わったが、直接呼び出すワークスペース内利用者はない。vendor版は設定済みバッチ数と同じフレーム数を前提にするが、通常処理と校正アダプタはいずれも設定カメラ数の固定長バッチを渡すため整合する。
   - 検証: `python -m py_compile argus_synchro/detect2d.py` はpass。`tests/test_detect2d.py` はONNX Runtime未導入のため実行不可。Pylanceの残存指摘はvendor実装におけるONNX Runtime/OpenCVの外部戻り型と既存ローカル注釈に限られる。
 - `AccumulatePoints.py` をレビュー。

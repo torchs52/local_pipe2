@@ -279,15 +279,20 @@ def create_onnx_inference_session(
                 affinity_cores_str,
             )
 
-    return onnxruntime.InferenceSession(
+    providers = _onnx_session_providers(
         onnx_file,
-        sess_options=sess_options,
-        providers=_onnx_session_providers(
-            onnx_file,
-            batch_size,
-            detailed_build_log=detailed_build_log,
-        ),
+        batch_size,
+        detailed_build_log=detailed_build_log,
     )
+    try:
+        return onnxruntime.InferenceSession(
+            onnx_file,
+            sess_options=sess_options,
+            providers=providers,
+        )
+    except Exception as error:
+        # 呼び出し側のCE013診断へ、失敗したモデルの文脈を付けて渡す。
+        raise RuntimeError(f"failed to initialize ONNX session: {onnx_file}") from error
 
 
 class ObjDetectionInterface(ABC):
