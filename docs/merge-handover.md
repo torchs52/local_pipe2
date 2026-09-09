@@ -397,6 +397,7 @@ SHI側だけで確認されたテスト:
 | M-073 | エラー構造・全JSON schema監査 | 現行Vendor/SHI | vendor-keep | verified | shared errors/error config/JSON/tests | enum/tuple整合を固定し、ErrorConfig全62キー・全dataclass fieldをJSONへ明示。LiDAR/IMUのSHI個別parameter対Vendor N共有は要判断差分として維持 |
 | M-078 | CALIB再起動中の設定更新保持 | SHI `ccae2a1` | manual-port | verified | main config reload/tests | 更新時刻をread前に固定し、通常監視とCALIB process再起動直後の更新を取りこぼさない |
 | M-079 | AppManager旧ログ制御削除 | 統合版監査 / ユーザー要件 | vendor-cleanup | verified | AppManager/AppConfig/settings/tests | 未接続の日時directory作成と時間超過SCRUT停止、`logmode`/`logtime`/AppManager `log_dir`を削除。正式loggerの`DEFAULT.debug_log`とSE042監視は維持 |
+| M-080 | AppManager診断・設定再読込み補完 | SHI `2283a0a` / ユーザー要件 | manual-port | verified | AppManager/Jetson/MonitorArgus/tests | Jetson欠測値を数値診断から除外し、温度欠測はセンサ異常診断へ維持。MonitorArgus heartbeat読取り失敗・復帰をFILE_IOへ接続し、settings更新時にerror configを再読込みする。SHIのSCRUT入力generation/gateは不採用 |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 

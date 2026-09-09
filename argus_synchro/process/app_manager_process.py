@@ -185,6 +185,9 @@ class AppManagerProcess(ProcessBase):
         self._ser.state_errors_D[StateErrorDIndex.MEMORY_LEAK_DETECTED].update(
             self._err_config
         )
+        self._ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR].update(
+            self._err_config
+        )
         self._ser.state_errors_D[StateErrorDIndex.LOG_COMPRESSION_FAILURE].update(
             self._err_config
         )
@@ -197,6 +200,18 @@ class AppManagerProcess(ProcessBase):
 
     def _apply_parameters(self) -> None:
         pass
+
+    def _reload_error_config(self) -> None:
+        try:
+            self._ser.shared_err_conf.write()
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            self._logger.warning(
+                "error_config reload failed; keeping previous configuration: %s: %s",
+                type(error).__name__,
+                error,
+            )
+            return
+        self._err_config_load()
 
     def create_producer_and_consumer(self) -> None:
         pass
@@ -553,11 +568,21 @@ class AppManagerProcess(ProcessBase):
     def _monitor_argus_healthy_check(self) -> None:
         now: float = time.perf_counter()
         monitor_argus_last_heartbeat: float | None = None
+        file_io_error = self._ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR]
         try:
-            with open(self._monitor_argus_last_heartbeat_path, "r") as f:
+            with open(self._monitor_argus_last_heartbeat_path) as f:
                 monitor_argus_last_heartbeat = float(f.read().strip())
-        except (FileNotFoundError, ValueError):
-            pass
+        except (OSError, UnicodeError, ValueError, TypeError) as error:
+            result = file_io_error.errors_diagnosis(True)
+            file_io_error.log_output(
+                *result,
+                StateErrorDIndex.FILE_IO_ERROR,
+                str(self._monitor_argus_last_heartbeat_path),
+                "read MonitorArgus heartbeat",
+                f"{type(error).__name__}: {error}",
+            )
+        else:
+            file_io_error.errors_diagnosis(False)
 
         monitor_process_not_responding = self._ser.state_errors_A_C[
             StateErrorIndex.MONITOR_PROCESS_NOT_RESPONDING
@@ -601,45 +626,54 @@ class AppManagerProcess(ProcessBase):
         storage_space_low = self._ser.state_errors_A_C[
             StateErrorIndex.STORAGE_SPACE_LOW
         ]
-        result = storage_space_low.errors_diagnosis(
-            data.disk_root_avail_gib, data.disk_data_avail_gib, now
-        )
-        storage_space_low.log_output(*result, StateErrorIndex.STORAGE_SPACE_LOW)
+        if (
+            data.disk_root_avail_gib is not None
+            and data.disk_data_avail_gib is not None
+        ):
+            result = storage_space_low.errors_diagnosis(
+                data.disk_root_avail_gib, data.disk_data_avail_gib, now
+            )
+            storage_space_low.log_output(*result, StateErrorIndex.STORAGE_SPACE_LOW)
 
         out_of_memory = self._ser.state_errors_A_C[StateErrorIndex.OUT_OF_MEMORY]
-        result = out_of_memory.errors_diagnosis(
-            data.ram_used_mb,
-            data.ram_total_mb,
-            now,
-        )
-        out_of_memory.log_output(*result, StateErrorIndex.OUT_OF_MEMORY)
+        if data.ram_used_mb is not None and data.ram_total_mb is not None:
+            result = out_of_memory.errors_diagnosis(
+                data.ram_used_mb,
+                data.ram_total_mb,
+                now,
+            )
+            out_of_memory.log_output(*result, StateErrorIndex.OUT_OF_MEMORY)
 
         memory_leak_detected = self._ser.state_errors_D[
             StateErrorDIndex.MEMORY_LEAK_DETECTED
         ]
-        result = memory_leak_detected.errors_diagnosis(
-            data.ram_used_mb,
-            now,
-        )
-        memory_leak_detected.log_output(*result, StateErrorDIndex.MEMORY_LEAK_DETECTED)
+        if data.ram_used_mb is not None:
+            result = memory_leak_detected.errors_diagnosis(
+                data.ram_used_mb,
+                now,
+            )
+            memory_leak_detected.log_output(
+                *result, StateErrorDIndex.MEMORY_LEAK_DETECTED
+            )
 
         gpu_performance_degraded = self._ser.state_errors_A_C[
             StateErrorIndex.GPU_PERFORMANCE_DEGRADED
         ]
-        result = gpu_performance_degraded.errors_diagnosis(now, data.gpu_th)
-        gpu_performance_degraded.log_output(
-            *result, StateErrorIndex.GPU_PERFORMANCE_DEGRADED
-        )
+        if data.gpu_th is not None:
+            result = gpu_performance_degraded.errors_diagnosis(now, data.gpu_th)
+            gpu_performance_degraded.log_output(
+                *result, StateErrorIndex.GPU_PERFORMANCE_DEGRADED
+            )
 
         internal_temperature_rise = self._ser.state_errors_A_C[
             StateErrorIndex.INTERNAL_TEMPERATURE_RISE
         ]
-        result = internal_temperature_rise.errors_diagnosis(
-            now, data.tj_c, data.cpu_c, data.gpu_c
-        )
-        internal_temperature_rise.log_output(
-            *result, StateErrorIndex.INTERNAL_TEMPERATURE_RISE
-        )
+        temperatures = (data.tj_c, data.cpu_c, data.gpu_c)
+        if all(temperature is not None for temperature in temperatures):
+            result = internal_temperature_rise.errors_diagnosis(now, *temperatures)
+            internal_temperature_rise.log_output(
+                *result, StateErrorIndex.INTERNAL_TEMPERATURE_RISE
+            )
 
         temperature_sensor_abnormal = self._ser.state_errors_A_C[
             StateErrorIndex.TEMPERATURE_SENSOR_ABNORMAL
@@ -654,12 +688,13 @@ class AppManagerProcess(ProcessBase):
         temperature_rise_trend_continues = self._ser.state_errors_A_C[
             StateErrorIndex.TEMPERATURE_RISE_TREND_CONTINUES
         ]
-        result = temperature_rise_trend_continues.errors_diagnosis(
-            now, data.tj_c, data.cpu_c, data.gpu_c
-        )
-        temperature_rise_trend_continues.log_output(
-            *result, StateErrorIndex.TEMPERATURE_RISE_TREND_CONTINUES
-        )
+        if all(temperature is not None for temperature in temperatures):
+            result = temperature_rise_trend_continues.errors_diagnosis(
+                now, *temperatures
+            )
+            temperature_rise_trend_continues.log_output(
+                *result, StateErrorIndex.TEMPERATURE_RISE_TREND_CONTINUES
+            )
 
     # @log_main()
     def _loop(self) -> None:
@@ -671,6 +706,7 @@ class AppManagerProcess(ProcessBase):
             while self._system_activator.value:
                 if self._sac.last_updated > self._last_updated:
                     self._config_load()
+                    self._reload_error_config()
                     self._apply_parameters()
                     self._logger.info(
                         f"config reloaded (last_updated={self._last_updated})"
