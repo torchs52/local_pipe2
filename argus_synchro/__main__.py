@@ -1228,6 +1228,31 @@ def _write_status_safe(
         )
 
 
+# read中やCALIB再起動中に発生した次の設定更新を取りこぼさないため、
+# 検出した更新時刻をread前に固定し、後発の更新は次回の再読込対象として残す。
+def _reload_app_config_if_updated(
+    sac: SharedAppConfig,
+    app_config: AppConfig,
+    last_updated: int,
+    logger: AppLogger,
+    context: str | None = None,
+) -> tuple[AppConfig, int, bool]:
+    detected_last_updated = sac.last_updated
+    if detected_last_updated <= last_updated:
+        return app_config, last_updated, False
+
+    app_config = sac.read()
+    last_updated = detected_last_updated
+    log_context = f" {context}" if context else ""
+    logger.info(
+        "config reloaded%s (last_updated=%s, operation_mode=%s)",
+        log_context,
+        last_updated,
+        app_config.General.operation_mode,
+    )
+    return app_config, last_updated, True
+
+
 def main() -> None:
     # TODO PyInstaller利用時にmultiprocessingを使用するときに必要 (NSW)
     mp.freeze_support()
@@ -1438,11 +1463,12 @@ def main() -> None:
                 # 暫定：毎回読み込まないと、モード切替のタイミングが上手く拾えない.
                 # app_config = sac.read()
                 # 設定更新の検知
-                if sac.last_updated > last_updated:
-                    app_config = sac.read()
-                    # 最終更新との比較が適切にできていないので、暫定的に下記をコメントアウト.
-                    last_updated = sac.last_updated
-                    _logger.info(f"config reloaded (last_updated={last_updated})")
+                app_config, last_updated, config_reloaded = (
+                    _reload_app_config_if_updated(
+                        sac, app_config, last_updated, _logger
+                    )
+                )
+                if config_reloaded:
                     if current_mode == "CALIB":
                         new_calibmode: CalibMode = get_current_calibmode(sac)
                         if current_calibmode != new_calibmode:
@@ -1450,6 +1476,15 @@ def main() -> None:
                             sac_calib.write(sec)
                             processes.restart()
                             current_calibmode = new_calibmode
+                            app_config, last_updated, _ = (
+                                _reload_app_config_if_updated(
+                                    sac,
+                                    app_config,
+                                    last_updated,
+                                    _logger,
+                                    "after CALIB restart",
+                                )
+                            )
                 # モード遷移判定(現在モードと設定されたモードが食い違う時)
                 set_calib: bool = bool(app_config.General.operation_mode == OPM.CALIB)
                 if current_mode == "SCRUT" and set_calib:

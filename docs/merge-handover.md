@@ -1,6 +1,6 @@
 # Vendor/SHI 統合作業 引継ぎ
 
-最終更新: 2026-09-08
+最終更新: 2026-09-09
 
 この文書は、別PCまたは別のCopilotチャットで統合作業を再開するための入口である。
 作業を始める前に本書を読み、判断・実装・検証が進んだら同じ作業内で更新すること。
@@ -20,7 +20,9 @@
 現在確認した配置は次のとおり。
 
 - 統合先/vendor最新版: このリポジトリ (`local_pipe2`)
-- SHI最新版: `${HOME}/argus_pipe_filter`
+- SHI参照元: `${HOME}/argus_pipe_filter` のコミット済みHEAD
+
+`argus_pipe_filter`の未コミット作業ツリーには、比較作業のため`local_pipe2`の内容がコピーされている場合がある。SHI差分の判定には作業ツリーを使わず、`git show HEAD:<path>`、`git diff HEAD`、またはcommit間比較を使用する。
 
 別PCではSHI側の配置が異なる可能性がある。比較コマンドでは固定絶対パスを埋め込まず、例えば次を設定する。
 
@@ -393,6 +395,7 @@ SHI側だけで確認されたテスト:
 | M-071 | 校正MMAP次バッファ予約 | M-054 / ユーザー要件 | manual-port | verified | calibration facade/contract tests | 校正modeでもindex切替直後に次mapを`IsWriting=1`へ予約し、通常UI MMAPと同じ競合窓対策を適用 |
 | M-072 | 負荷低減閾値ratio設定化 | ユーザー要件 / M-053 | manual-port | verified | AppConfig/settings/file watch/reduced load/tests | 40,000点capacityを維持し、開始0.4・復帰0.3を共通settingsへ追加。起動時と設定再読込成功時に16,000/12,000へ反映 |
 | M-073 | エラー構造・全JSON schema監査 | 現行Vendor/SHI | vendor-keep | verified | shared errors/error config/JSON/tests | enum/tuple整合を固定し、ErrorConfig全62キー・全dataclass fieldをJSONへ明示。LiDAR/IMUのSHI個別parameter対Vendor N共有は要判断差分として維持 |
+| M-078 | CALIB再起動中の設定更新保持 | SHI `ccae2a1` | manual-port | verified | main config reload/tests | 更新時刻をread前に固定し、通常監視とCALIB process再起動直後の更新を取りこぼさない |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -1113,6 +1116,13 @@ SHI側だけで確認されたテスト:
 - `MmapReadWriteErrorDiagnosis`へ共有設定の`mmap_read_write_error`を反映する`update()`と無効時の非計上を追加した。mainは最初のstatus MMAP書込み前に更新し、ErrorMonitorとVisualは各`_err_config_load()`で再読込時にも更新する。
 - 設定ON時は従来どおりMMAPの`OSError`、`ValueError`、`BufferError`、`RuntimeError`をCE011として記録する。設定OFF時はcounterとログを発生させず、各呼出し元の継続・再送出契約は変更していない。
 - CE011専用、CE004、Visual終了処理を含む関連テストは33 passed。変更した診断クラス、ErrorMonitor、CE011テストにVS Code診断はなく、`git diff --check`も成功した。
+
+### 2026-09-09 M-078 CALIB再起動中の設定更新保持
+
+- SHIコミット`ccae2a1`にあったCALIB `processes.restart()`直後の設定再読込をVendorへ移植した。SHI参照repoの未コミット作業ツリーはVendor内容のコピーを含むため、SHI実装の有無はコミット済みHEADと履歴を基準に判定する。
+- 従来は`app_config = sac.read()`の後に`sac.last_updated`を取得していたため、読込み中に次の更新が発生すると、未読の更新時刻だけを取り込んで次回再読込しない競合があった。更新検出時刻をread前に固定し、読込み中に時刻が進んだ場合は次回も更新として検出する共通helperへ変更した。
+- 通常のmain loopと、CALIB mode変更による`processes.restart()`直後の両方で同じhelperを使用する。後者は再起動中に設定が更新された場合、同一loop内で最新設定を取り直す。
+- 専用テストで、read中に更新時刻が進んだ場合の次回再読込と、更新なしの場合のread抑止を確認した。
 
 ## 10. 次のCopilotへの開始指示
 
