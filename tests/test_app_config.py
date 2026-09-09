@@ -16,7 +16,9 @@ def test_settings_debug_log_uses_cli_log_dir() -> None:
 
     expected_log = str(paths.normalize_path("./log/argus3d_core.log", repo_root))
     assert app_config.DEFAULT.debug_log == expected_log
-    assert app_config.AppManager.log_dir == str(directory_config.log_dir)
+    assert not hasattr(app_config.AppManager, "logmode")
+    assert not hasattr(app_config.AppManager, "logtime")
+    assert not hasattr(app_config.AppManager, "log_dir")
 
 
 def test_settings_cli_log_dir_overrides_default() -> None:
@@ -31,7 +33,6 @@ def test_settings_cli_log_dir_overrides_default() -> None:
     app_config = sac.read()
 
     assert app_config.DEFAULT.debug_log == "/var/log/argus3d/argus3d_core.log"
-    assert app_config.AppManager.log_dir == "/var/log/argus3d"
 
 
 def test_calib_outputdir_root_uses_cli_log_dir() -> None:

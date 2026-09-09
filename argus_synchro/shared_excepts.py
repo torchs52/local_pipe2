@@ -250,8 +250,6 @@ class SharedExcepts:
         self.CalMatGen_ex = (
             SharedCalMatGeneratorExcept()
         )  # 校正マトリクス生成 例外処理フラグ
-        # ログモード
-        self.logmode: Synchronized[bool] = create_shared_single_data(False)
         # 共有用フレーム番号
         self.frame_number: Synchronized[int] = create_shared_single_data(0)
 

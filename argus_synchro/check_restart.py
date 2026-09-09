@@ -31,9 +31,7 @@ def check_restart_is_required(old: AppConfig, new: AppConfig) -> bool:
         or old.UI_IF.damp_out != new.UI_IF.damp_out
         or old.UI_IF.damp_mmap != new.UI_IF.damp_mmap
         # AppManager
-        or old.AppManager.logmode != new.AppManager.logmode
         or old.AppManager.interval != new.AppManager.interval
-        or old.AppManager.log_dir != new.AppManager.log_dir
         # Monitor
         # Scrutinizer
         or old.Scrutinizer.s_frame != new.Scrutinizer.s_frame

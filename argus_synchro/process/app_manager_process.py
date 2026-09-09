@@ -4,8 +4,6 @@ import contextlib
 
 # 標準系
 import copy
-import datetime
-import os
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, final
@@ -44,7 +42,6 @@ class AppManagerProcess(ProcessBase):
     __slots__ = (
         "_activator",
         "_app_config",
-        "_dt_start",
         "_err_config",
         "_interval",
         "_last_alive_log_mono",
@@ -54,8 +51,6 @@ class AppManagerProcess(ProcessBase):
         "_log_watch_last_mono",
         "_log_watch_last_mtime",
         "_log_watch_last_size",
-        "_logmode",
-        "_logtime",
         "_num_lidars",
         "_observer",
         "_sac",
@@ -80,8 +75,6 @@ class AppManagerProcess(ProcessBase):
         self._ser: SharedErrors = ser
         self._last_updated: int = 0
         self._app_config: AppConfig
-        self._logmode: int = 0
-        self._logtime: float = 0.0
         self._interval: float = 0.0
         self._num_lidars: int = 0
         self._num_cameras: int = 0
@@ -97,7 +90,6 @@ class AppManagerProcess(ProcessBase):
         self._is_thermal_throttling: bool = False
 
         # _startupで初期化
-        self._dt_start: datetime.datetime
         self._observer: BaseObserver
         self._js_th: JetsonMonitor | None = None
         self._err_config: ErrorConfig
@@ -116,10 +108,6 @@ class AppManagerProcess(ProcessBase):
             self._app_config.General.in_factory
         )
 
-        # ログ取得時は1を設定.(default: 0)
-        self._logmode = self._app_config.AppManager.logmode
-        # ログ取得時間(sec)
-        self._logtime = self._app_config.AppManager.logtime
         # 観測間隔(sec)
         self._interval = self._app_config.AppManager.interval
         self._num_lidars = self._app_config.Lidar.count
@@ -330,23 +318,6 @@ class AppManagerProcess(ProcessBase):
             except OSError:
                 self._log_watch_last_mtime = 0.0
                 self._log_watch_last_size = -1
-        # 開始時間
-        self._dt_start: datetime.datetime = datetime.datetime.now()
-        self._log_start_mono = time.monotonic()
-        self._logger.info("開始時刻")
-        #############################################
-        # ここに記載のlog機能は、基本的に使わず、全面的に書き換える。
-        if self._logmode == 1:
-            #####必要に応じて変更(既存フォルダ指定)#######
-            save_dir: str = self._app_config.AppManager.log_dir
-            ###########################################
-            date_str: str = self._dt_start.strftime("%Y%m%d%H%M")
-
-            dir_path: str = f"{save_dir}/{date_str}"
-            if not os.path.exists(dir_path):
-                os.mkdir(dir_path)
-
-        #############################################
 
         monitor_argus_last_heartbeat_path = (
             self._app_config.AppManager.monitor_argus_last_heartbeat_path
@@ -801,21 +772,7 @@ class AppManagerProcess(ProcessBase):
                 self._is_thermal_throttling
             )
 
-            #############################################
-            # 経過時間の計測
-            elapsed_sec = time.monotonic() - self._log_start_mono
-            if self._logmode and elapsed_sec > self._logtime:
-                self._logger.info("=======================================")
-                self._logger.info(
-                    "%dsec has elapsed. Stop the logging.",
-                    elapsed.seconds,
-                )
-                self._logger.info("=======================================")
-                self._scrut_end_notification()
-
             if self._sac.is_restart_required.value:
                 self._sec.AppMan_ex.IsFinished.value = True
                 self._app_end_notification()
-
-            ##############################################
         return previous_scrut_frame, present_scrut_frame, not_active_count

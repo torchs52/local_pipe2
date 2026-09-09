@@ -60,8 +60,6 @@ _RULES: tuple[SettingRule, ...] = (
     SettingRule("CalibUI_IF", "damp_out", bool, True),
     SettingRule("CalibUI_IF", "show_trajectory", bool, True),
     SettingRule("CalibUI_IF", "show_image2d3d", bool, True),
-    SettingRule("AppManager", "logmode", int, 0, 0, 3),
-    SettingRule("AppManager", "logtime", float, 4_294_967_295.0, 0.0, 4_294_967_295.0),
     SettingRule("Lidar", "count", int, 2, 1, 6),
     SettingRule("Lidar", "accum_time", float, 0.1, 0.001, 10.0),
     SettingRule("camera", "count", int, 3, 1, 4),

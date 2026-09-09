@@ -75,11 +75,8 @@ class CalibUIIFConf:
 
 @dataclass(frozen=True, slots=True)
 class AppManagerConf:
-    logmode: int
-    logtime: float
     interval: float
     JudegeStopThr: int
-    log_dir: str
     monitor_argus_last_heartbeat_path: str
 
 
@@ -519,11 +516,8 @@ class AppConfig:
         )
 
         self.AppManager = AppManagerConf(
-            logmode=ini.getint("AppManager", "logmode"),
-            logtime=ini.getfloat("AppManager", "logtime"),
             interval=ini.getfloat("AppManager", "interval"),
             JudegeStopThr=ini.getint("AppManager", "JudegeStopThr"),
-            log_dir=_path(ini.get("AppManager", "log_dir")),
             monitor_argus_last_heartbeat_path=_path(
                 ini.get("AppManager", "monitor_argus_last_heartbeat_path")
             ),

@@ -396,6 +396,7 @@ SHI側だけで確認されたテスト:
 | M-072 | 負荷低減閾値ratio設定化 | ユーザー要件 / M-053 | manual-port | verified | AppConfig/settings/file watch/reduced load/tests | 40,000点capacityを維持し、開始0.4・復帰0.3を共通settingsへ追加。起動時と設定再読込成功時に16,000/12,000へ反映 |
 | M-073 | エラー構造・全JSON schema監査 | 現行Vendor/SHI | vendor-keep | verified | shared errors/error config/JSON/tests | enum/tuple整合を固定し、ErrorConfig全62キー・全dataclass fieldをJSONへ明示。LiDAR/IMUのSHI個別parameter対Vendor N共有は要判断差分として維持 |
 | M-078 | CALIB再起動中の設定更新保持 | SHI `ccae2a1` | manual-port | verified | main config reload/tests | 更新時刻をread前に固定し、通常監視とCALIB process再起動直後の更新を取りこぼさない |
+| M-079 | AppManager旧ログ制御削除 | 統合版監査 / ユーザー要件 | vendor-cleanup | verified | AppManager/AppConfig/settings/tests | 未接続の日時directory作成と時間超過SCRUT停止、`logmode`/`logtime`/AppManager `log_dir`を削除。正式loggerの`DEFAULT.debug_log`とSE042監視は維持 |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
