@@ -142,3 +142,68 @@ def test_startup_sensor_unclassified_error_is_reraised() -> None:
         raise AssertionError("expected unclassified validation error")
 
     sensor_diagnosis.log_output.assert_not_called()
+
+
+def test_startup_camera_validation_error_is_reported_and_next_camera_runs() -> None:
+    error = FileNotFoundError("camera0 calibration disappeared")
+    sensor_diagnosis = MagicMock(spec=SensorCalibDataInvalidDiagnosis)
+    camera_diagnoses = [
+        MagicMock(spec=CameraXCalibDataInvalidDiagnosis) for _ in range(4)
+    ]
+    camera_diagnoses[0].diagnose_calibration_data.side_effect = error
+    camera_diagnoses[0].excepts_diagnosis.return_value = True
+    shared_errors = SimpleNamespace(
+        action_errors_A_C={
+            ActionErrorIndex.SENSOR_CALIB_DATA_INVALID: sensor_diagnosis,
+            ActionErrorIndex.CAMERA0_CALIB_DATA_INVALID: camera_diagnoses[0],
+            ActionErrorIndex.CAMERA1_CALIB_DATA_INVALID: camera_diagnoses[1],
+            ActionErrorIndex.CAMERA2_CALIB_DATA_INVALID: camera_diagnoses[2],
+            ActionErrorIndex.CAMERA3_CALIB_DATA_INVALID: camera_diagnoses[3],
+        }
+    )
+
+    diagnose_startup_calibration_data(
+        shared_errors,
+        MagicMock(),
+        [],
+        camera_count=2,
+        error_config=ErrorConfig(),
+    )
+
+    camera_diagnoses[0].excepts_diagnosis.assert_called_once_with(error)
+    camera_diagnoses[0].log_output.assert_called_once_with(
+        True,
+        False,
+        ActionErrorIndex.CAMERA0_CALIB_DATA_INVALID,
+        error,
+    )
+    camera_diagnoses[1].diagnose_calibration_data.assert_called_once()
+
+
+def test_startup_camera_unclassified_error_is_reraised() -> None:
+    error = TypeError("unexpected camera validator failure")
+    sensor_diagnosis = MagicMock(spec=SensorCalibDataInvalidDiagnosis)
+    camera_diagnosis = MagicMock(spec=CameraXCalibDataInvalidDiagnosis)
+    camera_diagnosis.diagnose_calibration_data.side_effect = error
+    camera_diagnosis.excepts_diagnosis.return_value = False
+    shared_errors = SimpleNamespace(
+        action_errors_A_C={
+            ActionErrorIndex.SENSOR_CALIB_DATA_INVALID: sensor_diagnosis,
+            ActionErrorIndex.CAMERA0_CALIB_DATA_INVALID: camera_diagnosis,
+        }
+    )
+
+    try:
+        diagnose_startup_calibration_data(
+            shared_errors,
+            MagicMock(),
+            [],
+            camera_count=1,
+            error_config=ErrorConfig(),
+        )
+    except TypeError as caught:
+        assert caught is error
+    else:
+        raise AssertionError("expected unclassified camera validation error")
+
+    camera_diagnosis.log_output.assert_not_called()

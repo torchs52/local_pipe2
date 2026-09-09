@@ -1130,6 +1130,7 @@ SHI側だけで確認されたテスト:
 - `SensorCalibDataInvalidDiagnosis`へ検証・counter・ログを完結する`diagnose_calibration_matrices()`を追加した。複数診断の選択とcamera slot対応は、indexと診断collectionを所有する`shared_errors.py`のmodule-level関数へ置き、`SharedErrors`の公開APIと初期化構造は変更しない。
 - camera countは従来どおり0～4件へ制限し、負数でcamera診断を誤実行しない。CE006～CE010の判定条件、counter、ログ文面、設定ON/OFF契約は変更していない。
 - 起動時LiDAR validatorから直接送出される`OSError`、`UnicodeError`、`ValueError`は、CE005へ誤分類せずCE006としてcounterと発生元tracebackを記録し、後続のcamera診断と起動を継続する。`TypeError`などCE006の対象外例外は実装異常を隠さないよう再送出する。
+- 起動時camera validatorから直接送出される同じ対象例外も、camera indexに対応するCE007～CE010としてcounterと発生元tracebackを記録する。一台の対象例外で残りcameraの診断を打ち切らず、対象外例外だけを再送出する。
 
 ## 10. 次のCopilotへの開始指示
 

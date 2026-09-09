@@ -100,6 +100,27 @@ def test_camera_calibration_diagnosis_owns_camera_error_log(tmp_path: Path) -> N
     )
 
 
+def test_camera_calibration_diagnosis_logs_validation_exception() -> None:
+    diagnosis = _diagnosis()
+    diagnosis._logger = MagicMock()
+    error = FileNotFoundError("camera0 calibration disappeared")
+
+    assert diagnosis.excepts_diagnosis(error) is True
+    diagnosis.log_output(
+        True,
+        False,
+        ActionErrorIndex.CAMERA0_CALIB_DATA_INVALID,
+        error,
+    )
+
+    assert diagnosis.err_cnt.value == 1
+    diagnosis._logger.error.assert_called_once_with(
+        "CE007: CAMERA_CALIB_DATA_INVALID: validation failed: "
+        "FileNotFoundError: camera0 calibration disappeared",
+        exc_info=True,
+    )
+
+
 def test_camera3_slot_reports_missing_configuration() -> None:
     calibration = SimpleNamespace(
         fisheye_param_file="missing.json",

@@ -613,8 +613,18 @@ def diagnose_startup_calibration_data(
         if not isinstance(diagnosis, CameraXCalibDataInvalidDiagnosis):
             raise TypeError(f"{error_index.name} diagnosis type mismatch")
         diagnosis.update(error_config)
-        diagnosis.diagnose_calibration_data(
-            camera_index,
-            calibration_conf,
-            error_index,
-        )
+        try:
+            diagnosis.diagnose_calibration_data(
+                camera_index,
+                calibration_conf,
+                error_index,
+            )
+        except Exception as error:
+            if not diagnosis.excepts_diagnosis(error):
+                raise
+            diagnosis.log_output(
+                True,
+                False,
+                error_index,
+                error,
+            )

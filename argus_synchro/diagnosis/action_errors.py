@@ -536,8 +536,20 @@ class CameraXCalibDataInvalidDiagnosis(ActionErrorDiagnosisB):
             self._error_log_output(err_idx, *args)
 
     def _error_log_output(self, err_idx: int, *args: object) -> None:
+        if len(args) == 1 and isinstance(args[0], Exception):
+            error = args[0]
+            self._logger.error(
+                self.get_error_no(err_idx)
+                + ": CAMERA_CALIB_DATA_INVALID: validation failed: "
+                + f"{type(error).__name__}: {error}",
+                exc_info=True,
+            )
+            return
         if len(args) != 1 or not isinstance(args[0], tuple):
-            raise ValueError("args must be (tuple[CameraCalibValidationIssue, ...],)")
+            raise ValueError(
+                "args must be (Exception,) or "
+                "(tuple[CameraCalibValidationIssue, ...],)"
+            )
         issue_args = cast(tuple[object, ...], args[0])
         if not issue_args or not all(
             isinstance(issue, CameraCalibValidationIssue) for issue in issue_args
