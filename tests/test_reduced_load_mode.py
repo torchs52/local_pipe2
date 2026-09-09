@@ -1,3 +1,6 @@
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
 import pytest
 
 from argus_synchro.diagnosis.reduced_load_mode import (
@@ -6,6 +9,7 @@ from argus_synchro.diagnosis.reduced_load_mode import (
     PROC_SPEED_SLOW,
     ReducedLoadMode,
 )
+from argus_synchro.process.visual_process import VisualProcess
 
 
 def test_force_enabled_environment_keeps_mode_enabled(
@@ -59,3 +63,27 @@ def test_point_count_thresholds_are_configurable_ratios() -> None:
 
     assert mode.many_points_threshold == expected_many_points
     assert mode.few_points_threshold == expected_few_points
+
+
+def test_visual_config_load_applies_reduced_load_ratios(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app_config = SimpleNamespace(
+        ReducedLoadMode=SimpleNamespace(
+            many_points_ratio=0.5,
+            few_points_ratio=0.25,
+        )
+    )
+    process = object.__new__(VisualProcess)
+    process._sac = SimpleNamespace(read=MagicMock(return_value=app_config), last_updated=2)
+    process._ser = SimpleNamespace(reduced_load_mode=MagicMock())
+    process._logger = MagicMock()
+    monkeypatch.setattr(VisualProcess, "_get_SceneDescription", MagicMock())
+    monkeypatch.setattr(
+        "argus_synchro.process.visual_process.argus_synchro_lib.scene.Scene",
+        MagicMock(),
+    )
+
+    process._config_load()
+
+    process._ser.reduced_load_mode.configure.assert_called_once_with(0.5, 0.25)

@@ -1073,10 +1073,6 @@ def load_config(
             ser.diagnosis_runtime_policy.update_in_factory(
                 app_config.General.in_factory
             )
-            ser.reduced_load_mode.configure(
-                app_config.ReducedLoadMode.many_points_ratio,
-                app_config.ReducedLoadMode.few_points_ratio,
-            )
             sec = SharedExcepts(app_config=app_config, app_manager_ex=ser.AppMan_ex)
 
             calib_settings_path = str(

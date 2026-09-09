@@ -182,7 +182,7 @@ def test_load_config_dispatches_target_exception_to_diagnosis(monkeypatch) -> No
     )
     assert diagnosis.err_cnt.value == 1
     assert shared_errors.diagnosis_runtime_policy.in_factory is False
-    reduced_load_mode.configure.assert_called_once_with(0.4, 0.3)
+    reduced_load_mode.configure.assert_not_called()
     diagnosis._logger.error.assert_called_once_with(
         "CE005: CONFIG_FILE_MISSING: FileNotFoundError: settings.ini",
         exc_info=True,

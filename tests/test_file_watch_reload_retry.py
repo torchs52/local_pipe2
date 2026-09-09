@@ -49,7 +49,8 @@ def test_reload_retry_absorbs_transient_atomic_save_failure() -> None:
     assert shared_app_config.write.call_count == 3
     assert sleep.call_args_list == [call(0.2), call(0.2)]
     diagnosis.excepts_diagnosis.assert_not_called()
-    handler._ser.reduced_load_mode.configure.assert_called_once_with(0.4, 0.3)
+    shared_app_config.read.assert_not_called()
+    handler._ser.reduced_load_mode.configure.assert_not_called()
     logger.error.assert_not_called()
     assert path not in handler.events
 

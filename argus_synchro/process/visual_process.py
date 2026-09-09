@@ -203,6 +203,11 @@ class VisualProcess(ProcessBase):
     def _config_load(self) -> None:
         self._app_config: AppConfig = self._sac.read()
         self._last_updated: int = self._sac.last_updated
+        reduced_load_config = self._app_config.ReducedLoadMode
+        self._ser.reduced_load_mode.configure(
+            reduced_load_config.many_points_ratio,
+            reduced_load_config.few_points_ratio,
+        )
         self.scene = argus_synchro_lib.scene.Scene(
             self._get_SceneDescription(),
             lambda level, msg: self._logger.log(int(level), msg),
