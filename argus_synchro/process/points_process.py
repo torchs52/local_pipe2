@@ -229,8 +229,22 @@ class PointsProviderProcess(InputProcess[PointCloudData]):
             self._clockPprovider = PerfCounterClockProvider()
 
     def _read_lidar_config(self) -> None:
-        with open(self._app_config.Lidar.path, encoding="utf-8") as f:
-            self._lidar_config = json.loads(f.read())
+        config_path = self._app_config.Lidar.path
+        file_io_error = self._ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR]
+        try:
+            with open(config_path, encoding="utf-8") as f:
+                self._lidar_config = json.loads(f.read())
+        except (OSError, json.JSONDecodeError, UnicodeError, TypeError, ValueError) as error:
+            result = file_io_error.errors_diagnosis(True)
+            file_io_error.log_output(
+                *result,
+                StateErrorDIndex.FILE_IO_ERROR,
+                config_path,
+                "read config_lidars.json",
+                f"{type(error).__name__}: {error}",
+            )
+            raise
+        file_io_error.errors_diagnosis(False)
         # 挿入順でキー一覧を取得
         keys = list(
             self._lidar_config.keys(),

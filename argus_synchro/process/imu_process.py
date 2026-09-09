@@ -26,7 +26,11 @@ from argus_synchro.process.synchronizer import ProcessActivator
 from argus_synchro.profiler import log_target
 from argus_synchro.profiler.prof_mode import ProfCategory
 from argus_synchro.shared_app_config import SharedAppConfig
-from argus_synchro.shared_errors import ModuleErrorIndex, SharedErrors
+from argus_synchro.shared_errors import (
+    ModuleErrorIndex,
+    SharedErrors,
+    StateErrorDIndex,
+)
 from argus_synchro.shared_excepts import INVALID_TIMESTAMP, SharedIMUExcept
 
 if TYPE_CHECKING:
@@ -93,6 +97,9 @@ class ImuProviderProcess(InputProcess[ImuData]):
         self._ser.module_errors[ModuleErrorIndex.IMU_MODULE_ERROR].update(
             self._err_config
         )
+        self._ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR].update(
+            self._err_config
+        )
 
     def _log_register(self) -> None:
         super()._log_register()
@@ -156,8 +163,22 @@ class ImuProviderProcess(InputProcess[ImuData]):
         pass
 
     def _read_lidar_config(self) -> None:
-        with open(self._app_config.Lidar.path, encoding="utf-8") as f:
-            self._lidar_config = json.loads(f.read())
+        config_path = self._app_config.Lidar.path
+        file_io_error = self._ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR]
+        try:
+            with open(config_path, encoding="utf-8") as f:
+                self._lidar_config = json.loads(f.read())
+        except (OSError, json.JSONDecodeError, UnicodeError, TypeError, ValueError) as error:
+            result = file_io_error.errors_diagnosis(True)
+            file_io_error.log_output(
+                *result,
+                StateErrorDIndex.FILE_IO_ERROR,
+                config_path,
+                "read config_lidars.json",
+                f"{type(error).__name__}: {error}",
+            )
+            raise
+        file_io_error.errors_diagnosis(False)
         # 挿入順でキー一覧を取得
         keys = list(
             self._lidar_config.keys(),

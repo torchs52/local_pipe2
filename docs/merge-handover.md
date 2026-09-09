@@ -326,7 +326,7 @@ SHI側だけで確認されたテスト:
 | M-006 | 負荷低減モード | SHI `2283a0a` | manual-port | verified | vendor reduced-load制御/accumulation/tests | vendor閾値を維持し、モード別deque実効上限だけを追加 |
 | M-007 | ファイル入力ループ | SHI `e2362ec` ほか | manual-port | verified | app config/process/provider/tests | 周辺監視のcamera/LiDAR/CAN/GetDataを終了frame後に開始frameへ同期して戻す。校正・実機入力は対象外 |
 | M-008 | 周辺監視カメラ動画入力I/O | SHI `image_process.py` | manual-port | verified | vendor `image_process.py`, tests | 動画open/initだけを診断、専用テスト2件pass |
-| M-009 | カメラJSON読取検証 | SHI `image_process.py` | drop | verified | docs/固有CE設計 | SHIの汎用FILE_IO事前検証は不採用。通常設定はCE005、fisheyeはCE007-CE010で別途接続する |
+| M-009 | カメラJSON読取検証 | SHI `image_process.py` | manual-port | verified | main/固有CE設計/tests | SHIの一律FILE_IOは不採用。`use_shi_lib`時の通常camera設定JSONは起動設定境界でCE005、fisheyeはCE007-CE010へ接続する |
 | M-010 | 重要度D状態診断のエッジ化 | SHI `error_diagnosis.py` | shi-adopt | verified | vendor D基底, tests | vendor index/APIを維持し、DETECTION/KEEPING/RECOVERY/NORMALを返す |
 | M-011 | モジュール例外traceback | vendor `state_d_errors.py` | vendor-keep | verified | module error classes, tests | vendorの `exc_info=True` で実ファイルへのtraceback出力を確認 |
 | M-012 | 継続モジュール例外の時間間引き | SHI `_ModuleError` | manual-port | verified | error config/module errors/tests | 全16種へ展開。vendorのprocess呼出し、index、引数、ログ文面を維持 |
@@ -398,6 +398,7 @@ SHI側だけで確認されたテスト:
 | M-078 | CALIB再起動中の設定更新保持 | SHI `ccae2a1` | manual-port | verified | main config reload/tests | 更新時刻をread前に固定し、通常監視とCALIB process再起動直後の更新を取りこぼさない |
 | M-079 | AppManager旧ログ制御削除 | 統合版監査 / ユーザー要件 | vendor-cleanup | verified | AppManager/AppConfig/settings/tests | 未接続の日時directory作成と時間超過SCRUT停止、`logmode`/`logtime`/AppManager `log_dir`を削除。正式loggerの`DEFAULT.debug_log`とSE042監視は維持 |
 | M-080 | AppManager診断・設定再読込み補完 | SHI `2283a0a` / ユーザー要件 | manual-port | verified | AppManager/Jetson/MonitorArgus/tests | Jetson欠測値を数値診断から除外し、温度欠測はセンサ異常診断へ維持。MonitorArgus heartbeat読取り失敗・復帰をFILE_IOへ接続し、settings更新時にerror configを再読込みする。SHIのSCRUT入力generation/gateは不採用 |
+| M-081 | IMU/Points LiDAR設定JSON I/O | SHI `2283a0a` | manual-port | verified | IMU/Points/FILE_IO/tests | `config_lidars.json`のI/O・文字コード・JSON解析失敗をFILE_IOへ接続し、成功時に復帰入力を渡す。IMUでもFILE_IO parameterを初期化する |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 

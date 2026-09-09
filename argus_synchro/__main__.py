@@ -1069,6 +1069,9 @@ def load_config(
 
             sac = SharedAppConfig(directory_config)
             app_config: AppConfig = sac.read()
+            if app_config.DEFAULT.use_shi_lib:
+                with open(app_config.camera.config_file, encoding="utf-8") as file:
+                    json.load(file)
             # in_factoryはメンテナンスモードを表す既存設定キー。
             ser.diagnosis_runtime_policy.update_in_factory(
                 app_config.General.in_factory
