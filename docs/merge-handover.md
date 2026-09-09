@@ -399,6 +399,8 @@ SHI側だけで確認されたテスト:
 | M-079 | AppManager旧ログ制御削除 | 統合版監査 / ユーザー要件 | vendor-cleanup | verified | AppManager/AppConfig/settings/tests | 未接続の日時directory作成と時間超過SCRUT停止、`logmode`/`logtime`/AppManager `log_dir`を削除。正式loggerの`DEFAULT.debug_log`とSE042監視は維持 |
 | M-080 | AppManager診断・設定再読込み補完 | SHI `2283a0a` / ユーザー要件 | manual-port | verified | AppManager/Jetson/MonitorArgus/tests | Jetson欠測値を数値診断から除外し、温度欠測はセンサ異常診断へ維持。MonitorArgus heartbeat読取り失敗・復帰をFILE_IOへ接続し、settings更新時にerror configを再読込みする。SHIのSCRUT入力generation/gateは不採用 |
 | M-081 | IMU/Points LiDAR設定JSON I/O | SHI `2283a0a` | manual-port | verified | IMU/Points/FILE_IO/tests | `config_lidars.json`のI/O・文字コード・JSON解析失敗をFILE_IOへ接続し、成功時に復帰入力を渡す。IMUでもFILE_IO parameterを初期化する |
+| M-082 | PointsRefine初期変換CSV I/O | SHI `2283a0a` | manual-port | verified | PointsRefine/FILE_IO/tests | initial transform CSVのI/O・文字コード・値・型エラーをFILE_IOへ接続して再送出し、成功時に復帰入力を渡す。SHIで欠けていた復帰処理を補完 |
+| M-083 | CPU affinity JSON検証 | SHI `2283a0a` | manual-port | verified | ProcessManager/tests | JSON読込み失敗、root型、process entryの欠損・空・型不正を専用例外へ統一。core IDは`bool`を除く整数だけを許可し、psutil適用時の実行時検証は維持 |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -1134,6 +1136,12 @@ SHI側だけで確認されたテスト:
 - camera countは従来どおり0～4件へ制限し、負数でcamera診断を誤実行しない。CE006～CE010の判定条件、counter、ログ文面、設定ON/OFF契約は変更していない。
 - 起動時LiDAR validatorから直接送出される`OSError`、`UnicodeError`、`ValueError`は、CE005へ誤分類せずCE006としてcounterと発生元tracebackを記録し、後続のcamera診断と起動を継続する。`TypeError`などCE006の対象外例外は実装異常を隠さないよう再送出する。
 - 起動時camera validatorから直接送出される同じ対象例外も、camera indexに対応するCE007～CE010としてcounterと発生元tracebackを記録する。一台の対象例外で残りcameraの診断を打ち切らず、対象外例外だけを再送出する。
+
+### 2026-09-09 M-082・M-083 設定補助ファイル検証
+
+- PointsRefineが読むinitial transform CSVについて、`OSError`、`UnicodeError`、`ValueError`、`TypeError`をDレベル`FILE_IO_ERROR`へパス、操作、例外詳細付きで接続した。診断後は元例外を再送出して既存process lifecycleを維持し、正常読込み時は復帰入力を渡す。SHIで欠けていた成功時の復帰処理を補完した。
+- `ProcessManager.get_process_cpu_affinity()`はJSONの読込み・decode失敗、rootの非object、process entryの欠損・空list・非list・非整数要素を`ProcessCpuAffinityConfigError`へ統一した。Pythonの`bool`は`int`の派生型だがcore IDとしては拒否する。実在core番号と適用可否は従来どおりpsutil境界で検証する。
+- PointsRefine CSV、ProcessManager、既存LiDAR設定FILE_IOの関連テストは22 passed。対象ファイルのVS Code diagnostics、Ruff、`compileall`、`git diff --check`は成功した。
 
 ## 10. 次のCopilotへの開始指示
 

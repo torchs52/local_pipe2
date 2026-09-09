@@ -169,9 +169,22 @@ class PointsRefineProcess(ProcessBase):
     def _config_load(self) -> None:
         self._app_config: AppConfig = self._sac.read()
         self._last_updated: int = self._sac.last_updated
-        self._init_r, self._init_t = SubScrutinizer.load_transform_csv(
-            self._app_config.General.initial_transform_file,
-        )
+        file_io_error = self._ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR]
+        file_io_error.update(self._ser.shared_err_conf.read())
+        csv_path = self._app_config.General.initial_transform_file
+        try:
+            self._init_r, self._init_t = SubScrutinizer.load_transform_csv(csv_path)
+        except (OSError, UnicodeError, ValueError, TypeError) as error:
+            result = file_io_error.errors_diagnosis(True)
+            file_io_error.log_output(
+                *result,
+                StateErrorDIndex.FILE_IO_ERROR,
+                csv_path,
+                "read initial transform CSV",
+                f"{type(error).__name__}: {error}",
+            )
+            raise
+        file_io_error.errors_diagnosis(False)
 
     def _err_config_load(self) -> None:
         self._err_config = self._ser.shared_err_conf.read()
@@ -181,6 +194,9 @@ class PointsRefineProcess(ProcessBase):
             self._err_config
         )
         self._ser.state_errors_D[StateErrorDIndex.ARRAY_SHAPE_ERROR].update(
+            self._err_config
+        )
+        self._ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR].update(
             self._err_config
         )
         self._ser.action_errors_A_C[

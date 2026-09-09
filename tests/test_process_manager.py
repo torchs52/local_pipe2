@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import multiprocessing as mp
 import time
 from multiprocessing.sharedctypes import Synchronized
 from multiprocessing.synchronize import Barrier
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -11,7 +13,11 @@ import pytest
 from argus_synchro.__main__ import stop_error_monitor
 from argus_synchro.common.app_logger import AppLoggerFactory
 from argus_synchro.common.paths import DirectoryConfig
-from argus_synchro.process.process import ProcessBase, ProcessManager
+from argus_synchro.process.process import (
+    ProcessBase,
+    ProcessCpuAffinityConfigError,
+    ProcessManager,
+)
 from argus_synchro.process.synchronizer import ProcessActivator
 from argus_synchro.shared_excepts import SharedGetDataExcept, SharedProcessExcept
 
@@ -97,6 +103,57 @@ def _wait_loop_started(loop_started_count: Synchronized[int], expected: int) -> 
             return
         time.sleep(0.02)
     pytest.fail(f"loop did not start: got {loop_started_count.value}, expected {expected}")
+
+
+def test_get_process_cpu_affinity_accepts_non_empty_integer_list(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "process_cpu_affinity.json"
+    config_path.write_text('{"TargetProcess": [0, 2]}', encoding="utf-8")
+    manager, _ = _make_manager()
+
+    assert manager.get_process_cpu_affinity(
+        str(config_path), "TargetProcess"
+    ) == [0, 2]
+
+
+@pytest.mark.parametrize(
+    "content",
+    (
+        "[]",
+        '{"TargetProcess": []}',
+        '{"TargetProcess": "0"}',
+        '{"TargetProcess": [0, true]}',
+        '{"OtherProcess": [0]}',
+    ),
+)
+def test_get_process_cpu_affinity_rejects_invalid_structure(
+    tmp_path: Path,
+    content: str,
+) -> None:
+    config_path = tmp_path / "process_cpu_affinity.json"
+    config_path.write_text(content, encoding="utf-8")
+    manager, _ = _make_manager()
+
+    with pytest.raises(ProcessCpuAffinityConfigError):
+        manager.get_process_cpu_affinity(str(config_path), "TargetProcess")
+
+
+@pytest.mark.parametrize("create_file", (True, False))
+def test_get_process_cpu_affinity_wraps_read_errors(
+    tmp_path: Path,
+    create_file: bool,
+) -> None:
+    config_path = tmp_path / "process_cpu_affinity.json"
+    if create_file:
+        config_path.write_text("{", encoding="utf-8")
+    manager, _ = _make_manager()
+
+    with pytest.raises(ProcessCpuAffinityConfigError) as exc_info:
+        manager.get_process_cpu_affinity(str(config_path), "TargetProcess")
+
+    assert str(config_path) in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, (OSError, json.JSONDecodeError))
 
 
 def test_stop_error_monitor_forces_shutdown_before_close() -> None:

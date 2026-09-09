@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from multiprocessing import Process
 from multiprocessing.synchronize import Event
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Generic, Self, TypeVar, final
+from typing import TYPE_CHECKING, Any, Generic, Self, TypeVar, cast, final
 
 import psutil
 from tqdm import tqdm
@@ -47,6 +47,10 @@ def _to_trace_safe_name(name: str) -> str:
 
 class CoreAffinityError(RuntimeError):
     pass
+
+
+class ProcessCpuAffinityConfigError(RuntimeError):
+    """CPU affinity JSONの読み込みまたは検証に失敗した場合に送出する。"""
 
 
 class ProcessBase(IClosable, ABC):
@@ -482,13 +486,30 @@ class ProcessManager(Closable):
     def get_process_cpu_affinity(
         self, json_path: str, process_name: str
     ) -> list[int] | None:
-        with open(json_path) as json_file:
-            process_cpu_affinity: dict[str, list[int]] = json.load(json_file)
-        affinity_cores: list[int] | None = process_cpu_affinity.get(process_name)
-        if affinity_cores is None or not affinity_cores:
-            raise CoreAffinityError(f"CPU affinity failed : name={process_name}")
+        try:
+            with open(json_path) as json_file:
+                process_cpu_affinity: object = json.load(json_file)
+        except (OSError, json.JSONDecodeError, UnicodeError, TypeError, ValueError) as error:
+            raise ProcessCpuAffinityConfigError(
+                f"read process CPU affinity JSON failed: "
+                f"path={json_path}, error={type(error).__name__}: {error}"
+            ) from error
+        if not isinstance(process_cpu_affinity, dict):
+            raise ProcessCpuAffinityConfigError(
+                f"process CPU affinity JSON root must be an object: path={json_path}"
+            )
+        affinity_cores: object = process_cpu_affinity.get(process_name)
+        if (
+            not isinstance(affinity_cores, list)
+            or not affinity_cores
+            or not all(type(core) is int for core in affinity_cores)
+        ):
+            raise ProcessCpuAffinityConfigError(
+                f"process CPU affinity entry is missing or invalid: "
+                f"path={json_path}, process={process_name}"
+            )
 
-        return affinity_cores
+        return cast(list[int], affinity_cores)
 
     def update_cpu_affinity(self, app_config: AppConfig) -> None:
         if not app_config.General.enable_cpu_affinity:
