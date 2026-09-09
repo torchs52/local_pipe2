@@ -178,4 +178,4 @@ def test_crane_model_file_missing_is_updated_by_owning_process(
     action_errors.__getitem__.assert_any_call(
         ActionErrorIndex.CRANE_MODEL_FILE_MISSING
     )
-    diagnosis.update.assert_called_once_with(error_config)
+    diagnosis.update.assert_any_call(error_config)

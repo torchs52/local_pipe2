@@ -533,8 +533,15 @@ class MmapReadWriteErrorDiagnosis(ActionErrorDiagnosisB):
 
     def __init__(self) -> None:
         super().__init__()
+        self.param: err_conf.MmapReadWriteErrorParameters
+
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.mmap_read_write_error
+        self.is_enabled = self.param.is_enabled
 
     def excepts_diagnosis(self, e: Exception) -> bool:
+        if not self.is_enabled:
+            return False
         is_target = isinstance(
             e,
             (

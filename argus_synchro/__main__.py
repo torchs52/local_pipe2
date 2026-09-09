@@ -1162,6 +1162,7 @@ def load_err_config(ser: SharedErrors) -> None:
     ser.action_errors_A_C[ActionErrorIndex.OPERATION_MODE_TRANSITION_ERROR].update(
         err_config
     )
+    ser.action_errors_A_C[ActionErrorIndex.MMAP_READ_WRITE_ERROR].update(err_config)
     ser.action_errors_A_C[ActionErrorIndex.REBOOT_LOOP_DETECTED].update(err_config)
     ser.action_errors_A_C[ActionErrorIndex.PROCESS_STARTUP_ERROR].update(err_config)
     ser.module_errors[ModuleErrorIndex.MAIN_MODULE_ERROR].update(err_config)

@@ -4,7 +4,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from argus_synchro.__main__ import _write_status_safe
+from argus_synchro import __main__ as app_main
 from argus_synchro.diagnosis.action_errors import MmapReadWriteErrorDiagnosis
+from argus_synchro.diagnosis.error_config import ErrorConfig
 from argus_synchro.process.error_monitor_process import ErrorMonitorProcess
 from argus_synchro.process.visual_process import VisualProcess
 from argus_synchro.shared_errors import ActionErrorIndex, StateErrorIndex
@@ -22,6 +24,9 @@ from argus_synchro.SystemMonitor.status_mmap import StatusCode
 )
 def test_mmap_read_write_error_counts_target_exceptions(error: Exception) -> None:
     diagnosis = MmapReadWriteErrorDiagnosis()
+    error_config = ErrorConfig()
+    error_config.mmap_read_write_error.is_enabled = True
+    diagnosis.update(error_config)
 
     assert diagnosis.excepts_diagnosis(error) is True
     assert diagnosis.err_cnt.value == 1
@@ -29,8 +34,18 @@ def test_mmap_read_write_error_counts_target_exceptions(error: Exception) -> Non
 
 def test_mmap_read_write_error_ignores_non_target_exception() -> None:
     diagnosis = MmapReadWriteErrorDiagnosis()
+    error_config = ErrorConfig()
+    error_config.mmap_read_write_error.is_enabled = True
+    diagnosis.update(error_config)
 
     assert diagnosis.excepts_diagnosis(TypeError("unexpected")) is False
+    assert diagnosis.err_cnt.value == 0
+
+
+def test_mmap_read_write_error_is_disabled_by_default() -> None:
+    diagnosis = MmapReadWriteErrorDiagnosis()
+
+    assert diagnosis.excepts_diagnosis(OSError("mmap unavailable")) is False
     assert diagnosis.err_cnt.value == 0
 
 
@@ -57,6 +72,9 @@ def test_mmap_read_write_error_owns_error_log_output() -> None:
 def test_error_monitor_dispatches_mmap_failure_and_continues() -> None:
     diagnosis = MmapReadWriteErrorDiagnosis()
     diagnosis._logger = MagicMock()
+    error_config = ErrorConfig()
+    error_config.mmap_read_write_error.is_enabled = True
+    diagnosis.update(error_config)
     process = object.__new__(ErrorMonitorProcess)
     process._is_last_app_manager_diag_enabled = False
     process._ser = SimpleNamespace(
@@ -115,6 +133,9 @@ def test_error_monitor_logs_mmap_error_values_and_changes() -> None:
 def test_visual_ui_dispatches_mmap_failure_and_reraises(monkeypatch) -> None:
     diagnosis = MmapReadWriteErrorDiagnosis()
     diagnosis._logger = MagicMock()
+    error_config = ErrorConfig()
+    error_config.mmap_read_write_error.is_enabled = True
+    diagnosis.update(error_config)
     process = object.__new__(VisualProcess)
     process._ProcessBase__process = None
     process._ser = SimpleNamespace(
@@ -151,6 +172,9 @@ def test_visual_ui_dispatches_mmap_failure_and_reraises(monkeypatch) -> None:
 def test_main_status_write_dispatches_mmap_failure_and_continues() -> None:
     diagnosis = MmapReadWriteErrorDiagnosis()
     diagnosis._logger = MagicMock()
+    error_config = ErrorConfig()
+    error_config.mmap_read_write_error.is_enabled = True
+    diagnosis.update(error_config)
     status = MagicMock()
     status.write_status.side_effect = RuntimeError("status writer failed")
     ser = SimpleNamespace(
@@ -165,3 +189,61 @@ def test_main_status_write_dispatches_mmap_failure_and_continues() -> None:
         "RuntimeError('status writer failed')",
         exc_info=True,
     )
+
+
+def test_main_load_err_config_updates_mmap_diagnosis() -> None:
+    error_config = ErrorConfig()
+    diagnosis = MagicMock()
+    action_errors = MagicMock()
+    action_errors.__getitem__.return_value = diagnosis
+    ser = SimpleNamespace(
+        shared_err_conf=SimpleNamespace(read=MagicMock(return_value=error_config)),
+        state_errors_D=MagicMock(),
+        action_errors_A_C=action_errors,
+        module_errors=MagicMock(),
+    )
+
+    app_main.load_err_config(ser)
+
+    action_errors.__getitem__.assert_any_call(ActionErrorIndex.MMAP_READ_WRITE_ERROR)
+    diagnosis.update.assert_any_call(error_config)
+
+
+def test_error_monitor_updates_mmap_diagnosis() -> None:
+    error_config = ErrorConfig()
+    diagnosis = MagicMock()
+    action_errors = MagicMock()
+    action_errors.__getitem__.return_value = diagnosis
+    process = object.__new__(ErrorMonitorProcess)
+    process._ser = SimpleNamespace(
+        shared_err_conf=SimpleNamespace(read=MagicMock(return_value=error_config)),
+        state_errors_A_C=MagicMock(),
+        action_errors_A_C=action_errors,
+    )
+
+    process._err_config_load()
+
+    action_errors.__getitem__.assert_called_once_with(
+        ActionErrorIndex.MMAP_READ_WRITE_ERROR
+    )
+    diagnosis.update.assert_called_once_with(error_config)
+
+
+def test_visual_updates_mmap_diagnosis() -> None:
+    error_config = ErrorConfig()
+    diagnosis = MagicMock()
+    action_errors = MagicMock()
+    action_errors.__getitem__.return_value = diagnosis
+    process = object.__new__(VisualProcess)
+    process._ser = SimpleNamespace(
+        shared_err_conf=SimpleNamespace(read=MagicMock(return_value=error_config)),
+        state_errors_A_C=MagicMock(),
+        state_errors_D=MagicMock(),
+        action_errors_A_C=action_errors,
+        module_errors=MagicMock(),
+    )
+
+    process._err_config_load()
+
+    action_errors.__getitem__.assert_any_call(ActionErrorIndex.MMAP_READ_WRITE_ERROR)
+    diagnosis.update.assert_any_call(error_config)

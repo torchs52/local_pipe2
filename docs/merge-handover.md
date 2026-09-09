@@ -1107,6 +1107,13 @@ SHI側だけで確認されたテスト:
 - 両processで共有設定をCE004診断へ反映し、`CraneModelFileMissingDiagnosis.excepts_diagnosis()`も`is_enabled`を確認するようにした。設定OFFでは対象例外をcounterへ加算・ログ出力せず、元例外を再送出する既存process制御は維持する。
 - 専用テストで対象10例外、非対象例外、既定OFF、設定更新、PointsRefine/Visualの設定配線、診断所有ログ、元例外再送出を確認した。
 
+### 2026-09-09 CE011設定配線補完
+
+- SHIとVendorの`_write_status_safe()`は同名・同責務で実装済みだったが、`MMAP_READ_WRITE_ERROR`は設定更新処理を持たず、`is_enabled`に関係なく対象例外を計上していた。
+- `MmapReadWriteErrorDiagnosis`へ共有設定の`mmap_read_write_error`を反映する`update()`と無効時の非計上を追加した。mainは最初のstatus MMAP書込み前に更新し、ErrorMonitorとVisualは各`_err_config_load()`で再読込時にも更新する。
+- 設定ON時は従来どおりMMAPの`OSError`、`ValueError`、`BufferError`、`RuntimeError`をCE011として記録する。設定OFF時はcounterとログを発生させず、各呼出し元の継続・再送出契約は変更していない。
+- CE011専用、CE004、Visual終了処理を含む関連テストは33 passed。変更した診断クラス、ErrorMonitor、CE011テストにVS Code診断はなく、`git diff --check`も成功した。
+
 ## 10. 次のCopilotへの開始指示
 
 次回は、いきなり全体差分を再探索しない。次の順で開始する。

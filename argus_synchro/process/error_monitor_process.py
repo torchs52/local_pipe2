@@ -65,6 +65,9 @@ class ErrorMonitorProcess(ProcessBase):
         self._ser.state_errors_A_C[
             StateErrorIndex.APPLICATION_MANAGER_NOT_RESPONDING
         ].update(self._err_config)
+        self._ser.action_errors_A_C[
+            ActionErrorIndex.MMAP_READ_WRITE_ERROR
+        ].update(self._err_config)
 
     def create_producer_and_consumer(self) -> None:
         pass

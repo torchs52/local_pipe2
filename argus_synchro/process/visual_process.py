@@ -227,6 +227,9 @@ class VisualProcess(ProcessBase):
         self._ser.action_errors_A_C[
             ActionErrorIndex.CRANE_MODEL_FILE_MISSING
         ].update(self._err_config)
+        self._ser.action_errors_A_C[
+            ActionErrorIndex.MMAP_READ_WRITE_ERROR
+        ].update(self._err_config)
         self._ser.module_errors[ModuleErrorIndex.INTEGRATE_2D3D_MODULE_ERROR].update(
             self._err_config
         )
