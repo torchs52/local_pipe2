@@ -124,3 +124,27 @@ def test_sensor_calibration_diagnosis_owns_ce006_log(tmp_path: Path) -> None:
         "detail=failed to load CSV: FileNotFoundError: "
         f"{tmp_path / 'both.csv'} not found. issues=1"
     )
+
+
+def test_sensor_calibration_diagnosis_logs_validation_exception() -> None:
+    diagnosis = _diagnosis()
+    diagnosis._logger = MagicMock()
+    error = ValueError(
+        "lidar2crane_reference_paths must match Lidar_calib_files length"
+    )
+
+    assert diagnosis.excepts_diagnosis(error) is True
+    diagnosis.log_output(
+        True,
+        False,
+        ActionErrorIndex.SENSOR_CALIB_DATA_INVALID,
+        error,
+    )
+
+    assert diagnosis.err_cnt.value == 1
+    diagnosis._logger.error.assert_called_once_with(
+        "CE006: SENSOR_CALIB_DATA_INVALID: validation failed: "
+        "ValueError: lidar2crane_reference_paths must match "
+        "Lidar_calib_files length",
+        exc_info=True,
+    )

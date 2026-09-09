@@ -79,3 +79,66 @@ def test_startup_calibration_diagnosis_ignores_negative_camera_count() -> None:
 
     camera_diagnosis.update.assert_not_called()
     camera_diagnosis.diagnose_calibration_data.assert_not_called()
+
+
+def test_startup_sensor_validation_error_is_reported_as_ce006() -> None:
+    error = ValueError(
+        "lidar2crane_reference_paths must match Lidar_calib_files length"
+    )
+    sensor_diagnosis = MagicMock(spec=SensorCalibDataInvalidDiagnosis)
+    sensor_diagnosis.diagnose_calibration_matrices.side_effect = error
+    sensor_diagnosis.excepts_diagnosis.return_value = True
+    camera_diagnosis = MagicMock(spec=CameraXCalibDataInvalidDiagnosis)
+    shared_errors = SimpleNamespace(
+        action_errors_A_C={
+            ActionErrorIndex.SENSOR_CALIB_DATA_INVALID: sensor_diagnosis,
+            ActionErrorIndex.CAMERA0_CALIB_DATA_INVALID: camera_diagnosis,
+            ActionErrorIndex.CAMERA1_CALIB_DATA_INVALID: camera_diagnosis,
+            ActionErrorIndex.CAMERA2_CALIB_DATA_INVALID: camera_diagnosis,
+            ActionErrorIndex.CAMERA3_CALIB_DATA_INVALID: camera_diagnosis,
+        }
+    )
+
+    diagnose_startup_calibration_data(
+        shared_errors,
+        MagicMock(),
+        ["lidar0.csv"],
+        camera_count=1,
+        error_config=ErrorConfig(),
+    )
+
+    sensor_diagnosis.excepts_diagnosis.assert_called_once_with(error)
+    sensor_diagnosis.log_output.assert_called_once_with(
+        True,
+        False,
+        ActionErrorIndex.SENSOR_CALIB_DATA_INVALID,
+        error,
+    )
+    camera_diagnosis.diagnose_calibration_data.assert_called_once()
+
+
+def test_startup_sensor_unclassified_error_is_reraised() -> None:
+    error = TypeError("unexpected validator failure")
+    sensor_diagnosis = MagicMock(spec=SensorCalibDataInvalidDiagnosis)
+    sensor_diagnosis.diagnose_calibration_matrices.side_effect = error
+    sensor_diagnosis.excepts_diagnosis.return_value = False
+    shared_errors = SimpleNamespace(
+        action_errors_A_C={
+            ActionErrorIndex.SENSOR_CALIB_DATA_INVALID: sensor_diagnosis,
+        }
+    )
+
+    try:
+        diagnose_startup_calibration_data(
+            shared_errors,
+            MagicMock(),
+            [],
+            camera_count=0,
+            error_config=ErrorConfig(),
+        )
+    except TypeError as caught:
+        assert caught is error
+    else:
+        raise AssertionError("expected unclassified validation error")
+
+    sensor_diagnosis.log_output.assert_not_called()

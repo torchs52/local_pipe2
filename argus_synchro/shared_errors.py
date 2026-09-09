@@ -583,11 +583,21 @@ def diagnose_startup_calibration_data(
     if not isinstance(sensor_diagnosis, SensorCalibDataInvalidDiagnosis):
         raise TypeError("SENSOR_CALIB_DATA_INVALID diagnosis type mismatch")
     sensor_diagnosis.update(error_config)
-    sensor_diagnosis.diagnose_calibration_matrices(
-        calibration_conf,
-        ActionErrorIndex.SENSOR_CALIB_DATA_INVALID,
-        lidar2crane_reference_paths=lidar2crane_reference_paths,
-    )
+    try:
+        sensor_diagnosis.diagnose_calibration_matrices(
+            calibration_conf,
+            ActionErrorIndex.SENSOR_CALIB_DATA_INVALID,
+            lidar2crane_reference_paths=lidar2crane_reference_paths,
+        )
+    except Exception as error:
+        if not sensor_diagnosis.excepts_diagnosis(error):
+            raise
+        sensor_diagnosis.log_output(
+            True,
+            False,
+            ActionErrorIndex.SENSOR_CALIB_DATA_INVALID,
+            error,
+        )
 
     camera_error_indices = (
         ActionErrorIndex.CAMERA0_CALIB_DATA_INVALID,
