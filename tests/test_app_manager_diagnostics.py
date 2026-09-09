@@ -10,6 +10,7 @@ import pytest
 from argus_synchro.diagnosis.error_diagnosis import ResultDiagnosis
 from argus_synchro.process.app_manager_process import AppManagerProcess
 from argus_synchro.shared_errors import (
+    ActionErrorIndex,
     ModuleErrorIndex,
     StateErrorDIndex,
     StateErrorIndex,
@@ -148,6 +149,7 @@ def test_err_config_load_updates_file_io_diagnosis() -> None:
     process._num_lidars = 0
     process._ser = SimpleNamespace(
         shared_err_conf=SimpleNamespace(read=lambda: error_config),
+        action_errors_A_C=defaultdict(MagicMock),
         state_errors_A_C=state_errors_a_c,
         state_errors_D=state_errors_d,
         module_errors=module_errors,
@@ -158,6 +160,9 @@ def test_err_config_load_updates_file_io_diagnosis() -> None:
     state_errors_d[StateErrorDIndex.FILE_IO_ERROR].update.assert_called_once_with(
         error_config
     )
+    process._ser.action_errors_A_C[
+        ActionErrorIndex.CONFIG_FILE_MISSING
+    ].update.assert_called_once_with(error_config)
     module_errors[ModuleErrorIndex.APP_MANAGER_MODULE_ERROR].update.assert_called_once_with(
         error_config
     )

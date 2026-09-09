@@ -256,9 +256,14 @@ class ConfigFileMissingDiagnosis(ActionErrorDiagnosisA):
 
     def __init__(self) -> None:
         super().__init__()
+        self.param: err_conf.ConfigFileMissingParameters
         self._last_counted_mono: float = 0.0
         self._last_counted_signature: tuple[str, str] | None = None
         self._counter_throttle_sec: float = 1.0
+
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.config_file_missing
+        self.is_enabled = self.param.is_enabled
 
     def _io_error(self, e: Exception) -> bool:
         return bool(
@@ -321,6 +326,8 @@ class ConfigFileMissingDiagnosis(ActionErrorDiagnosisA):
         return True
 
     def excepts_diagnosis(self, e: Exception) -> bool:
+        if not self.is_enabled:
+            return False
         ret: bool = False
         ret = self._io_error(e) or self._unicode_error(e) or self._config_parse_error(e)
         if ret and self._should_increment_counter(e):
@@ -677,8 +684,15 @@ class AiModelLoadFailed(ActionErrorDiagnosisB):
 
     def __init__(self) -> None:
         super().__init__()
+        self.param: err_conf.AiModelLoadFailedParameters
+
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.ai_model_load_failed
+        self.is_enabled = self.param.is_enabled
 
     def excepts_diagnosis(self, e: Exception) -> bool:
+        if not self.is_enabled:
+            return False
         is_target = isinstance(
             e,
             (
@@ -754,9 +768,14 @@ class LogFileIoErrorDiagnosis(ActionErrorDiagnosisB):
 
     def __init__(self) -> None:
         super().__init__()
+        self.param: err_conf.LogFileIoErrorParameters
         self._last_counted_mono: float = 0.0
         self._last_counted_signature: tuple[str, str] | None = None
         self._counter_throttle_sec: float = 1.0
+
+    def update(self, err_conf: err_conf.ErrorConfig) -> None:
+        self.param = err_conf.log_file_io_error
+        self.is_enabled = self.param.is_enabled
 
     def _should_increment_counter(self, e: Exception) -> bool:
         now_mono = time.monotonic()
@@ -772,6 +791,8 @@ class LogFileIoErrorDiagnosis(ActionErrorDiagnosisB):
         return True
 
     def excepts_diagnosis(self, e: Exception) -> bool:
+        if not self.is_enabled:
+            return False
         if isinstance(
             e,
             (

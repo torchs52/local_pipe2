@@ -5,7 +5,11 @@ from unittest.mock import MagicMock
 
 from argus_synchro.diagnosis.error_diagnosis import ResultDiagnosis
 from argus_synchro.process.calib_process import CalibProcess
-from argus_synchro.shared_errors import ModuleErrorIndex, StateErrorDIndex
+from argus_synchro.shared_errors import (
+    ActionErrorIndex,
+    ModuleErrorIndex,
+    StateErrorDIndex,
+)
 
 
 def test_err_config_load_enables_file_io_diagnosis() -> None:
@@ -13,6 +17,7 @@ def test_err_config_load_enables_file_io_diagnosis() -> None:
     file_io_error = MagicMock()
     invalid_data_input = MagicMock()
     array_shape_error = MagicMock()
+    ai_model_load_failed = MagicMock()
     calibration_module_error = MagicMock()
     process = object.__new__(CalibProcess)
     process._ser = SimpleNamespace(
@@ -22,6 +27,7 @@ def test_err_config_load_enables_file_io_diagnosis() -> None:
             StateErrorDIndex.INVALID_DATA_INPUT: invalid_data_input,
             StateErrorDIndex.ARRAY_SHAPE_ERROR: array_shape_error,
         },
+        action_errors_A_C={ActionErrorIndex.AI_MODEL_LOAD_FAILED: ai_model_load_failed},
         module_errors={
             ModuleErrorIndex.CALIBRATION_MODULE_ERROR: calibration_module_error
         },
@@ -32,6 +38,7 @@ def test_err_config_load_enables_file_io_diagnosis() -> None:
     file_io_error.update.assert_called_once_with(error_config)
     invalid_data_input.update.assert_called_once_with(error_config)
     array_shape_error.update.assert_called_once_with(error_config)
+    ai_model_load_failed.update.assert_called_once_with(error_config)
     calibration_module_error.update.assert_called_once_with(error_config)
 
 

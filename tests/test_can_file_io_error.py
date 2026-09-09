@@ -1,6 +1,7 @@
 # pyright: reportAttributeAccessIssue=false
 
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -9,7 +10,11 @@ from argus_synchro.diagnosis.error_diagnosis import ResultDiagnosis
 from argus_synchro.process import can_process
 from argus_synchro.process.can_process import CanDataProviderProcess
 from argus_synchro.provider import can_data
-from argus_synchro.shared_errors import ActionErrorIndex, StateErrorDIndex
+from argus_synchro.shared_errors import (
+    ActionErrorIndex,
+    ModuleErrorIndex,
+    StateErrorDIndex,
+)
 
 
 class _FailingCanFile:
@@ -84,6 +89,26 @@ def _process() -> tuple[CanDataProviderProcess, _RecordingDiagnosis]:
     )
     process._app_logger_factory = SimpleNamespace()
     return process, diagnosis
+
+
+def test_can_err_config_load_updates_config_file_diagnosis() -> None:
+    error_config = object()
+    config_file_missing = MagicMock()
+    can_module_error = MagicMock()
+    file_io_error = MagicMock()
+    process = object.__new__(CanDataProviderProcess)
+    process._ser = SimpleNamespace(
+        shared_err_conf=SimpleNamespace(read=lambda: error_config),
+        action_errors_A_C={
+            ActionErrorIndex.CONFIG_FILE_MISSING: config_file_missing
+        },
+        state_errors_D={StateErrorDIndex.FILE_IO_ERROR: file_io_error},
+        module_errors={ModuleErrorIndex.CAN_MODULE_ERROR: can_module_error},
+    )
+
+    process._err_config_load()
+
+    config_file_missing.update.assert_called_once_with(error_config)
 
 
 def test_file_input_init_error_is_diagnosed_and_reraised(

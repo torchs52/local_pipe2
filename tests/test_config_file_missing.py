@@ -23,6 +23,12 @@ from argus_synchro.diagnosis.error_diagnosis import DiagnosisRuntimePolicy
 from argus_synchro.shared_errors import ActionErrorIndex
 
 
+def _enabled_diagnosis() -> ConfigFileMissingDiagnosis:
+    diagnosis = ConfigFileMissingDiagnosis()
+    diagnosis.update(ErrorConfig())
+    return diagnosis
+
+
 @pytest.mark.parametrize(
     "error",
     (
@@ -43,21 +49,31 @@ from argus_synchro.shared_errors import ActionErrorIndex
     ),
 )
 def test_config_file_missing_counts_target_exceptions(error: Exception) -> None:
-    diagnosis = ConfigFileMissingDiagnosis()
+    diagnosis = _enabled_diagnosis()
 
     assert diagnosis.excepts_diagnosis(error) is True
     assert diagnosis.err_cnt.value == 1
 
 
 def test_config_file_missing_ignores_non_target_exception() -> None:
-    diagnosis = ConfigFileMissingDiagnosis()
+    diagnosis = _enabled_diagnosis()
 
     assert diagnosis.excepts_diagnosis(TypeError("unexpected")) is False
     assert diagnosis.err_cnt.value == 0
 
 
-def test_config_file_missing_accepts_empty_target_exception_message() -> None:
+def test_config_file_missing_honors_disabled_setting() -> None:
+    error_config = ErrorConfig()
+    error_config.config_file_missing.is_enabled = False
     diagnosis = ConfigFileMissingDiagnosis()
+    diagnosis.update(error_config)
+
+    assert diagnosis.excepts_diagnosis(FileNotFoundError("missing")) is False
+    assert diagnosis.err_cnt.value == 0
+
+
+def test_config_file_missing_accepts_empty_target_exception_message() -> None:
+    diagnosis = _enabled_diagnosis()
     diagnosis._logger = MagicMock()
     error = ValueError()
 
@@ -72,7 +88,7 @@ def test_config_file_missing_accepts_empty_target_exception_message() -> None:
 
 
 def test_config_file_missing_throttles_same_exception_signature(monkeypatch) -> None:
-    diagnosis = ConfigFileMissingDiagnosis()
+    diagnosis = _enabled_diagnosis()
     monotonic_values = iter((10.0, 10.5, 11.0))
     monkeypatch.setattr(
         "argus_synchro.diagnosis.action_errors.time.monotonic",
@@ -88,7 +104,7 @@ def test_config_file_missing_throttles_same_exception_signature(monkeypatch) -> 
 
 
 def test_config_file_missing_counts_changed_signature_within_throttle(monkeypatch) -> None:
-    diagnosis = ConfigFileMissingDiagnosis()
+    diagnosis = _enabled_diagnosis()
     monotonic_values = iter((10.0, 10.1))
     monkeypatch.setattr(
         "argus_synchro.diagnosis.action_errors.time.monotonic",
@@ -101,7 +117,7 @@ def test_config_file_missing_counts_changed_signature_within_throttle(monkeypatc
 
 
 def test_config_file_missing_owns_error_log_output() -> None:
-    diagnosis = ConfigFileMissingDiagnosis()
+    diagnosis = _enabled_diagnosis()
     diagnosis._logger = MagicMock()
     error = FileNotFoundError("settings.ini")
 
@@ -114,7 +130,7 @@ def test_config_file_missing_owns_error_log_output() -> None:
 
 
 def test_load_config_dispatches_target_exception_to_diagnosis(monkeypatch) -> None:
-    diagnosis = ConfigFileMissingDiagnosis()
+    diagnosis = _enabled_diagnosis()
     diagnosis._logger = MagicMock()
     sensor_calib_diagnosis = SensorCalibDataInvalidDiagnosis()
     main_logger = MagicMock()
@@ -199,7 +215,7 @@ def test_load_config_dispatches_target_exception_to_diagnosis(monkeypatch) -> No
 def test_load_config_retries_invalid_shi_camera_json_as_ce005(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    diagnosis = ConfigFileMissingDiagnosis()
+    diagnosis = _enabled_diagnosis()
     diagnosis._logger = MagicMock()
     sensor_calib_diagnosis = SensorCalibDataInvalidDiagnosis()
     app_manager_ex = object()
@@ -273,7 +289,7 @@ def test_load_config_retries_invalid_shi_camera_json_as_ce005(
 def test_load_config_reports_ce006_without_ce005_retry(
     monkeypatch, tmp_path: Path
 ) -> None:
-    config_diagnosis = ConfigFileMissingDiagnosis()
+    config_diagnosis = _enabled_diagnosis()
     sensor_calib_diagnosis = SensorCalibDataInvalidDiagnosis()
     sensor_calib_diagnosis._logger = MagicMock()
     reduced_load_mode = MagicMock()

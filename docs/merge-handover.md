@@ -401,6 +401,7 @@ SHI側だけで確認されたテスト:
 | M-081 | IMU/Points LiDAR設定JSON I/O | SHI `2283a0a` | manual-port | verified | IMU/Points/FILE_IO/tests | `config_lidars.json`のI/O・文字コード・JSON解析失敗をFILE_IOへ接続し、成功時に復帰入力を渡す。IMUでもFILE_IO parameterを初期化する |
 | M-082 | PointsRefine初期変換CSV I/O | SHI `2283a0a` | manual-port | verified | PointsRefine/FILE_IO/tests | initial transform CSVのI/O・文字コード・値・型エラーをFILE_IOへ接続して再送出し、成功時に復帰入力を渡す。SHIで欠けていた復帰処理を補完 |
 | M-083 | CPU affinity JSON検証 | SHI `2283a0a` | manual-port | verified | ProcessManager/tests | JSON読込み失敗、root型、process entryの欠損・空・型不正を専用例外へ統一。core IDは`bool`を除く整数だけを許可し、psutil適用時の実行時検証は維持 |
+| M-084 | SHI担当エラー設定接続監査 | SHI `2283a0a` / 統合版監査 | manual-port | verified | CE005/CE013/CE015/process初期化/tests | ErrorConfigの`is_enabled`が未反映だったCE005・CE013・CE015へ`update()`と無効化gateを追加し、main・AppManager・CAN・ObjectDetect・Calibの所有境界へ接続。SE036、CE003、Dレベルのモニタ接続・検知対象・連続リトライは未実装のまま維持 |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -1142,6 +1143,13 @@ SHI側だけで確認されたテスト:
 - PointsRefineが読むinitial transform CSVについて、`OSError`、`UnicodeError`、`ValueError`、`TypeError`をDレベル`FILE_IO_ERROR`へパス、操作、例外詳細付きで接続した。診断後は元例外を再送出して既存process lifecycleを維持し、正常読込み時は復帰入力を渡す。SHIで欠けていた成功時の復帰処理を補完した。
 - `ProcessManager.get_process_cpu_affinity()`はJSONの読込み・decode失敗、rootの非object、process entryの欠損・空list・非list・非整数要素を`ProcessCpuAffinityConfigError`へ統一した。Pythonの`bool`は`int`の派生型だがcore IDとしては拒否する。実在core番号と適用可否は従来どおりpsutil境界で検証する。
 - PointsRefine CSV、ProcessManager、既存LiDAR設定FILE_IOの関連テストは22 passed。対象ファイルのVS Code diagnostics、Ruff、`compileall`、`git diff --check`は成功した。
+
+### 2026-09-09 M-084 SHI担当エラー設定接続監査
+
+- `docs/error_list.txt`のSHI担当エラーについて、SharedErrors登録、ErrorConfig parameter、`update()`、runtime診断呼出しを固定SHI `2283a0a`と現行で照合した。実装済みでparameterを参照するSE、CE、Dレベル、module errorに、runtime呼出しだけ存在して`update()`されない診断は残っていない。
+- CE005 `CONFIG_FILE_MISSING`、CE013 `AI_MODEL_LOAD_FAILED`、CE015 `LOG_FILE_IO_ERROR`はruntime利用とJSONの`is_enabled`設定がある一方、診断クラスに`update()`と無効化gateがなく、設定値を無視していた。各診断へ設定反映を追加し、共通起動、AppManager、CAN、ObjectDetect、Calibの所有境界へ接続した。
+- SE036、CE003、Dレベルのモニタ接続エラー・検知対象エラー・連続リトライ上限超過は、SHI固定commitでも判定またはruntime接続が完成していない。ユーザー判断により今回そのまま維持する。
+- 設定OFF時に対象例外を計上しないこと、共通起動と各processの更新接続を回帰テストへ追加した。関連テストは117 passed。`compileall`と`git diff --check`は成功した。対象ファイル全体のRuffはlegacy TODO、private access、型注釈などの既存違反を報告するため、この単位では変更していない。
 
 ## 10. 次のCopilotへの開始指示
 

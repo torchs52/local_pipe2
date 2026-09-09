@@ -125,6 +125,9 @@ class CanDataProviderProcess(InputProcess[CanData]):
         self._ser.state_errors_D[StateErrorDIndex.FILE_IO_ERROR].update(
             self._err_config
         )
+        self._ser.action_errors_A_C[ActionErrorIndex.CONFIG_FILE_MISSING].update(
+            self._err_config
+        )
 
     def _change_file_name_index(self) -> None:
         """

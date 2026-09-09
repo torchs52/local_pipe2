@@ -9,6 +9,7 @@ from argus_synchro.config.settings_validation import (
     validate_settings,
 )
 from argus_synchro.diagnosis.action_errors import ConfigFileMissingDiagnosis
+from argus_synchro.diagnosis.error_config import ErrorConfig
 from argus_synchro.shared_app_config import SharedAppConfig
 
 
@@ -83,5 +84,6 @@ def test_broken_section_name_is_classified_as_ce005(tmp_path: Path) -> None:
         SharedAppConfig(directory_config)
 
     diagnosis = ConfigFileMissingDiagnosis()
+    diagnosis.update(ErrorConfig())
     assert diagnosis.excepts_diagnosis(error_info.value) is True
     assert diagnosis.err_cnt.value == 1

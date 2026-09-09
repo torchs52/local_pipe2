@@ -20,6 +20,7 @@ from argus_synchro.process.synchronizer import ProcessActivator
 from argus_synchro.profiler import log_target
 from argus_synchro.profiler.prof_mode import ProfCategory
 from argus_synchro.shared_errors import (
+    ActionErrorIndex,
     ModuleErrorIndex,
     SharedErrors,
     StateErrorDIndex,
@@ -192,6 +193,9 @@ class AppManagerProcess(ProcessBase):
             self._err_config
         )
         self._ser.state_errors_D[StateErrorDIndex.LOG_TIME_REVERSAL].update(
+            self._err_config
+        )
+        self._ser.action_errors_A_C[ActionErrorIndex.CONFIG_FILE_MISSING].update(
             self._err_config
         )
         self._ser.module_errors[ModuleErrorIndex.APP_MANAGER_MODULE_ERROR].update(

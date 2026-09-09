@@ -5,6 +5,13 @@ import pytest
 
 from argus_synchro.common.app_logger import AppLoggerFactory
 from argus_synchro.diagnosis.action_errors import LogFileIoErrorDiagnosis
+from argus_synchro.diagnosis.error_config import ErrorConfig
+
+
+def _enabled_diagnosis() -> LogFileIoErrorDiagnosis:
+    diagnosis = LogFileIoErrorDiagnosis()
+    diagnosis.update(ErrorConfig())
+    return diagnosis
 
 
 @pytest.mark.parametrize("compress", [True, False])
@@ -52,7 +59,7 @@ def test_factory_keeps_io_error_callback_when_handlers_are_updated(tmp_path) -> 
 
 
 def test_log_file_io_diagnosis_throttles_same_error(monkeypatch) -> None:
-    diagnosis = LogFileIoErrorDiagnosis()
+    diagnosis = _enabled_diagnosis()
     monotonic_values = iter((10.0, 10.5, 11.1))
     monkeypatch.setattr(
         "argus_synchro.diagnosis.action_errors.time.monotonic",
@@ -68,7 +75,17 @@ def test_log_file_io_diagnosis_throttles_same_error(monkeypatch) -> None:
 
 
 def test_log_file_io_diagnosis_ignores_non_os_error() -> None:
-    diagnosis = LogFileIoErrorDiagnosis()
+    diagnosis = _enabled_diagnosis()
 
     assert diagnosis.excepts_diagnosis(RuntimeError("format failed")) is False
+    assert diagnosis.err_cnt.value == 0
+
+
+def test_log_file_io_diagnosis_honors_disabled_setting() -> None:
+    error_config = ErrorConfig()
+    error_config.log_file_io_error.is_enabled = False
+    diagnosis = LogFileIoErrorDiagnosis()
+    diagnosis.update(error_config)
+
+    assert diagnosis.excepts_diagnosis(OSError("disk full")) is False
     assert diagnosis.err_cnt.value == 0

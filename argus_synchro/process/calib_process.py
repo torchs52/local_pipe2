@@ -41,7 +41,12 @@ from argus_synchro.process import ProcessBase
 from argus_synchro.process.message import Consumer, MessageFlow
 from argus_synchro.profiler import log_main
 from argus_synchro.profiler.prof_fps import ProfFps
-from argus_synchro.shared_errors import ModuleErrorIndex, SharedErrors, StateErrorDIndex
+from argus_synchro.shared_errors import (
+    ActionErrorIndex,
+    ModuleErrorIndex,
+    SharedErrors,
+    StateErrorDIndex,
+)
 
 if typing.TYPE_CHECKING:
     from argus_synchro.config.app_config import AppConfig
@@ -145,6 +150,9 @@ class CalibProcess(ProcessBase):
             self._err_config
         )
         self._ser.state_errors_D[StateErrorDIndex.ARRAY_SHAPE_ERROR].update(
+            self._err_config
+        )
+        self._ser.action_errors_A_C[ActionErrorIndex.AI_MODEL_LOAD_FAILED].update(
             self._err_config
         )
         self._ser.module_errors[ModuleErrorIndex.CALIBRATION_MODULE_ERROR].update(

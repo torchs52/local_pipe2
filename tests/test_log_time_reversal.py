@@ -11,7 +11,11 @@ from argus_synchro.diagnosis.error_config import ErrorConfig
 from argus_synchro.diagnosis.error_diagnosis import ResultDiagnosis
 from argus_synchro.diagnosis.state_d_errors import LogTimeReversal
 from argus_synchro.process.app_manager_process import AppManagerProcess
-from argus_synchro.shared_errors import SharedErrors, StateErrorDIndex
+from argus_synchro.shared_errors import (
+    ActionErrorIndex,
+    SharedErrors,
+    StateErrorDIndex,
+)
 
 
 @pytest.mark.parametrize("compress", [True, False])
@@ -125,5 +129,22 @@ def test_load_err_config_initializes_time_reversal_before_logger_callback() -> N
         diagnosis.report_record_time(10.0, 9.0)
 
         assert diagnosis.param is not None
+    finally:
+        shared_errors.shared_err_conf.close()
+
+
+def test_load_err_config_initializes_shi_action_error_settings() -> None:
+    shared_errors = SharedErrors(Path("config/error_config.json"))
+    try:
+        app_main.load_err_config(shared_errors)
+
+        for error_index in (
+            ActionErrorIndex.CONFIG_FILE_MISSING,
+            ActionErrorIndex.AI_MODEL_LOAD_FAILED,
+            ActionErrorIndex.LOG_FILE_IO_ERROR,
+        ):
+            diagnosis = shared_errors.action_errors_A_C[error_index]
+            assert diagnosis.is_enabled is True
+            assert diagnosis.param is not None
     finally:
         shared_errors.shared_err_conf.close()

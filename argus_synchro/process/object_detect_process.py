@@ -117,6 +117,9 @@ class ObjectDetectProcess(ProcessBase):
         self._ser.state_errors_D[
             StateErrorDIndex.AI_INFERENCE_RESULT_ERROR
         ].update(self._err_config)
+        self._ser.action_errors_A_C[ActionErrorIndex.AI_MODEL_LOAD_FAILED].update(
+            self._err_config
+        )
         self._ser.module_errors[
             ModuleErrorIndex.CAMERA_HUMAN_DETECTION_MODULE_ERROR
         ].update(self._err_config)
