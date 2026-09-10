@@ -61,6 +61,16 @@ class NotStartedCanDataProvider(CanDataProvider):
 
 
 @final
+class FixedYawCanDataProvider(CanDataProvider):
+    def __init__(self, yaw_angle_deg: float) -> None:
+        super().__init__()
+        self._yaw_angle_deg = yaw_angle_deg
+
+    def receive_can_data(self) -> tuple[float, NDArray[np.float64]]:
+        return self._yaw_angle_deg, self._lever_pressure
+
+
+@final
 class CanFileProvider(CanDataProvider):
     def __init__(self, device: CanFile, start_frame: int) -> None:
         super().__init__()

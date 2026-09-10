@@ -21,6 +21,8 @@ _RULES: tuple[SettingRule, ...] = (
     ),
     SettingRule("DataCapture", "datawait_sec", float, 5.0, 0.0, 60.0),
     SettingRule("DataCapture", "save_sensordata", bool, False),
+    SettingRule("DataCapture_CAN", "is_fixed_yaw", bool, False),
+    SettingRule("DataCapture_CAN", "fixed_yaw_deg", float, 0.0, 0.0, 359.9),
     SettingRule("DataCapture_Lidar", "count", int, 2, 1, 6),
     SettingRule("DataCapture_Lidar", "accum_time", float, 0.1, 0.001, 10.0),
     SettingRule("DataCapture_Lidar", "data_buffersize", int, 50, 1, 10_000),

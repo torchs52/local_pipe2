@@ -286,7 +286,7 @@ class CalibFIFOProcess(ProcessBase):
             for pcd in pcds
         )
         copied_can_data = CanData(
-            yaw_angle_deg=int(can_data.yaw_angle_deg),
+            yaw_angle_deg=float(can_data.yaw_angle_deg),
             lever_pressure=can_data.lever_pressure.copy(),
             frame=int(can_data.frame),
             time=float(can_data.time),

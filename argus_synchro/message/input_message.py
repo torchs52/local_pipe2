@@ -61,7 +61,7 @@ class CameraData:
 
 @dataclass(frozen=True, slots=True)
 class CanData:
-    yaw_angle_deg: int
+    yaw_angle_deg: float
     lever_pressure: NDArray[np.float16]
     frame: int
     time: float
@@ -176,7 +176,9 @@ class CanDataMessage(SlotMessage[CanData]):
 
     def __init__(self) -> None:
         super().__init__()
-        self._yaw_angle_deg: SharedScalarSlotData[int] = SharedScalarSlotData(int, 0)
+        self._yaw_angle_deg: SharedScalarSlotData[float] = SharedScalarSlotData(
+            float, 0.0
+        )
         self._handle_lever: SharedArraySlotData[np.float16] = SharedArraySlotData(
             (4,), np.float16
         )
@@ -184,14 +186,14 @@ class CanDataMessage(SlotMessage[CanData]):
         self._frame: SharedScalarSlotData[int] = SharedScalarSlotData(int, 0)
 
     def write_slot(self, slot: int, value: CanData) -> None:
-        self._yaw_angle_deg.write_slot(slot, int(value.yaw_angle_deg))
+        self._yaw_angle_deg.write_slot(slot, float(value.yaw_angle_deg))
         self._handle_lever.write_slot(slot, value.lever_pressure)
         self._frame.write_slot(slot, int(value.frame))
         self._time.write_slot(slot, float(value.time))
 
     def borrow_slot(self, slot: int) -> CanData:
         return CanData(
-            yaw_angle_deg=int(self._yaw_angle_deg.read_slot_value(slot)),
+            yaw_angle_deg=float(self._yaw_angle_deg.read_slot_value(slot)),
             lever_pressure=self._handle_lever.borrow_slot(slot),
             frame=int(self._frame.read_slot_value(slot)),
             time=float(self._time.read_slot_value(slot)),

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import time
+from dataclasses import replace
 from typing import TYPE_CHECKING, final
 
 import numpy as np
@@ -20,7 +21,7 @@ from argus_synchro.process.process import InputProcess
 from argus_synchro.process.synchronizer import ProcessActivator
 from argus_synchro.profiler import log_main, log_target
 from argus_synchro.profiler.prof_mode import ProfCategory
-from argus_synchro.provider.can_data import CanFileProvider
+from argus_synchro.provider.can_data import CanFileProvider, FixedYawCanDataProvider
 from argus_synchro.provider.clock import (
     DummyClockProvider,
     PerfCounterClockProvider,
@@ -85,7 +86,13 @@ class CanDataProviderProcess(InputProcess[CanData]):
             self._frame = self._app_config_calib.dataCapture.s_frame
         else:
             self._frame: int = self._app_config.Scrutinizer.s_frame
-        self._change_file_name_index()
+        calib_can = self._app_config_calib.dataCapture.Can
+        if calib_mode and calib_can.is_fixed_yaw:
+            self._provider = FixedYawCanDataProvider(calib_can.fixed_yaw_deg)
+        elif isinstance(self._provider, FixedYawCanDataProvider):
+            self._change_device()
+        else:
+            self._change_file_name_index()
         self._clockPprovider.reset_time()
 
         self.producer.require_restart()
@@ -130,12 +137,18 @@ class CanDataProviderProcess(InputProcess[CanData]):
         )
 
     def _change_file_name_index(self) -> None:
-        """
-        校正モードかつFileInputのときにFileを変更する。
-        """
+        """FileInputのCANファイルと開始frameを現在のモードへ合わせる。"""
         calib_mode: bool = bool(self._app_config.General.operation_mode == OPM.CALIB)
-        if calib_mode and self._app_config_calib.default.File_Input:
-            can_file_path: str = self._app_config.CAN.c_file
+        calib_can = self._app_config_calib.dataCapture.Can
+        if not self._app_config.DEFAULT.File_Input:
+            return
+        if calib_mode and calib_can.is_fixed_yaw:
+            return
+        if calib_mode:
+            can_file_path = calib_can.c_file
+        else:
+            can_file_path = self._app_config.CAN.c_file
+        if isinstance(self._provider, CanFileProvider):
             self._change_file_input_file(can_file_path, self._frame)
 
     def _report_file_io_error(self, file_path: str, error: Exception) -> None:
@@ -212,7 +225,7 @@ class CanDataProviderProcess(InputProcess[CanData]):
         now = time.perf_counter()
         self._sec_can.last_heartbeat.value = now
         return CanData(
-            yaw_angle_deg=int(yaw_angle_data),
+            yaw_angle_deg=float(yaw_angle_data),
             lever_pressure=np.asarray(lever_pressure, dtype=np.float16),
             frame=self._frame,
             time=t,
@@ -289,14 +302,21 @@ class CanDataProviderProcess(InputProcess[CanData]):
     def _change_device(self) -> None:
         file_input: bool = self._app_config.DEFAULT.File_Input
         use_shi_lib: bool = self._app_config.DEFAULT.use_shi_lib
+        calib_mode: bool = bool(self._app_config.General.operation_mode == OPM.CALIB)
+        calib_can = self._app_config_calib.dataCapture.Can
 
-        if file_input:
+        if calib_mode and calib_can.is_fixed_yaw:
+            self._provider = FixedYawCanDataProvider(calib_can.fixed_yaw_deg)
+        elif file_input:
             from argus_synchro.device.can.can_receiver import CanFile, CanIdMapError
             from argus_synchro.provider.can_data import CanFileProvider
 
+            can_config = self._app_config.CAN
+            if calib_mode:
+                can_config = replace(can_config, c_file=calib_can.c_file)
             try:
                 device = CanFile(
-                    self._app_config.CAN,
+                    can_config,
                     self._app_config.UI_IF.crane_model,
                     self._app_logger_factory,
                 )
@@ -311,7 +331,7 @@ class CanDataProviderProcess(InputProcess[CanData]):
             ].errors_diagnosis(False)
             self._provider = CanFileProvider(
                 device,
-                self._app_config.Scrutinizer.s_frame,
+                self._frame,
             )
         elif use_shi_lib:
             from argus_synchro.device.can.can_receiver import CanIdMapError

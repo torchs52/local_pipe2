@@ -1213,6 +1213,7 @@ class calibcheck2d3d:
         camera_datalist, lidar_datalist, can_data, framecounter = fifo_data
         if self.input_data_diagnosis(camera_datalist, lidar_datalist, can_data):
             return False
+        monitor.set_yaw(can_data[0])
 
         self._logger.info(self.proc_lidar1f.__qualname__ + " called")
         multi_minmax = self.proc_lidar1f(lidar_datalist, framecounter, monitor)

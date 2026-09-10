@@ -442,6 +442,7 @@ class calibration2d3d_class:
                 f"progress_score {self.current_progress_score} <= {self.progress_score} but 'start2D3DCalibCalc is True. Ignored.",
             )
 
+        monitor.set_yaw(fifo_data[2][0])
         monitor.set_dummydata(
             enable_systemerrorflag=True,
             enable_errorflag=True,
@@ -999,7 +1000,7 @@ class calibration2d3d_class:
         self,
         camera_datalist: list[tuple[NDArray[np.uint8], int, float]],
         lidar_datalist: list[tuple[NDArray[np.float32], int, float]],
-        can_data: tuple[int, float],
+        can_data: tuple[float, float],
     ) -> bool:
         invalid_data_input = self._ser.state_errors_D[
             StateErrorDIndex.INVALID_DATA_INPUT

@@ -32,6 +32,25 @@ def test_invalid_calibration_setting_is_rejected_before_config_creation(
         )
 
 
+def test_invalid_calibration_fixed_yaw_flag_is_rejected(tmp_path: Path) -> None:
+    settings = Path("config/calib_settings.ini").read_text(encoding="utf-8")
+    config_path = tmp_path / "calib_settings.ini"
+    config_path.write_text(
+        settings.replace("is_fixed_yaw = False", "is_fixed_yaw = automatic", 1),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ConfigValidationError,
+        match=r"\[DataCapture_CAN\] is_fixed_yaw is invalid: must be a boolean",
+    ):
+        AppConfigCalibration(
+            configpath=str(config_path),
+            arglist=[],
+            directory_config=dev_directory_config(),
+        )
+
+
 def test_outputdir_root_uses_cli_log_dir_for_relative_setting() -> None:
     repo_root = Path.cwd()
     directory_config = paths.DirectoryConfig(
@@ -139,6 +158,11 @@ def test_remaining_explicit_calibration_settings_are_loaded() -> None:
 
     assert app_config.default.z_height == -2.0
     assert app_config.default.z_height_withmargin == -1.5
+    assert app_config.dataCapture.Can.is_fixed_yaw is False
+    assert app_config.dataCapture.Can.c_file.endswith(
+        "/can_20240314_134621.csv"
+    )
+    assert app_config.dataCapture.Can.fixed_yaw_deg == 0.0
     assert app_config.dataCapture.Lidar.dev_str == "mid360"
     assert app_config.calib2d3d.placeholder == ""
     assert app_config.calib2d3d.Proc2d.enable_bbox_shapefilter is False

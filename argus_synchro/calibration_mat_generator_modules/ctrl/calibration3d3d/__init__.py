@@ -146,7 +146,7 @@ class calibration3d3d_class:
     def input_post_data_diagnosis(
         self,
         lidar_datalist: list[tuple[NDArray[np.float64], int, float]],
-        can_data: tuple[int, float],
+        can_data: tuple[float, float],
     ) -> bool:
         invalid_data_input = self._ser.state_errors_D[
             StateErrorDIndex.INVALID_DATA_INPUT

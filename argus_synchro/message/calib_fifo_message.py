@@ -12,7 +12,7 @@ from argus_synchro.process.message import Message
 FIFOData: TypeAlias = tuple[
     list[tuple[NDArray[np.uint8], int, float]],
     list[tuple[NDArray[np.float64], int, float]],
-    tuple[int, float],
+    tuple[float, float],
     int,
 ]
 

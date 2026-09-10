@@ -30,7 +30,7 @@ class AccumPointsData:
     frame: int
     time: float
     point_cloud: NDArray[np.float64]
-    yaw_angle_deg: int
+    yaw_angle_deg: float
 
 
 @dataclass(slots=True)
@@ -61,7 +61,7 @@ class CameraDetectionsData:
 @dataclass(slots=True)
 class CanAngleData:
     frame: int
-    yaw_angle_deg: int
+    yaw_angle_deg: float
 
 
 @dataclass(slots=True)
@@ -164,7 +164,9 @@ class AccumPointsDataMessage(SlotMessage[AccumPointsData]):
         self._size: int = PcdData.SIZE * app_config.Lidar.count
         self._frame: SharedScalarSlotData[int] = SharedScalarSlotData(int, 0)
         self._time: SharedScalarSlotData[float] = SharedScalarSlotData(float, 0.0)
-        self._yaw_angle_deg: SharedScalarSlotData[int] = SharedScalarSlotData(int, 0)
+        self._yaw_angle_deg: SharedScalarSlotData[float] = SharedScalarSlotData(
+            float, 0.0
+        )
         self._num: SharedScalarSlotData[int] = SharedScalarSlotData(int, 0)
         self._point_cloud: SharedArraySlotData[np.float64] = SharedArraySlotData(
             (self._size, 3), np.float64
@@ -173,7 +175,7 @@ class AccumPointsDataMessage(SlotMessage[AccumPointsData]):
     def write_slot(self, slot: int, value: AccumPointsData) -> None:
         self._frame.write_slot(slot, int(value.frame))
         self._time.write_slot(slot, float(value.time))
-        self._yaw_angle_deg.write_slot(slot, int(value.yaw_angle_deg))
+        self._yaw_angle_deg.write_slot(slot, float(value.yaw_angle_deg))
         num = min(value.point_cloud.shape[0], self._size)
         self._num.write_slot(slot, int(num))
         self._point_cloud.write_slot_slice(slot, value.point_cloud[:num])
@@ -186,7 +188,7 @@ class AccumPointsDataMessage(SlotMessage[AccumPointsData]):
             point_cloud=self._point_cloud.borrow_slot_slice(
                 slot, (slice(0, num), slice(None))
             ),
-            yaw_angle_deg=int(self._yaw_angle_deg.read_slot_value(slot)),
+            yaw_angle_deg=float(self._yaw_angle_deg.read_slot_value(slot)),
         )
 
     def _close(self) -> None:
@@ -403,16 +405,18 @@ class CanAngleMessage(SlotMessage[CanAngleData]):
     def __init__(self) -> None:
         super().__init__()
         self._frame: SharedScalarSlotData[int] = SharedScalarSlotData(int, 0)
-        self._yaw_angle_deg: SharedScalarSlotData[int] = SharedScalarSlotData(int, 0)
+        self._yaw_angle_deg: SharedScalarSlotData[float] = SharedScalarSlotData(
+            float, 0.0
+        )
 
     def write_slot(self, slot: int, value: CanAngleData) -> None:
         self._frame.write_slot(slot, int(value.frame))
-        self._yaw_angle_deg.write_slot(slot, int(value.yaw_angle_deg))
+        self._yaw_angle_deg.write_slot(slot, float(value.yaw_angle_deg))
 
     def borrow_slot(self, slot: int) -> CanAngleData:
         return CanAngleData(
             frame=int(self._frame.read_slot_value(slot)),
-            yaw_angle_deg=int(self._yaw_angle_deg.read_slot_value(slot)),
+            yaw_angle_deg=float(self._yaw_angle_deg.read_slot_value(slot)),
         )
 
     def _close(self) -> None:

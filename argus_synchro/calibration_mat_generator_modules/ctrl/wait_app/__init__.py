@@ -231,7 +231,7 @@ class wait_app:
         self,
         camera_datalist: list[tuple[NDArray[np.uint8], int, float]],
         lidar_datalist: list[tuple[NDArray[np.float32], int, float]],
-        can_data: tuple[int, float],
+        can_data: tuple[float, float],
     ) -> bool:
         invalid_data_input = self._ser.state_errors_D[
             StateErrorDIndex.INVALID_DATA_INPUT

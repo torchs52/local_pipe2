@@ -160,6 +160,7 @@ class CalibrationUIGodot(FacadeUIClass_Base):
         self.currentmode: int = currentmode
         self.currentcamera: int = currentcamera
         self.errors_calibcommon: int = 0
+        self._yaw_from_input = False
 
         self.camera_calibcheck_values: list[int] = [
             int(CameraCalibCheckStatus.UNKNOWN_INSUFFICIENT_DATA)
@@ -463,7 +464,10 @@ class CalibrationUIGodot(FacadeUIClass_Base):
                             f"Applying [DEFAULT] errors_system_bin {ev}"
                         )
 
-            if enable_yawangle:
+            if enable_yawangle and (
+                getattr(self, "write_dummydata", False)
+                or not getattr(self, "_yaw_from_input", False)
+            ):
                 if confparser_dummy.has_option("DEFAULT", "yaw"):
                     applied = True
                     yaw_str = confparser_dummy.get("DEFAULT", "yaw")
@@ -677,6 +681,7 @@ class CalibrationUIGodot(FacadeUIClass_Base):
         if self.output_log:
             self._logger.info(f"UI value set by set_yaw, value: {value}")
         self.yaw_value: float = value
+        self._yaw_from_input = True
 
     def set_points(self, data: NDArray[np.float32], colordata: NDArray[np.float32]):
         if self.output_log:

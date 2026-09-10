@@ -110,6 +110,14 @@ class DataCaptureConf:
     save_sensordata_dir: str
 
     @dataclass(frozen=True)
+    class CanConf:
+        is_fixed_yaw: bool
+        c_file: str
+        fixed_yaw_deg: float
+
+    Can: CanConf
+
+    @dataclass(frozen=True)
     class LidarConf:
         count: int
         path: str
@@ -180,6 +188,11 @@ def DataCaptureConf_read(
         save_sensordata=ini.getboolean("DataCapture", "save_sensordata"),
         save_sensordata_dir=_path(
             ini.get("DataCapture", "save_sensordata_dir"),
+        ),
+        Can=DataCaptureConf.CanConf(
+            is_fixed_yaw=ini.getboolean("DataCapture_CAN", "is_fixed_yaw"),
+            c_file=_path(ini.get("DataCapture_CAN", "c_file")),
+            fixed_yaw_deg=ini.getfloat("DataCapture_CAN", "fixed_yaw_deg"),
         ),
         Lidar=DataCaptureConf.LidarConf(
             count=ini.getint("DataCapture_Lidar", "count"),

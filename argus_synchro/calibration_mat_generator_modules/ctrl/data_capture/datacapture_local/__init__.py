@@ -116,7 +116,7 @@ class datacapture_class:
         self,
         data_cameras: list[tuple[NDArray[np.uint8], int, float]],
         data_lidars: list[tuple[NDArray[np.float32], int, float]],
-        can_data: tuple[int, float],
+        can_data: tuple[float, float],
         framecounter: int,
     ) -> bool:
         invalid_data_input = self._ser.state_errors_D[

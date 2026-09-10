@@ -403,6 +403,7 @@ SHI側だけで確認されたテスト:
 | M-083 | CPU affinity JSON検証 | SHI `2283a0a` | manual-port | verified | ProcessManager/tests | JSON読込み失敗、root型、process entryの欠損・空・型不正を専用例外へ統一。core IDは`bool`を除く整数だけを許可し、psutil適用時の実行時検証は維持 |
 | M-084 | SHI担当エラー設定接続監査 | SHI `2283a0a` / 統合版監査 | manual-port | verified | CE005/CE013/CE015/process初期化/tests | ErrorConfigの`is_enabled`が未反映だったCE005・CE013・CE015へ`update()`と無効化gateを追加し、main・AppManager・CAN・ObjectDetect・Calibの所有境界へ接続。SE036、CE003、Dレベルのモニタ接続・検知対象・連続リトライは未実装のまま維持 |
 | M-085 | 校正rvec/tvec・wait入力FILE_IO | SHI `2283a0a` / 統合版監査 | manual-port | verified | calibcheck2d3d/wait app/FILE_IO/tests | reader callbackによる二重報告は採用せず、意味的な読込操作を知るcallerで1回だけ報告して元例外を再送出。NumPy EOFとLiDAR CSV読込も対象化 |
+| M-086 | 校正CAN入力・固定yaw選択 | ユーザー要件 / 統合版監査 | manual-port | verified | calibration config/CAN process/FIFO/2D-3D/3D-3D/tests | `is_fixed_yaw`でCANと固定角を明示選択。ファイル入力時は校正専用CAN CSVを使用し、全校正modeへ小数yawを伝搬 |
 
 状態は `pending`, `in-review`, `implemented`, `verified`, `deferred`, `rejected` を使用する。
 
@@ -1169,6 +1170,12 @@ SHI側だけで確認されたテスト:
 - `read_rtvec()`は純粋なreaderのまま維持し、ファイルの意味と操作名を所有する`calibcheck2d3d`と`wait_app`が`FILE_IO_ERROR`を1回だけ記録して元例外を再送出する。切断されたNumPyファイルの`EOFError`も対象へ追加した。
 - `wait_app`のLiDAR変換CSVは従来の二重`loadtxt()`を1回へ整理し、LiDAR CSVとcamera rvec/tvecの両読込失敗をFILE_IOへ接続した。
 - 新規3件を含む関連テストは17 passed。対象の`compileall`、新規テストのRuff、`git diff --check`は成功した。VS Code診断では`wait_app`と新規テストに問題はなく、`calibcheck2d3d`には今回の変更と無関係な既存型指摘が残る。
+
+### 2026-09-10 M-086 校正CAN入力・固定yaw選択
+
+- `calib_settings.ini [DataCapture_CAN]`へ`is_fixed_yaw`、`c_file`、`fixed_yaw_deg`を追加した。`False`ではセンサ入力時に実CAN、ファイル入力時に校正専用CAN CSVを使用し、`True`では入力modeに関係なく固定yawを使用する。CAN読込失敗から固定値へ暗黙fallbackはしない。
+- 選択したyawは校正FIFOへ統一して渡す。3D-3Dは従来どおり計算とUIへ使用し、2D-3Dと2D-3D checkは現在の計算APIを変えずUI表示へ接続した。dummy yawは明示的なdummy書込み時を除き入力yawを上書きしない。
+- CAN message、校正FIFO、後段messageのyaw型を`float`へ変更し、小数角を保持する。設定・CAN source・FIFO・controllerの関連テストは60 passed。
 
 ## 10. 次のCopilotへの開始指示
 

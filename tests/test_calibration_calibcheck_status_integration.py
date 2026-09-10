@@ -214,6 +214,35 @@ def test_facade_uses_info_for_yaw_and_state_values() -> None:
     ]
 
 
+def test_facade_dummydata_does_not_override_input_yaw(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "dummy_senddata.ini").write_text(
+        "[DEFAULT]\nyaw = 0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(facade_module.paths, "get_config_dir", lambda *_: tmp_path)
+    monkeypatch.setattr(
+        facade_module.paths,
+        "normalize_path",
+        lambda filename, directory: directory / filename,
+    )
+    facade = cast(CalibrationUIGodot, object.__new__(CalibrationUIGodot))
+    facade._directory_config = object()
+    facade._logger = SimpleNamespace(info=lambda *_: None, warning=lambda *_: None)
+    facade.output_log = False
+    facade.write_dummydata = False
+    facade.errorcode_pre = 0
+    facade.errors_calibcommon = 0
+    facade.camera_calibcheck_values = []
+    facade.camera_calibstatus_values = []
+    facade.set_yaw(12.5)
+
+    facade.set_dummydata(enable_yawangle=True)
+
+    assert facade.yaw_value == 12.5
+
+
 def test_transmit_logs_preprocess_address_at_debug_and_written_end_flag_at_info(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

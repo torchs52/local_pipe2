@@ -204,7 +204,7 @@ def test_calibration_fifo_process_returns_synchronized_data_in_contract_order() 
     fifo_data = process._update(
         pcd_input_data=(PointCloudData(frame=20, time=2.5, point_cloud=lidar_points),),
         can_input_data=CanData(
-            yaw_angle_deg=15,
+            yaw_angle_deg=15.5,
             lever_pressure=np.zeros(2, dtype=np.float16),
             frame=30,
             time=3.5,
@@ -216,7 +216,7 @@ def test_calibration_fifo_process_returns_synchronized_data_in_contract_order() 
 
     assert fifo_data[0] == [(camera_image, 0, 1.5)]
     assert fifo_data[1] == [(lidar_points, 20, 2.5)]
-    assert fifo_data[2] == (15, 3.5)
+    assert fifo_data[2] == (15.5, 3.5)
     assert fifo_data[3] == 42
 
 
