@@ -213,6 +213,7 @@ def create_scrutinizer_message(
         for _ in range(app_config.Lidar.count)
     )
 
+    # CanDataのメッセージ
     canangle_flow: MessageFlow[CanAngleData] = MessageFlow(
         message=CanAngleMessage().add_to(closables),
         activator=process_activator,
@@ -1461,8 +1462,6 @@ def main() -> None:
 
             automated_calibration_completed = False
             while system_activator.value:
-                # 暫定：毎回読み込まないと、モード切替のタイミングが上手く拾えない.
-                # app_config = sac.read()
                 # 設定更新の検知
                 app_config, last_updated, config_reloaded = (
                     _reload_app_config_if_updated(

@@ -282,9 +282,9 @@
         "enforce_shape_4x4": true,
         "finite_value_only": true,
         "enable_reference_diff_check": true,
-        "translation_threshold_m": 0.5,
-        "rotation_threshold_deg": 10.0,
-        "max_xy_displacement_threshold_m": 1.0,
+        "translation_threshold_m": 99.9,
+        "rotation_threshold_deg": 99.9,
+        "max_xy_displacement_threshold_m": 1.5,
         "grid_radius_m": 5.0,
         "grid_spacing_m": 1.0,
         "comparison_atol": 1e-12

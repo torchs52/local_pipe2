@@ -43,6 +43,7 @@ class MachineProfileHandler:
         settings_ini_path = paths.get_config_dir(directory_config, "settings.ini")
         base_app_ini.read(settings_ini_path, encoding="utf-8")
 
+        # crane_model の取得
         model_name: str | None = base_app_ini.get("UI_IF", "crane_model", fallback=None)
         if model_name is None:
             cls._class_logger.critical(
@@ -104,9 +105,11 @@ class MachineProfileHandler:
         """
         target_ini_path = paths.get_config_dir(self._directory_config, target_ini_name)
         if base_app_ini is None:
+            # 基本設定ファイルの読み込み
             base_app_ini = NoCaseConfigParser(
                 interpolation=None,  # プレースホルダーの展開を無効にする
             )
+
             base_app_ini.read(target_ini_path, encoding="utf-8")
 
         param_file_path: Path | None = self._get_model_specific_file_path(
@@ -196,6 +199,7 @@ class MachineProfileHandler:
         )
         base_app_ini.read(settings_ini_path, encoding="utf-8")
 
+        # 起動時リセット
         StartupResetPolicy(self._app_logger_factory).apply(base_app_ini)
         self.current_appconfig = AppConfig(base_app_ini, self._directory_config)
         self._apply_model_specific_config_to(
@@ -203,7 +207,9 @@ class MachineProfileHandler:
         )
 
     def apply_model_specific_calib_config(self) -> None:
-        """校正モード用の設定(calib_settings.ini)にモデル別パラメータを適用する。"""
+        """
+        校正モード用の設定(calib_settings.ini)にモデル別パラメータを適用する。
+        """
         self._apply_model_specific_config_to(
             "calib_settings.ini", MACHINE_MODEL_CALIB_INFO
         )

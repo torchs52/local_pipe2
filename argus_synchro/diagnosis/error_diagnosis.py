@@ -358,7 +358,7 @@ class StateErrorDiagnosisD(StateErrorDiagnosisBase):
         self, *args: object
     ) -> tuple[ResultDiagnosis, ResultDiagnosis]:
         """
-        エラー診断
+        エラー診断（検出/復帰のエッジでのみDETECTION/RECOVERYを返し、継続中の重複ログを防ぐ）
         """
         no_error: tuple[ResultDiagnosis, ResultDiagnosis] = (
             ResultDiagnosis.NORMAL,

@@ -398,10 +398,12 @@ class CalibMid360PointCloudProvider(PointCloudProvider):
 
     @property
     def last_quality_degraded(self) -> float:
+        """デバイスの最終品質低下時刻"""
         return self._device.last_quality_degraded
 
     @property
     def last_invalid_ratio(self) -> float:
+        """直近フレームの原点点割合 (SE020用)"""
         return self._last_invalid_ratio
 
     def get_points(self) -> tuple[NDArray[np.float64], float] | None:

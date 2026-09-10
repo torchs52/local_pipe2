@@ -19,7 +19,10 @@ def filter_lidar_points(
     general_conf: GeneralConf,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
-    Returns:
+    1. XY 範囲 (`fwd_min/max`, `side_min/max`) によるマスクを作成する。
+    2. 範囲内点群に対して `ground_height + ground_height_margin` で上下分割する。
+    3. 上側点群と下側点群の配列を返す。
+        Returns:
       - points_mid:  zが-0.95以上かつ500m以下の点群
       - points_low:  zが-0.95以下の点群
     """
@@ -209,6 +212,7 @@ def accumulate_point(
     # accum_counterの初期値=-1
     accum_counter += 1
 
+    # 負荷低減モードの切替を毎フレーム反映し、保持する履歴数を動的に変更する。
     if is_reduced_load_mode:
         max_accumulated_frames = accumulation.max_accumulated_frames_reduced_load
         max_accumulated_frames_ground = (
@@ -218,6 +222,7 @@ def accumulate_point(
         max_accumulated_frames = accumulation.max_accumulated_frames
         max_accumulated_frames_ground = accumulation.max_accumulated_frames_ground
 
+    # 上限縮小時は、以降の処理で参照する前に古い履歴から破棄する。
     trim_accumulated_frames(accum_points_dq, max_accumulated_frames)
     trim_accumulated_frames(accum_ground_dq, max_accumulated_frames_ground)
 
@@ -343,6 +348,7 @@ def accumulate_point(
             ),
         )
 
+    # dequeの物理上限より小さいモード別上限を、append後も維持する。
     trim_accumulated_frames(accum_points_dq, max_accumulated_frames)
     trim_accumulated_frames(accum_ground_dq, max_accumulated_frames_ground)
 

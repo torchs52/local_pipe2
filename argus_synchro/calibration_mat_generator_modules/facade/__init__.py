@@ -287,6 +287,13 @@ class CalibrationUIGodot(FacadeUIClass_Base):
             self._logger.debug(
                 f"after errors_calibcommon, addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{errors_calibcommon}",
             )
+        """for i in range(4):
+            x = errors_camera[i] if i < len(errors_camera) else 0
+            self.calibGodotInterfaceInst.WriteUInt8(x)
+            if self.output_log:
+                self._logger.info(
+                    f"after errors_camera[{i}], addr:{self.calibGodotInterfaceInst.writtenAdr}, content:{x}",
+                )"""
 
         # 画像表示の有無: currentmode値が2(2D3D校正)の時のみ適用。それ以外は常時表示
         if currentmode != 2 or self.sac.read().CalibUI_IF.show_image2d3d:

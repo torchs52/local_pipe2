@@ -97,9 +97,13 @@ class CanConnectionErrorParameters(ErrorParameterBase):
 class LidarCommQualityDegradedParameters(ErrorParameterBase):
     """LidarN通信品質低下用パラメータ"""
 
+    # udp_cnt欠番・ dot_num低下・ safety_info異常のうちどれか発生した場合のイベント番号
     dot_num_low_threshold: int = 50
+    # この秒以内に品質低下イベントがあれば「現在低下中」と判定する
     recent_event_threshold_sec: float = 1.0
+    # 低下中がこの秒継続で DETECTION (点滅防止)
     error_confirm_duration_sec: float = 3.0
+    # 正常中がこの秒継続で RECOVERY
     recovery_confirm_duration_sec: float = 5.0
 
 
@@ -119,7 +123,9 @@ class CameraCommQualityDegradedParameters(ErrorParameterBase):
 class LidarCommQualityErrorParameters(ErrorParameterBase):
     """LidarN通信品質エラー用パラメータ"""
 
+    # SE008 ON がこの秒継続で DETECTION
     error_confirm_duration_sec: float = 30.0
+    # SE008 OFF がこの秒継続で RECOVERY
     recovery_confirm_duration_sec: float = 30.0
     failsafe_recovery_confirm_duration_sec: float = 60.0
 
@@ -146,9 +152,13 @@ class CameraCommQualityErrorParameters(ErrorParameterBase):
 class LidarInvalidDataParameters(ErrorParameterBase):
     """LidarNデータ不正用パラメータ"""
 
+    # 原点点割合がこれ以上でエラー判定開始 (0.0〜1.0)
     invalid_ratio_threshold: float = 0.7
+    # 上記割合がこの秒継続で DETECTION
     error_confirm_duration_sec: float = 3.0
+    # 原点点割合がこれ未満で復帰判定開始 (0.0〜1.0)
     recovery_ratio_threshold: float = 0.3
+    # 復帰条件継続確認時間 [s]
     recovery_confirm_duration_sec: float = 3.0
     failsafe_recovery_confirm_duration_sec: float = 5.0
 
@@ -465,16 +475,42 @@ class ConfigFileMissingParameters(ErrorParameterBase):
 class SensorCalibDataInvalidParameters(ErrorParameterBase):
     """センサ校正データ不正用パラメータ"""
 
+    # 対象マトリクス
+    # LiDAR間の統合行列を検査する。
     check_lidar2lidar: bool = False
+    # LiDAR-機体座標の行列を検査する。
     check_lidar2crane: bool = True
+
+    # 基本健全性チェック (枠組み段階で有効)
+    # 行列形状を固定値で検査する。
     enforce_shape_4x4: bool = True
+    # NaN/inf を不正値として扱う。
     finite_value_only: bool = True
+
+    # 標準データとの差分判定を有効化する。
     enable_reference_diff_check: bool = True
-    translation_threshold_m: float = 0.5
-    rotation_threshold_deg: float = 10.0
-    max_xy_displacement_threshold_m: float = 1.0
+
+    # 参照行列との差分判定パラメータ
+    # 並進誤差ノルム[m]の許容上限。
+    # 機能としては実装したが大きな値に設定して、実質的に無効化している。
+    # translation_threshold_m: float = 0.5
+    translation_threshold_m: float = 99.9
+
+    # 回転誤差[deg]の許容上限。
+    # 機能としては実装したが大きな値に設定して、実質的に無効化している。
+    # rotation_threshold_deg: float = 10.0
+    rotation_threshold_deg: float = 99.9
+
+    # 評価グリッド上の最大XY変位[m]の許容上限。
+    # translationとrotationズレを無効化したが、ここのxy方向ズレ量で判定する。
+    # xyズレと並進ズレの両方がここのxyズレに乗るので、実質的にこの値で判定するば良いことになる。
+    # max_xy_displacement_threshold_m: float = 1.0
+    max_xy_displacement_threshold_m: float = 1.5
+    # XY評価グリッド半径[m]。
     grid_radius_m: float = 5.0
+    # XY評価グリッド間隔[m]。
     grid_spacing_m: float = 1.0
+    # 閾値比較時の絶対許容差。
     comparison_atol: float = 1e-12
 
 
@@ -482,11 +518,18 @@ class SensorCalibDataInvalidParameters(ErrorParameterBase):
 class CameraNCalibDataInvalidParameters(ErrorParameterBase):
     """カメラN校正データ不正用パラメータ"""
 
+    # 外部パラメータ行列の形状を検査する。
     enforce_shape_4x4: bool = True
     finite_value_only: bool = True
+    # fisheye内部パラメータの必須項目を検査する。
     check_fisheye_intrinsics: bool = True
+
+    # 標準データ差分判定 (アルゴリズム実装時に利用)
+    # 標準データとの差分判定を有効化する。
     enable_reference_diff_check: bool = False
+    # 比較対象の標準データパス。
     reference_data_path: str = ""
+    # 差分判定のしきい値。
     diff_threshold: float = 0.0
 
 

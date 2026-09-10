@@ -115,6 +115,7 @@ class MID360Points:
         # mid360クラスを宣言したタイミングでMID360にも接続する。
         # point: 点群データ受け取り用。
         self._socket: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # SE008: パケット品質監視用
         self._prev_udp_cnt: int | None = None
         self._last_quality_degraded = 0.0
         self._dot_num_low_threshold: Final[int] = dot_num_low_threshold
@@ -149,20 +150,29 @@ class MID360Points:
         )
 
     def _check_packet_quality(self, dst_byte: bytes) -> bool:
-        dot_num = int.from_bytes(dst_byte[5:7], "little", signed=False)
-        udp_cnt = int.from_bytes(dst_byte[7:9], "little", signed=False)
-        has_issue = False
+        """パケット品質をチェックし、異常があれば True を返す。
+        udp_cnt 欠番 / dot_num 低下を検出する。
+        """
+        dot_num: int = int.from_bytes(dst_byte[5:7], "little", signed=False)
+        udp_cnt: int = int.from_bytes(dst_byte[7:9], "little", signed=False)
+
+        has_issue: bool = False
+
         if udp_cnt == 0:
+            # フレーム境界: カウンタをリセットして欠番判定しない
             self._prev_udp_cnt = 0
         elif self._prev_udp_cnt is not None and udp_cnt != self._prev_udp_cnt + 1:
-            has_issue = True
+            has_issue = True  # udp_cnt ギャップ検出
         self._prev_udp_cnt = udp_cnt
+
         if dot_num < self._dot_num_low_threshold:
-            has_issue = True
+            has_issue = True  # dot_num 低下
+
         return has_issue
 
     @property
     def last_quality_degraded(self) -> float:
+        """最後に品質低下イベントが発生した単調時刻 (0.0=未発生)"""
         return self._last_quality_degraded
 
     @classmethod
@@ -189,6 +199,7 @@ class MID360Points:
         # パケットデータを取得 全体1380byteだが、少し多めに
         dst_byte, _ = self._socket.recvfrom(1500)
 
+        # 品質チェック: udp_cnt欠番 / dot_num低下
         if self._check_packet_quality(dst_byte):
             self._last_quality_degraded = time.perf_counter()
 
