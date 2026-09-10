@@ -415,7 +415,7 @@ void UI_interface::error_info(int isslow)
     this->clsMMap.WriteInt32(this->writtenAdr, code);
     this->writtenAdr += static_cast<int>(ByteSize::INT32);
 }
-void UI_interface::machine_info(int angle_deg)
+void UI_interface::machine_info(double angle_deg)
 {
     this->logger_.info("Adr(angle): %d", this->writtenAdr);
     float angle = static_cast<float>(angle_deg);

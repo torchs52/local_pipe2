@@ -29,7 +29,7 @@ class GodotUIVisualizer
 
     void summary(int isslow, const Eigen::Ref<const Eigen::MatrixXd>& boxes,
                  const Eigen::Ref<const Eigen::MatrixXf>& minmax,
-                 const Eigen::Ref<const Eigen::VectorXi>& valid_detects, OctoTree octotree_obj, int angle_deg,
+                 const Eigen::Ref<const Eigen::VectorXi>& valid_detects, OctoTree octotree_obj, double angle_deg,
                  const std::vector<cv::Mat>& frames, const std::vector<CameraDetectionData>& bb_box_data,
                  const std::vector<Camera>& camera, Ccol_res collision_clusters,
                  const std::map<int, NodeEntity>& cluster2entity, int ref_t, int max_tree_depth, int dialate_point_size,

@@ -62,7 +62,7 @@ class UI_interface
                                                const Camera& camera, const std::map<int, NodeEntity>& cluster2entity);
     void write_collision_result_proj(
         const Eigen::Ref<const Eigen::Matrix<int16_t, Eigen::Dynamic, Eigen::Dynamic>>& w_2d_coord);
-    void machine_info(int angle_deg);
+    void machine_info(double angle_deg);
     Eigen::VectorXi select_cluster(const Eigen::Ref<const Eigen::MatrixXf>& multi_points,
                                    const std::map<int, NodeEntity>& cluster2entity) const;
     void detect_3d_info(const Eigen::Ref<const Eigen::MatrixXf>& minmax,
