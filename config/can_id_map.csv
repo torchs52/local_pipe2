@@ -1,5 +1,5 @@
 crane_model,can_id,signal_type,decoder
-# SCX900-3で現在使用している設定（SHIの有効設定と同一）
+# SCX900-3の以前の状態でデータ取得した時の設定
 SCX900-3,0x18FFD1D1,yaw_angle,handle_angle_newcan
 SCX900-3,0x18FC4401,lever_pressure,handle_lever
 
